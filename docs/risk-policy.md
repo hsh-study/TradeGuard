@@ -1,25 +1,135 @@
-# Risk Policy
+# TradeGuard Risk Policy
 
-MVP 1차 RiskManager 정책입니다.
+## 1. 목적
 
-## 주문 제한
+RiskManager는 전략 신호를 주문으로 전환하기 전에 손실 가능성과 잘못된 주문을 제한하는 최종 도메인 정책이다. 전략 점수가 높더라도 리스크 검증을 우회할 수 없다.
 
-- 동일 날짜, 동일 종목, 동일 전략, 동일 매수 방향의 중복 주문을 금지한다.
-- 1회 주문금액은 기본 100,000원을 초과할 수 없다.
-- 점수 70점 미만의 신호는 주문 요청을 만들 수 없다.
-- 주문 수량은 1주 이상이어야 한다.
-- 지정가 주문만 허용한다.
-- 실계좌 주문은 지원하지 않는다.
+현재 정책은 모의투자 MVP 전용이며 수익을 보장하거나 투자 판단을 대신하지 않는다.
 
-## 실거래 차단
+## 2. 기본 원칙
 
-`tradeguard.real-trading-enabled`나 유사 환경변수가 true여도 MVP에서는 실계좌 주문을 실행하지 않는다. `KisBrokerAdapter`는 실제 API 호출을 구현하지 않는다.
+- 전략은 `TradingSignal`만 생성한다.
+- `RiskManager`가 승인한 신호만 `OrderService`가 브로커로 전달한다.
+- 모든 주문은 지정가여야 한다.
+- 현재는 매수 후보와 매수 주문만 허용한다.
+- 실계좌 주문은 어떤 설정에서도 허용하지 않는다.
+- 한 번의 판정에서 발견된 모든 거절 사유를 반환한다.
 
-## 거절 사유 코드
+## 3. 승인 조건
 
-- `SCORE_BELOW_70`
-- `ONLY_BUY_CANDIDATE_SUPPORTED_IN_MVP`
-- `ONLY_LIMIT_ORDER_ALLOWED`
-- `QUANTITY_LESS_THAN_ONE`
-- `ORDER_AMOUNT_EXCEEDS_LIMIT`
-- `DUPLICATE_ORDER`
+다음 조건을 모두 충족해야 승인된다.
+
+| 정책 | 승인 조건 | 거절 코드 |
+| --- | --- | --- |
+| 최소 점수 | 신호 점수 `>= 70` | `SCORE_BELOW_70` |
+| 지원 신호/방향 | `BUY_CANDIDATE`와 `BUY` 조합 | `ONLY_BUY_CANDIDATE_SUPPORTED_IN_MVP` |
+| 주문 유형 | `LIMIT` | `ONLY_LIMIT_ORDER_ALLOWED` |
+| 최소 수량 | 수량 `>= 1` | `QUANTITY_LESS_THAN_ONE` |
+| 1회 주문금액 | `수량 x 지정가 <= 100,000원` | `ORDER_AMOUNT_EXCEEDS_LIMIT` |
+| 중복 주문 | 동일 주문이 존재하지 않음 | `DUPLICATE_ORDER` |
+
+기본 최대 주문금액은 100,000원이다. `RiskManager(BigDecimal maxOrderAmount)` 생성자로 테스트나 향후 설정에서 값을 바꿀 수 있지만, 현재 Spring 설정은 기본값을 사용한다.
+
+## 4. 중복 주문 정의
+
+다음 값이 모두 같은 주문 요청은 중복으로 판단한다.
+
+- 거래일
+- 종목 코드
+- 전략명
+- 주문 방향
+
+현재 MVP는 매수만 허용하므로 사실상 “동일 날짜, 동일 종목, 동일 전략의 매수 요청은 한 번만 허용”한다.
+
+사전 조회만으로는 동시에 들어온 요청의 race condition을 완전히 차단할 수 없다. 운영 가능한 모의 주문 API를 만들 때 아래 복합 unique constraint를 추가해야 한다.
+
+```text
+(trade_date, stock_code, strategy_name, side)
+```
+
+애플리케이션은 unique constraint 위반도 `DUPLICATE_ORDER`와 동등한 결과로 변환해야 한다.
+
+## 5. 점수 정책
+
+`ClosingBetStrategy`의 현재 점수 기준은 다음과 같다.
+
+| 조건 | 점수 | reason |
+| --- | ---: | --- |
+| MA5 > MA20 | +15 | `MA5_ABOVE_MA20` |
+| 종가 > MA20 | +10 | `CLOSE_ABOVE_MA20` |
+| 당일 거래량 >= 최근 20일 평균의 200% | +20 | `VOLUME_SPIKE_20D_200PCT` |
+| 종가 위치가 당일 저가-고가 범위의 80% 이상 | +15 | `CLOSE_NEAR_HIGH` |
+| `(고가 - 종가) / 종가 >= 5%` | -15 | `LONG_UPPER_TAIL` |
+| 전일 종가 대비 상승률 >= 15% | -10 | `SHARP_RISE_FROM_PREVIOUS_CLOSE` |
+| 거래대금 >= 500억원 | +15 | `TRADING_VALUE_OVER_50B_KRW` |
+
+점수 70은 주문 생성의 필요조건일 뿐 충분한 투자 근거가 아니다. 점수 기준을 변경할 때는 과거 데이터 검증 결과, 변경 이유, 적용일을 함께 기록해야 한다.
+
+## 6. 판정과 상태 전이
+
+승인 시:
+
+```text
+TradingSignal: CREATED -> RISK_APPROVED -> ORDER_REQUESTED
+OrderRequest:  CREATED -> REQUESTED -> ACCEPTED
+```
+
+거절 시:
+
+```text
+TradingSignal: CREATED -> RISK_REJECTED
+OrderRequest:  broker에 전달하지 않음
+```
+
+현재 `OrderService`는 거절 시 `IllegalStateException`을 발생시킨다. 트랜잭션 롤백 때문에 거절 이력이 실제 DB에 남지 않을 수 있으므로, 향후에는 거절 결과를 정상적인 유스케이스 결과로 반환하고 신호 이력을 별도 저장해야 한다.
+
+## 7. 입력 단계 방어
+
+`OrderRequest` 생성자는 아래 잘못된 요청을 도메인 객체 생성 단계에서 차단한다.
+
+- 빈 종목 코드
+- 1주 미만 수량
+- 0 이하 또는 null 지정가
+- `LIMIT` 이외 주문 유형
+- null 주문 방향, 전략명, 거래일
+
+따라서 일부 잘못된 입력은 `RiskDecision`이 만들어지기 전에 `IllegalArgumentException` 또는 `NullPointerException`으로 실패한다. Web API 추가 시 Bean Validation과 일관된 오류 응답을 앞단에 적용해야 한다.
+
+## 8. 실거래 차단 정책
+
+- `KisBrokerAdapter`에는 실제 주문 호출을 구현하지 않는다.
+- 기본 브로커 Bean은 `FakeBrokerAdapter`다.
+- `tradeguard.real-trading-enabled=true`여도 실제 주문으로 전환하지 않는다.
+- 실거래용 토큰, 계좌번호, 주문 endpoint를 MVP 코드 경로에 연결하지 않는다.
+- 시장가 주문 enum이나 우회 endpoint를 추가하지 않는다.
+
+실거래 지원은 별도의 보안 및 운영 검토를 거친 신규 범위로만 다룬다.
+
+## 9. 향후 리스크 정책
+
+현재 MVP 이후 검토할 정책은 다음과 같다.
+
+- 일일 총 주문금액과 주문 횟수 제한
+- 종목별/시장별 최대 노출
+- 보유 현금 및 기존 포지션 확인
+- 가격 제한폭과 호가 단위 검증
+- 데이터 최신성 및 장 운영일 검증
+- 연속 손실, 최대 손실, drawdown 기반 중지
+- 거래 정지, 관리종목 등 종목 상태 필터
+- 주문 만료, 취소, 부분 체결 처리
+- 시스템 전역 kill switch
+
+각 정책은 기본 거절(fail closed)을 원칙으로 하고 독립된 테스트를 가져야 한다.
+
+## 10. 테스트 기준
+
+RiskManager 변경 시 최소한 다음 경계를 검증한다.
+
+- 점수 69 거절, 70 승인
+- 주문금액 100,000원 승인, 100,001원 거절
+- 중복 주문 거절
+- 매도 또는 매도 후보 거절
+- 지정가 이외 주문 거절
+- 복수 위반 시 모든 사유 반환
+- 승인/거절에 따른 신호 상태
+- 동시 요청에서 DB unique constraint 동작
