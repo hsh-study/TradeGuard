@@ -81,7 +81,7 @@ TradingSignal: CREATED -> RISK_REJECTED
 OrderRequest:  broker에 전달하지 않음
 ```
 
-현재 `OrderService`는 거절 시 `IllegalStateException`을 발생시킨다. 트랜잭션 롤백 때문에 거절 이력이 실제 DB에 남지 않을 수 있으므로, 향후에는 거절 결과를 정상적인 유스케이스 결과로 반환하고 신호 이력을 별도 저장해야 한다.
+`OrderService`는 거절을 예외로 처리하지 않고 `MockOrderResult`로 반환한다. 신호의 `RISK_REJECTED` 상태와 모든 `riskReasons`를 저장하며, broker 호출과 주문 요청 저장은 수행하지 않는다.
 
 ## 7. 입력 단계 방어
 

@@ -144,6 +144,27 @@ class PersistenceAdapterIntegrationTest {
                 .isEqualTo(TradingSignalStatus.RISK_APPROVED);
     }
 
+    @Test
+    void persistsTradingSignalRiskRejectionReasons() {
+        TradingSignal signal = new TradingSignal(
+                "CLOSING_BET",
+                "000660",
+                LocalDate.of(2026, 6, 5),
+                SignalType.BUY_CANDIDATE,
+                60,
+                List.of("TEST")
+        );
+        signal.rejectRisk(List.of("SCORE_BELOW_70", "DUPLICATE_ORDER"));
+
+        tradingSignalPort.save(signal);
+
+        assertThat(tradingSignalJpaRepository.findAll())
+                .filteredOn(entity -> entity.status() == TradingSignalStatus.RISK_REJECTED)
+                .singleElement()
+                .satisfies(entity -> assertThat(entity.riskReasons())
+                        .containsExactly("SCORE_BELOW_70", "DUPLICATE_ORDER"));
+    }
+
     private static DailyPrice price(LocalDate tradeDate, String closePrice) {
         BigDecimal close = new BigDecimal(closePrice);
         return new DailyPrice(

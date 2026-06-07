@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 @Component
 public class KisMarketDataAdapter implements MarketDataPort {
@@ -42,23 +43,39 @@ public class KisMarketDataAdapter implements MarketDataPort {
     @Override
     public List<DailyPrice> fetchDailyPrices(String stockCode, LocalDate from, LocalDate to) {
         properties.validateForRequest();
-        URI uri = buildUri(stockCode, from, to);
-        KisHttpResponse response = httpClient.get(uri, Map.of(
+        Map<String, String> headers = Map.of(
                 "authorization", "Bearer " + tokenProvider.getAccessToken(),
                 "appkey", properties.getAppKey(),
                 "appsecret", properties.getAppSecret(),
                 "tr_id", DAILY_PRICE_TR_ID,
                 "custtype", "P"
-        ));
-        validateResponse(response);
+        );
+        Map<LocalDate, DailyPrice> pricesByDate = new TreeMap<>();
+        LocalDate pageTo = to;
 
-        List<DailyPrice> prices = mapPrices(stockCode, response.body().path("output2"));
-        if (prices.size() == MAX_RESPONSE_COUNT
-                && !prices.isEmpty()
-                && prices.getFirst().tradeDate().isAfter(from)) {
-            throw new KisApiException("KIS daily price response was truncated; split the date range");
+        while (!pageTo.isBefore(from)) {
+            KisHttpResponse response = httpClient.get(buildUri(stockCode, from, pageTo), headers);
+            validateResponse(response);
+            List<DailyPrice> page = mapPrices(stockCode, response.body().path("output2")).stream()
+                    .filter(price -> !price.tradeDate().isBefore(from) && !price.tradeDate().isAfter(to))
+                    .toList();
+            page.forEach(price -> pricesByDate.put(price.tradeDate(), price));
+
+            if (page.size() < MAX_RESPONSE_COUNT || page.isEmpty()) {
+                break;
+            }
+
+            LocalDate oldestDate = page.getFirst().tradeDate();
+            if (!oldestDate.isAfter(from)) {
+                break;
+            }
+            LocalDate nextPageTo = oldestDate.minusDays(1);
+            if (!nextPageTo.isBefore(pageTo)) {
+                throw new KisApiException("KIS daily price pagination did not advance");
+            }
+            pageTo = nextPageTo;
         }
-        return prices;
+        return List.copyOf(pricesByDate.values());
     }
 
     private URI buildUri(String stockCode, LocalDate from, LocalDate to) {

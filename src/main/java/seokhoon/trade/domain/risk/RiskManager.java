@@ -46,7 +46,7 @@ public class RiskManager {
             signal.approveRisk();
             return RiskDecision.approve();
         }
-        signal.rejectRisk();
+        signal.rejectRisk(reasons);
         return RiskDecision.rejected(reasons);
     }
 }

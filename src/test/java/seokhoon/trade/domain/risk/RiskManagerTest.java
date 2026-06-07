@@ -18,10 +18,12 @@ class RiskManagerTest {
 
     @Test
     void rejectsSignalBelow70() {
-        RiskDecision decision = riskManager.evaluate(signal(69), order(1, "50000"), (stockCode, strategyName, tradeDate, side) -> false);
+        TradingSignal signal = signal(69);
+        RiskDecision decision = riskManager.evaluate(signal, order(1, "50000"), (stockCode, strategyName, tradeDate, side) -> false);
 
         assertThat(decision.approved()).isFalse();
         assertThat(decision.reasons()).contains("SCORE_BELOW_70");
+        assertThat(signal.riskReasons()).containsExactly("SCORE_BELOW_70");
     }
 
     @Test
@@ -47,6 +49,23 @@ class RiskManagerTest {
 
         assertThat(decision.approved()).isTrue();
         assertThat(signal.status().name()).isEqualTo("RISK_APPROVED");
+        assertThat(signal.riskReasons()).isEmpty();
+    }
+
+    @Test
+    void storesAllRejectionReasonsOnSignal() {
+        TradingSignal signal = signal(69);
+
+        RiskDecision decision = riskManager.evaluate(
+                signal,
+                order(3, "50000"),
+                (stockCode, strategyName, tradeDate, side) -> true
+        );
+
+        assertThat(signal.status().name()).isEqualTo("RISK_REJECTED");
+        assertThat(signal.riskReasons()).containsExactlyElementsOf(decision.reasons());
+        assertThat(signal.riskReasons())
+                .contains("SCORE_BELOW_70", "ORDER_AMOUNT_EXCEEDS_LIMIT", "DUPLICATE_ORDER");
     }
 
     private static TradingSignal signal(int score) {

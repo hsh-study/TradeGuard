@@ -20,7 +20,7 @@ Spring Boot 기반 한국 주식 자동매매 보조 시스템입니다. MVP 1�
 
 기본 실행은 H2 인메모리 DB를 사용합니다. MySQL을 사용할 때는 `.env.example`을 참고해 환경변수를 지정합니다.
 
-KIS 모의투자 일봉 조회에는 `KIS_APP_KEY`, `KIS_APP_SECRET`이 필요합니다. 구현은 모의투자 호스트만 허용하며 실제 주문 API를 호출하지 않습니다.
+KIS 모의투자 일봉 조회에는 `KIS_APP_KEY`, `KIS_APP_SECRET`이 필요합니다. 100건을 초과하는 기간은 자동으로 분할 조회합니다. 구현은 모의투자 호스트만 허용하며 실제 주문 API를 호출하지 않습니다.
 
 ## 테스트
 
@@ -50,6 +50,20 @@ curl -X POST http://localhost:8080/api/stocks   -H 'Content-Type: application/js
 ```sh
 curl http://localhost:8080/api/stocks
 ```
+
+특정 종목 분석 실행:
+
+```sh
+curl -X POST 'http://localhost:8080/api/analyses/005930?asOfDate=2026-06-05'
+```
+
+활성 관심종목 전체 분석 실행:
+
+```sh
+curl -X POST 'http://localhost:8080/api/analyses/active?asOfDate=2026-06-05'
+```
+
+전체 분석에서는 일봉이 60개 미만인 종목을 `SKIPPED`로 반환하고 나머지 활성 종목 분석을 계속합니다.
 
 ## 안전 원칙
 

@@ -51,9 +51,7 @@ public class StockAnalysisService implements AnalyzeStockUseCase {
                 asOfDate
         );
         if (prices.size() < MINIMUM_PRICE_COUNT) {
-            throw new IllegalStateException(
-                    "At least " + MINIMUM_PRICE_COUNT + " daily prices are required for analysis"
-            );
+            throw new InsufficientDailyPriceDataException(MINIMUM_PRICE_COUNT);
         }
 
         IndicatorSnapshot snapshot = indicatorCalculator.snapshot(stockCode, prices);

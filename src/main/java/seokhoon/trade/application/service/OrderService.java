@@ -2,6 +2,7 @@ package seokhoon.trade.application.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import seokhoon.trade.application.port.in.MockOrderResult;
 import seokhoon.trade.application.port.in.RequestMockOrderUseCase;
 import seokhoon.trade.application.port.out.BrokerPort;
 import seokhoon.trade.application.port.out.OrderRequestPort;
@@ -31,17 +32,17 @@ public class OrderService implements RequestMockOrderUseCase {
 
     @Override
     @Transactional
-    public OrderRequest request(TradingSignal signal, int quantity, BigDecimal limitPrice) {
+    public MockOrderResult request(TradingSignal signal, int quantity, BigDecimal limitPrice) {
         OrderRequest orderRequest = new OrderRequest(signal.stockCode(), OrderSide.BUY, OrderType.LIMIT, quantity, limitPrice,
                 signal.strategyName(), signal.signalDate());
         RiskDecision decision = riskManager.evaluate(signal, orderRequest, orderRequestPort::exists);
         tradingSignalPort.save(signal);
         if (!decision.approved()) {
-            throw new IllegalStateException("Risk rejected: " + String.join(",", decision.reasons()));
+            return MockOrderResult.rejected(decision, signal);
         }
         OrderRequest requested = brokerPort.requestOrder(orderRequest);
         signal.markOrderRequested();
         tradingSignalPort.save(signal);
-        return orderRequestPort.save(requested);
+        return MockOrderResult.accepted(decision, signal, orderRequestPort.save(requested));
     }
 }

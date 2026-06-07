@@ -10,6 +10,7 @@ public class TradingSignal {
     private final SignalType signalType;
     private final int score;
     private final List<String> reasons;
+    private List<String> riskReasons;
     private TradingSignalStatus status;
 
     public TradingSignal(String strategyName, String stockCode, LocalDate signalDate, SignalType signalType, int score, List<String> reasons) {
@@ -19,6 +20,7 @@ public class TradingSignal {
         this.signalType = signalType;
         this.score = score;
         this.reasons = List.copyOf(reasons);
+        this.riskReasons = List.of();
         this.status = TradingSignalStatus.CREATED;
     }
 
@@ -28,8 +30,15 @@ public class TradingSignal {
     public SignalType signalType() { return signalType; }
     public int score() { return score; }
     public List<String> reasons() { return reasons; }
+    public List<String> riskReasons() { return riskReasons; }
     public TradingSignalStatus status() { return status; }
-    public void approveRisk() { this.status = TradingSignalStatus.RISK_APPROVED; }
-    public void rejectRisk() { this.status = TradingSignalStatus.RISK_REJECTED; }
+    public void approveRisk() {
+        this.riskReasons = List.of();
+        this.status = TradingSignalStatus.RISK_APPROVED;
+    }
+    public void rejectRisk(List<String> reasons) {
+        this.riskReasons = List.copyOf(reasons);
+        this.status = TradingSignalStatus.RISK_REJECTED;
+    }
     public void markOrderRequested() { this.status = TradingSignalStatus.ORDER_REQUESTED; }
 }

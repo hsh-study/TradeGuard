@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -100,6 +101,40 @@ class KisMarketDataAdapterTest {
     }
 
     @Test
+    void fetchesMoreThanOneHundredDailyPricesAcrossMultipleRequests() {
+        LocalDate firstPageOldestDate = LocalDate.of(2026, 1, 1);
+        JsonNode firstPage = dailyPriceResponse(firstPageOldestDate, 100);
+        JsonNode secondPage = dailyPriceResponse(firstPageOldestDate.minusDays(100), 100);
+        FakeKisHttpClient httpClient = new FakeKisHttpClient(
+                json("""
+                        {"access_token":"test-token","expires_in":86400}
+                        """),
+                firstPage,
+                secondPage
+        );
+        KisProperties properties = properties();
+        KisMarketDataAdapter adapter = new KisMarketDataAdapter(
+                httpClient,
+                tokenProvider(httpClient, properties),
+                properties
+        );
+
+        List<DailyPrice> prices = adapter.fetchDailyPrices(
+                "005930",
+                LocalDate.of(2025, 9, 23),
+                LocalDate.of(2026, 4, 10)
+        );
+
+        assertThat(prices).hasSize(200);
+        assertThat(prices.getFirst().tradeDate()).isEqualTo(LocalDate.of(2025, 9, 23));
+        assertThat(prices.getLast().tradeDate()).isEqualTo(LocalDate.of(2026, 4, 10));
+        assertThat(httpClient.getUris).hasSize(2);
+        assertThat(httpClient.getUris.get(1).getQuery())
+                .contains("FID_INPUT_DATE_1=20250923")
+                .contains("FID_INPUT_DATE_2=20251231");
+    }
+
+    @Test
     void rejectsKisBusinessErrorWithoutExposingCredentials() {
         FakeKisHttpClient httpClient = new FakeKisHttpClient(
                 json("""
@@ -171,18 +206,37 @@ class KisMarketDataAdapterTest {
         }
     }
 
+    private static JsonNode dailyPriceResponse(LocalDate oldestDate, int count) {
+        var root = OBJECT_MAPPER.createObjectNode();
+        root.put("rt_cd", "0");
+        var output = root.putArray("output2");
+        for (int offset = count - 1; offset >= 0; offset--) {
+            LocalDate tradeDate = oldestDate.plusDays(offset);
+            var row = output.addObject();
+            row.put("stck_bsop_date", tradeDate.format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE));
+            row.put("stck_oprc", "1000");
+            row.put("stck_hgpr", "1100");
+            row.put("stck_lwpr", "900");
+            row.put("stck_clpr", "1050");
+            row.put("acml_vol", "10000");
+            row.put("acml_tr_pbmn", "10500000");
+        }
+        return root;
+    }
+
     private static class FakeKisHttpClient implements KisHttpClient {
         private final JsonNode tokenResponse;
-        private final JsonNode dailyPriceResponse;
+        private final List<JsonNode> dailyPriceResponses;
         private int postCount;
         private int getCount;
         private URI lastGetUri;
         private Map<String, String> lastGetHeaders = Map.of();
         private final List<Object> postBodies = new ArrayList<>();
+        private final List<URI> getUris = new ArrayList<>();
 
-        private FakeKisHttpClient(JsonNode tokenResponse, JsonNode dailyPriceResponse) {
+        private FakeKisHttpClient(JsonNode tokenResponse, JsonNode... dailyPriceResponses) {
             this.tokenResponse = tokenResponse;
-            this.dailyPriceResponse = dailyPriceResponse;
+            this.dailyPriceResponses = Arrays.asList(dailyPriceResponses);
         }
 
         @Override
@@ -197,7 +251,9 @@ class KisMarketDataAdapterTest {
             getCount++;
             lastGetUri = uri;
             lastGetHeaders = headers;
-            return new KisHttpResponse(200, dailyPriceResponse);
+            getUris.add(uri);
+            int responseIndex = Math.min(getCount - 1, dailyPriceResponses.size() - 1);
+            return new KisHttpResponse(200, dailyPriceResponses.get(responseIndex));
         }
     }
 }

@@ -45,6 +45,9 @@ public class TradingSignalEntity {
     @ElementCollection
     @CollectionTable(name = "trading_signal_reasons", joinColumns = @JoinColumn(name = "trading_signal_id"))
     private List<String> reasons = new ArrayList<>();
+    @ElementCollection
+    @CollectionTable(name = "trading_signal_risk_reasons", joinColumns = @JoinColumn(name = "trading_signal_id"))
+    private List<String> riskReasons = new ArrayList<>();
     @Enumerated(EnumType.STRING)
     private TradingSignalStatus status;
 
@@ -65,10 +68,16 @@ public class TradingSignalEntity {
         score = signal.score();
         reasons.clear();
         reasons.addAll(signal.reasons());
+        riskReasons.clear();
+        riskReasons.addAll(signal.riskReasons());
         status = signal.status();
     }
 
     TradingSignalStatus status() {
         return status;
+    }
+
+    List<String> riskReasons() {
+        return List.copyOf(riskReasons);
     }
 }
