@@ -75,4 +75,18 @@ public class OrderRequestEntity {
     OrderStatus status() {
         return status;
     }
+
+    OrderRequest toDomain() {
+        return OrderRequest.restore(
+                stockCode,
+                side,
+                orderType,
+                quantity,
+                limitPrice,
+                status,
+                brokerOrderNo,
+                strategyName,
+                tradeDate
+        );
+    }
 }

@@ -14,6 +14,7 @@ import seokhoon.trade.domain.strategy.TradingSignal;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -134,6 +135,16 @@ class StockAnalysisServiceTest {
         public TradingSignal save(TradingSignal tradingSignal) {
             saved = tradingSignal;
             return tradingSignal;
+        }
+
+        @Override
+        public Optional<TradingSignal> find(
+                String strategyName,
+                String stockCode,
+                LocalDate signalDate,
+                seokhoon.trade.domain.strategy.SignalType signalType
+        ) {
+            return Optional.empty();
         }
     }
 }

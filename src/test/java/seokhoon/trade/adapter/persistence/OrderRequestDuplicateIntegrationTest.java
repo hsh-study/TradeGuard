@@ -54,6 +54,32 @@ class OrderRequestDuplicateIntegrationTest {
                 .isEqualTo(OrderStatus.ACCEPTED);
     }
 
+    @Test
+    void filtersOrderHistoryByStockDateAndStatus() {
+        OrderRequest accepted = orderRequest();
+        orderRequestPort.create(accepted);
+        accepted.markRequested();
+        accepted.accept("FAKE-ORDER");
+        orderRequestPort.update(accepted);
+        orderRequestPort.create(new OrderRequest(
+                "000660",
+                OrderSide.BUY,
+                OrderType.LIMIT,
+                1,
+                BigDecimal.valueOf(90_000),
+                "CLOSING_BET",
+                LocalDate.of(2026, 6, 6)
+        ));
+
+        assertThat(orderRequestPort.find("005930", LocalDate.of(2026, 6, 5), OrderStatus.ACCEPTED))
+                .singleElement()
+                .satisfies(order -> {
+                    assertThat(order.stockCode()).isEqualTo("005930");
+                    assertThat(order.status()).isEqualTo(OrderStatus.ACCEPTED);
+                    assertThat(order.brokerOrderNo()).isEqualTo("FAKE-ORDER");
+                });
+    }
+
     private static OrderRequest orderRequest() {
         return new OrderRequest(
                 "005930",

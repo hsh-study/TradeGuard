@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -126,6 +127,15 @@ class OrderServiceTest {
         ) {
             return existing;
         }
+
+        @Override
+        public List<OrderRequest> find(
+                String stockCode,
+                LocalDate tradeDate,
+                seokhoon.trade.domain.order.OrderStatus status
+        ) {
+            return List.of();
+        }
     }
 
     private static class RecordingTradingSignalPort implements TradingSignalPort {
@@ -135,6 +145,16 @@ class OrderServiceTest {
         public TradingSignal save(TradingSignal tradingSignal) {
             savedStatuses.add(tradingSignal.status());
             return tradingSignal;
+        }
+
+        @Override
+        public Optional<TradingSignal> find(
+                String strategyName,
+                String stockCode,
+                LocalDate signalDate,
+                SignalType signalType
+        ) {
+            return Optional.empty();
         }
     }
 

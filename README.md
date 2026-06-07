@@ -65,6 +65,29 @@ curl -X POST 'http://localhost:8080/api/analyses/active?asOfDate=2026-06-05'
 
 전체 분석에서는 일봉이 60개 미만인 종목을 `SKIPPED`로 반환하고 나머지 활성 종목 분석을 계속합니다.
 
+저장된 분석 신호로 모의 주문 요청:
+
+```sh
+curl -X POST http://localhost:8080/api/mock-orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "strategyName":"CLOSING_BET",
+    "stockCode":"005930",
+    "signalDate":"2026-06-05",
+    "signalType":"BUY_CANDIDATE",
+    "quantity":1,
+    "limitPrice":50000
+  }'
+```
+
+모의 주문 이력 조회:
+
+```sh
+curl 'http://localhost:8080/api/mock-orders?stockCode=005930&tradeDate=2026-06-05&status=ACCEPTED'
+```
+
+모의 주문 API는 DB에 저장된 신호만 사용하며 지정가 주문만 생성합니다. 필터를 생략하면 전체 주문 이력을 최신 거래일 순으로 반환합니다.
+
 ## 안전 원칙
 
 - 실계좌 주문 기능은 구현하지 않습니다.

@@ -1,0 +1,29 @@
+package seokhoon.trade.application.service;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import seokhoon.trade.application.port.in.LoadOrderRequestsUseCase;
+import seokhoon.trade.application.port.out.OrderRequestPort;
+import seokhoon.trade.domain.order.OrderRequest;
+import seokhoon.trade.domain.order.OrderStatus;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Service
+public class OrderHistoryService implements LoadOrderRequestsUseCase {
+    private final OrderRequestPort orderRequestPort;
+
+    public OrderHistoryService(OrderRequestPort orderRequestPort) {
+        this.orderRequestPort = orderRequestPort;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderRequest> load(String stockCode, LocalDate tradeDate, OrderStatus status) {
+        if (stockCode != null && stockCode.isBlank()) {
+            throw new IllegalArgumentException("stockCode must not be blank");
+        }
+        return orderRequestPort.find(stockCode, tradeDate, status);
+    }
+}

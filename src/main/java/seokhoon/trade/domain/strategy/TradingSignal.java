@@ -24,6 +24,29 @@ public class TradingSignal {
         this.status = TradingSignalStatus.CREATED;
     }
 
+    public static TradingSignal restore(
+            String strategyName,
+            String stockCode,
+            LocalDate signalDate,
+            SignalType signalType,
+            int score,
+            List<String> reasons,
+            List<String> riskReasons,
+            TradingSignalStatus status
+    ) {
+        TradingSignal signal = new TradingSignal(
+                strategyName,
+                stockCode,
+                signalDate,
+                signalType,
+                score,
+                reasons
+        );
+        signal.riskReasons = List.copyOf(riskReasons);
+        signal.status = status;
+        return signal;
+    }
+
     public String strategyName() { return strategyName; }
     public String stockCode() { return stockCode; }
     public LocalDate signalDate() { return signalDate; }

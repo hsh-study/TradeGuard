@@ -39,6 +39,31 @@ public class OrderRequest {
         this.tradeDate = Objects.requireNonNull(tradeDate, "tradeDate");
     }
 
+    public static OrderRequest restore(
+            String stockCode,
+            OrderSide side,
+            OrderType orderType,
+            int quantity,
+            BigDecimal limitPrice,
+            OrderStatus status,
+            String brokerOrderNo,
+            String strategyName,
+            LocalDate tradeDate
+    ) {
+        OrderRequest orderRequest = new OrderRequest(
+                stockCode,
+                side,
+                orderType,
+                quantity,
+                limitPrice,
+                strategyName,
+                tradeDate
+        );
+        orderRequest.status = Objects.requireNonNull(status, "status");
+        orderRequest.brokerOrderNo = brokerOrderNo;
+        return orderRequest;
+    }
+
     public BigDecimal orderAmount() {
         return limitPrice.multiply(BigDecimal.valueOf(quantity));
     }

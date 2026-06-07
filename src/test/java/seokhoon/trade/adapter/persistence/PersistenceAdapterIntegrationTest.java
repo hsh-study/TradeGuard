@@ -165,6 +165,33 @@ class PersistenceAdapterIntegrationTest {
                         .containsExactly("SCORE_BELOW_70", "DUPLICATE_ORDER"));
     }
 
+    @Test
+    void restoresStoredTradingSignalForOrderRequest() {
+        LocalDate signalDate = LocalDate.of(2026, 6, 5);
+        TradingSignal signal = new TradingSignal(
+                "CLOSING_BET",
+                "035420",
+                signalDate,
+                SignalType.BUY_CANDIDATE,
+                80,
+                List.of("TEST")
+        );
+        signal.rejectRisk(List.of("DUPLICATE_ORDER"));
+        tradingSignalPort.save(signal);
+
+        assertThat(tradingSignalPort.find(
+                "CLOSING_BET",
+                "035420",
+                signalDate,
+                SignalType.BUY_CANDIDATE
+        ))
+                .hasValueSatisfying(restored -> {
+                    assertThat(restored.score()).isEqualTo(80);
+                    assertThat(restored.status()).isEqualTo(TradingSignalStatus.RISK_REJECTED);
+                    assertThat(restored.riskReasons()).containsExactly("DUPLICATE_ORDER");
+                });
+    }
+
     private static DailyPrice price(LocalDate tradeDate, String closePrice) {
         BigDecimal close = new BigDecimal(closePrice);
         return new DailyPrice(

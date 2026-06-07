@@ -80,4 +80,17 @@ public class TradingSignalEntity {
     List<String> riskReasons() {
         return List.copyOf(riskReasons);
     }
+
+    TradingSignal toDomain() {
+        return TradingSignal.restore(
+                strategyName,
+                stockCode,
+                signalDate,
+                signalType,
+                score,
+                reasons,
+                riskReasons,
+                status
+        );
+    }
 }
