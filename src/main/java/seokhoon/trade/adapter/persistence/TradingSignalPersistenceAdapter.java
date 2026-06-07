@@ -14,7 +14,15 @@ public class TradingSignalPersistenceAdapter implements TradingSignalPort {
 
     @Override
     public TradingSignal save(TradingSignal tradingSignal) {
-        repository.save(TradingSignalEntity.from(tradingSignal));
+        TradingSignalEntity entity = repository.findByStrategyNameAndStockCodeAndSignalDateAndSignalType(
+                        tradingSignal.strategyName(),
+                        tradingSignal.stockCode(),
+                        tradingSignal.signalDate(),
+                        tradingSignal.signalType()
+                )
+                .orElseGet(() -> TradingSignalEntity.from(tradingSignal));
+        entity.update(tradingSignal);
+        repository.save(entity);
         return tradingSignal;
     }
 }

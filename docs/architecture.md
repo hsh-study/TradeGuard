@@ -129,7 +129,7 @@ DailyPrice 수집/조회
   -> OrderRequest 저장
 ```
 
-현재 구현은 각 핵심 구성요소를 제공하지만, 시세 수집부터 전략 실행까지를 한 번에 연결하는 배치/유스케이스와 주문 REST API는 아직 없다.
+`AnalyzeStockUseCase`는 기준일까지 최근 1년 일봉을 조회하고, 최소 60개가 있으면 지표와 종가베팅 신호를 계산해 저장한다. 분석 실행 REST API와 활성 관심종목 전체를 처리하는 scheduler는 아직 없다.
 
 ### KIS 일봉 수집
 
@@ -152,7 +152,7 @@ KIS adapter는 모의투자 호스트만 허용한다. OAuth 토큰은 메모리
 | `stocks` | `stock_code` | 관심종목 |
 | `daily_prices` | `stock_code + trade_date` | 일봉 |
 | `indicator_snapshots` | 생성 ID, `stock_code + trade_date` unique | 일자별 기술지표 |
-| `trading_signals` | 생성 ID | 전략 신호와 상태 |
+| `trading_signals` | 생성 ID, 전략+종목+일자+유형 unique | 전략 신호와 상태 |
 | `trading_signal_reasons` | signal FK | 점수 근거 목록 |
 | `order_requests` | 생성 ID | 모의 주문 이력 |
 
@@ -183,7 +183,7 @@ KIS adapter는 모의투자 호스트만 허용한다. OAuth 토큰은 메모리
 ## 9. 알려진 아키텍처 부채
 
 - 일봉은 KIS 수집과 저장 유스케이스가 있으나 REST API와 다중 구간 pagination이 없다.
-- 지표 저장/기간 조회 port와 service는 있으나 일봉 조회부터 계산·저장까지 조합하는 유스케이스가 없다.
+- 분석 유스케이스는 단일 종목 수동 호출 단위이며 REST API와 전체 관심종목 scheduler가 없다.
 - `NotificationAdapter`는 port 없이 빈 구현으로 존재한다.
 - 도메인 상태 전이에 대한 허용 순서 검증이 없다.
 - API validation, 예외 응답 규격, 관측성 구성이 없다.

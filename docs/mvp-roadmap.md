@@ -42,9 +42,9 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 관심종목 등록/조회 | 부분 완료 | Port와 persistence adapter 경계 적용. validation, 중복 응답 정책이 필요 |
 | 일봉 모델/저장 구조 | 부분 완료 | KIS 읽기 전용 수집과 저장/기간 조회 존재. Web API와 100건 초과 분할 조회 없음 |
 | 기술지표 | 완료 | MA, RSI, MACD, Bollinger Band와 단위 테스트 존재 |
-| 지표 저장 | 부분 완료 | Port, service, mapper와 종목·거래일 upsert 존재. 계산 orchestration 없음 |
-| 종가베팅 전략 | 완료 | 점수 계산과 단위 테스트 존재 |
-| 신호 저장 | 부분 완료 | persistence adapter 존재. 동일 신호 상태 갱신 방식 보완 필요 |
+| 지표 저장 | 부분 완료 | 계산·저장 orchestration과 종목·거래일 upsert 존재. 조회 API 없음 |
+| 종가베팅 전략 | 완료 | 분석 유스케이스에 연결됐으며 점수 계산과 테스트 존재 |
+| 신호 저장 | 부분 완료 | 논리 키 upsert와 상태 갱신 존재. 조회 API와 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
 | 모의 주문 | 부분 완료 | OrderService와 FakeBrokerAdapter 존재. 외부 API와 통합 테스트 없음 |
 | 중복 주문 방지 | 부분 완료 | 사전 조회 존재. DB unique constraint 없음 |
@@ -173,9 +173,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 가장 가까운 작업 순서는 다음과 같다.
 
-1. 지표 계산·저장 및 전략 실행 유스케이스 구현
-2. KIS 일봉 100건 초과 구간 분할 조회 구현
-3. 신호 상태 저장을 insert가 아닌 update 구조로 수정
-4. 리스크 거절 이력 보존
-5. 주문 중복 unique constraint와 통합 테스트 추가
-6. 모의 주문 및 이력 조회 REST API 추가
+1. KIS 일봉 100건 초과 구간 분할 조회 구현
+2. 분석 실행 REST API와 활성 관심종목 실행 orchestration 구현
+3. 리스크 거절 이력 보존
+4. 주문 중복 unique constraint와 통합 테스트 추가
+5. 모의 주문 및 이력 조회 REST API 추가

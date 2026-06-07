@@ -4,15 +4,20 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+import seokhoon.trade.application.port.in.AnalyzeStockUseCase;
 import seokhoon.trade.application.port.in.FindStocksUseCase;
 import seokhoon.trade.application.port.in.LoadDailyPricesUseCase;
 import seokhoon.trade.application.port.in.LoadIndicatorSnapshotsUseCase;
 import seokhoon.trade.application.port.in.RegisterStockUseCase;
 import seokhoon.trade.application.port.in.SaveDailyPricesUseCase;
 import seokhoon.trade.application.port.in.SaveIndicatorSnapshotUseCase;
+import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.domain.indicator.IndicatorSnapshot;
 import seokhoon.trade.domain.market.DailyPrice;
 import seokhoon.trade.domain.stock.Market;
+import seokhoon.trade.domain.strategy.SignalType;
+import seokhoon.trade.domain.strategy.TradingSignal;
+import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -43,6 +48,15 @@ class PersistenceAdapterIntegrationTest {
 
     @Autowired
     private IndicatorSnapshotJpaRepository indicatorSnapshotJpaRepository;
+
+    @Autowired
+    private AnalyzeStockUseCase analyzeStockUseCase;
+
+    @Autowired
+    private TradingSignalJpaRepository tradingSignalJpaRepository;
+
+    @Autowired
+    private TradingSignalPort tradingSignalPort;
 
     @Test
     void persistsStocksWithoutExposingJpaEntities() {
@@ -88,6 +102,46 @@ class PersistenceAdapterIntegrationTest {
                 .extracting(IndicatorSnapshot::ma5)
                 .isEqualTo(new BigDecimal("71000"));
         assertThat(indicatorSnapshotJpaRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void analyzesStoredPricesIdempotently() {
+        LocalDate start = LocalDate.of(2026, 1, 1);
+        List<DailyPrice> prices = java.util.stream.IntStream.range(0, 70)
+                .mapToObj(index -> price(start.plusDays(index), Integer.toString(70_000 + index * 100)))
+                .toList();
+        saveDailyPricesUseCase.saveAll(prices);
+        LocalDate asOfDate = prices.getLast().tradeDate();
+
+        var first = analyzeStockUseCase.analyze("005930", asOfDate);
+        var second = analyzeStockUseCase.analyze("005930", asOfDate);
+
+        assertThat(first.indicatorSnapshot().tradeDate()).isEqualTo(asOfDate);
+        assertThat(first.tradingSignal().signalDate()).isEqualTo(asOfDate);
+        assertThat(second.tradingSignal().score()).isEqualTo(first.tradingSignal().score());
+        assertThat(indicatorSnapshotJpaRepository.count()).isEqualTo(1);
+        assertThat(tradingSignalJpaRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void updatesExistingTradingSignalStatus() {
+        TradingSignal signal = new TradingSignal(
+                "CLOSING_BET",
+                "005930",
+                LocalDate.of(2026, 6, 5),
+                SignalType.BUY_CANDIDATE,
+                80,
+                List.of("TEST")
+        );
+        tradingSignalPort.save(signal);
+        signal.approveRisk();
+        tradingSignalPort.save(signal);
+
+        assertThat(tradingSignalJpaRepository.count()).isEqualTo(1);
+        assertThat(tradingSignalJpaRepository.findAll())
+                .singleElement()
+                .extracting(TradingSignalEntity::status)
+                .isEqualTo(TradingSignalStatus.RISK_APPROVED);
     }
 
     private static DailyPrice price(LocalDate tradeDate, String closePrice) {
