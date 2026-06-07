@@ -1,27 +1,29 @@
 package seokhoon.trade.application.service;
 
 import org.springframework.stereotype.Service;
-import seokhoon.trade.adapter.persistence.StockEntity;
-import seokhoon.trade.adapter.persistence.StockJpaRepository;
+import seokhoon.trade.application.port.in.FindStocksUseCase;
 import seokhoon.trade.application.port.in.RegisterStockUseCase;
+import seokhoon.trade.application.port.out.StockPort;
 import seokhoon.trade.domain.stock.Market;
+import seokhoon.trade.domain.stock.Stock;
 
 import java.util.List;
 
 @Service
-public class StockService implements RegisterStockUseCase {
-    private final StockJpaRepository repository;
+public class StockService implements RegisterStockUseCase, FindStocksUseCase {
+    private final StockPort stockPort;
 
-    public StockService(StockJpaRepository repository) {
-        this.repository = repository;
+    public StockService(StockPort stockPort) {
+        this.stockPort = stockPort;
     }
 
     @Override
     public void register(String stockCode, String stockName, Market market) {
-        repository.save(new StockEntity(stockCode, stockName, market, true));
+        stockPort.save(new Stock(stockCode, stockName, market, true));
     }
 
-    public List<StockEntity> findAll() {
-        return repository.findAll();
+    @Override
+    public List<Stock> findAll() {
+        return stockPort.findAll();
     }
 }

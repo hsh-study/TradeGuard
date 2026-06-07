@@ -4,6 +4,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
+import seokhoon.trade.domain.market.DailyPrice;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,5 +37,31 @@ public class DailyPriceEntity {
         this.closePrice = closePrice;
         this.volume = volume;
         this.tradingValue = tradingValue;
+    }
+
+    public static DailyPriceEntity from(DailyPrice dailyPrice) {
+        return new DailyPriceEntity(
+                dailyPrice.stockCode(),
+                dailyPrice.tradeDate(),
+                dailyPrice.openPrice(),
+                dailyPrice.highPrice(),
+                dailyPrice.lowPrice(),
+                dailyPrice.closePrice(),
+                dailyPrice.volume(),
+                dailyPrice.tradingValue()
+        );
+    }
+
+    public DailyPrice toDomain() {
+        return new DailyPrice(
+                stockCode,
+                tradeDate,
+                openPrice,
+                highPrice,
+                lowPrice,
+                closePrice,
+                volume,
+                tradingValue
+        );
     }
 }

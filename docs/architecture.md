@@ -108,6 +108,8 @@ CREATED -> REQUESTED -> ACCEPTED
 POST /api/stocks
   -> StockController
   -> StockService
+  -> StockPort
+  -> StockPersistenceAdapter
   -> StockJpaRepository
   -> stocks
 ```
@@ -134,7 +136,7 @@ DailyPrice 수집/조회
 | --- | --- | --- |
 | `stocks` | `stock_code` | 관심종목 |
 | `daily_prices` | `stock_code + trade_date` | 일봉 |
-| `indicator_snapshots` | 생성 ID | 일자별 기술지표 |
+| `indicator_snapshots` | 생성 ID, `stock_code + trade_date` unique | 일자별 기술지표 |
 | `trading_signals` | 생성 ID | 전략 신호와 상태 |
 | `trading_signal_reasons` | signal FK | 점수 근거 목록 |
 | `order_requests` | 생성 ID | 모의 주문 이력 |
@@ -165,8 +167,8 @@ DailyPrice 수집/조회
 
 ## 9. 알려진 아키텍처 부채
 
-- `StockService`가 `StockJpaRepository`와 `StockEntity`에 직접 의존한다. `StockPort`와 웹 응답 DTO를 도입해 경계를 바로잡아야 한다.
-- 일봉과 지표는 Entity/Repository만 있고 application port와 service가 없다.
+- 일봉은 저장/기간 조회 port와 service가 있으나 외부 수집 adapter와 REST API가 없다.
+- 지표 저장/기간 조회 port와 service는 있으나 일봉 조회부터 계산·저장까지 조합하는 유스케이스가 없다.
 - `NotificationAdapter`는 port 없이 빈 구현으로 존재한다.
 - 도메인 상태 전이에 대한 허용 순서 검증이 없다.
 - API validation, 예외 응답 규격, 관측성 구성이 없다.

@@ -39,10 +39,10 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 | 영역 | 상태 | 현재 내용 |
 | --- | --- | --- |
-| 관심종목 등록/조회 | 부분 완료 | REST API와 JPA 저장은 가능하나 port 분리, validation, 중복 응답 정책이 필요 |
-| 일봉 모델/저장 구조 | 부분 완료 | domain, Entity, Repository 존재. 수집/저장 유스케이스 없음 |
+| 관심종목 등록/조회 | 부분 완료 | Port와 persistence adapter 경계 적용. validation, 중복 응답 정책이 필요 |
+| 일봉 모델/저장 구조 | 부분 완료 | 저장/기간 조회 유스케이스와 adapter 존재. 외부 수집과 Web API 없음 |
 | 기술지표 | 완료 | MA, RSI, MACD, Bollinger Band와 단위 테스트 존재 |
-| 지표 저장 | 부분 완료 | Entity, Repository 존재. 매핑과 application service 없음 |
+| 지표 저장 | 부분 완료 | Port, service, mapper와 종목·거래일 upsert 존재. 계산 orchestration 없음 |
 | 종가베팅 전략 | 완료 | 점수 계산과 단위 테스트 존재 |
 | 신호 저장 | 부분 완료 | persistence adapter 존재. 동일 신호 상태 갱신 방식 보완 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
@@ -173,10 +173,9 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 가장 가까운 작업 순서는 다음과 같다.
 
-1. `StockService`의 adapter 직접 의존 제거
-2. 일봉과 지표용 port/service/mapper 구현
-3. 전략 실행 유스케이스 구현
-4. 신호 상태 저장을 insert가 아닌 update 구조로 수정
-5. 리스크 거절 이력 보존
-6. 주문 중복 unique constraint와 통합 테스트 추가
-7. 모의 주문 및 이력 조회 REST API 추가
+1. KIS 읽기 전용 일봉 조회 adapter 구현
+2. 지표 계산·저장 및 전략 실행 유스케이스 구현
+3. 신호 상태 저장을 insert가 아닌 update 구조로 수정
+4. 리스크 거절 이력 보존
+5. 주문 중복 unique constraint와 통합 테스트 추가
+6. 모의 주문 및 이력 조회 REST API 추가

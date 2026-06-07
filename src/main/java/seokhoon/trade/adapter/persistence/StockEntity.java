@@ -6,6 +6,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import seokhoon.trade.domain.stock.Market;
+import seokhoon.trade.domain.stock.Stock;
 
 @Entity
 @Table(name = "stocks")
@@ -27,8 +28,11 @@ public class StockEntity {
         this.active = active;
     }
 
-    public String getStockCode() { return stockCode; }
-    public String getStockName() { return stockName; }
-    public Market getMarket() { return market; }
-    public boolean isActive() { return active; }
+    public static StockEntity from(Stock stock) {
+        return new StockEntity(stock.stockCode(), stock.stockName(), stock.market(), stock.active());
+    }
+
+    public Stock toDomain() {
+        return new Stock(stockCode, stockName, market, active);
+    }
 }
