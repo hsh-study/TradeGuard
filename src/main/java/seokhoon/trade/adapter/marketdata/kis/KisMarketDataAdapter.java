@@ -1,0 +1,139 @@
+package seokhoon.trade.adapter.marketdata.kis;
+
+import org.springframework.stereotype.Component;
+import seokhoon.trade.application.port.out.MarketDataPort;
+import seokhoon.trade.domain.market.DailyPrice;
+import tools.jackson.databind.JsonNode;
+
+import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Component
+public class KisMarketDataAdapter implements MarketDataPort {
+    private static final String DAILY_PRICE_PATH =
+            "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice";
+    private static final String DAILY_PRICE_TR_ID = "FHKST03010100";
+    private static final int MAX_RESPONSE_COUNT = 100;
+    private static final DateTimeFormatter KIS_DATE = DateTimeFormatter.BASIC_ISO_DATE;
+
+    private final KisHttpClient httpClient;
+    private final KisAccessTokenProvider tokenProvider;
+    private final KisProperties properties;
+
+    public KisMarketDataAdapter(
+            KisHttpClient httpClient,
+            KisAccessTokenProvider tokenProvider,
+            KisProperties properties
+    ) {
+        this.httpClient = httpClient;
+        this.tokenProvider = tokenProvider;
+        this.properties = properties;
+    }
+
+    @Override
+    public List<DailyPrice> fetchDailyPrices(String stockCode, LocalDate from, LocalDate to) {
+        properties.validateForRequest();
+        URI uri = buildUri(stockCode, from, to);
+        KisHttpResponse response = httpClient.get(uri, Map.of(
+                "authorization", "Bearer " + tokenProvider.getAccessToken(),
+                "appkey", properties.getAppKey(),
+                "appsecret", properties.getAppSecret(),
+                "tr_id", DAILY_PRICE_TR_ID,
+                "custtype", "P"
+        ));
+        validateResponse(response);
+
+        List<DailyPrice> prices = mapPrices(stockCode, response.body().path("output2"));
+        if (prices.size() == MAX_RESPONSE_COUNT
+                && !prices.isEmpty()
+                && prices.getFirst().tradeDate().isAfter(from)) {
+            throw new KisApiException("KIS daily price response was truncated; split the date range");
+        }
+        return prices;
+    }
+
+    private URI buildUri(String stockCode, LocalDate from, LocalDate to) {
+        Map<String, String> parameters = new LinkedHashMap<>();
+        parameters.put("FID_COND_MRKT_DIV_CODE", "J");
+        parameters.put("FID_INPUT_ISCD", stockCode);
+        parameters.put("FID_INPUT_DATE_1", KIS_DATE.format(from));
+        parameters.put("FID_INPUT_DATE_2", KIS_DATE.format(to));
+        parameters.put("FID_PERIOD_DIV_CODE", "D");
+        parameters.put("FID_ORG_ADJ_PRC", "0");
+        String query = parameters.entrySet().stream()
+                .map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue()))
+                .reduce((left, right) -> left + "&" + right)
+                .orElseThrow();
+        return URI.create(properties.getBaseUrl() + DAILY_PRICE_PATH + "?" + query);
+    }
+
+    private static String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private static void validateResponse(KisHttpResponse response) {
+        if (response.statusCode() != 200) {
+            throw new KisApiException("KIS daily price request failed with HTTP " + response.statusCode());
+        }
+        if (!"0".equals(response.body().path("rt_cd").asText())) {
+            String code = response.body().path("msg_cd").asText("unknown");
+            String message = response.body().path("msg1").asText("unknown");
+            throw new KisApiException("KIS daily price request failed: " + code + " " + message);
+        }
+    }
+
+    private static List<DailyPrice> mapPrices(String stockCode, JsonNode output) {
+        if (!output.isArray()) {
+            throw new KisApiException("KIS daily price response did not contain output2");
+        }
+        List<DailyPrice> prices = new ArrayList<>();
+        for (JsonNode row : output) {
+            prices.add(new DailyPrice(
+                    stockCode,
+                    LocalDate.parse(requiredText(row, "stck_bsop_date"), KIS_DATE),
+                    decimal(row, "stck_oprc"),
+                    decimal(row, "stck_hgpr"),
+                    decimal(row, "stck_lwpr"),
+                    decimal(row, "stck_clpr"),
+                    longValue(row, "acml_vol"),
+                    decimal(row, "acml_tr_pbmn")
+            ));
+        }
+        return prices.stream()
+                .sorted(Comparator.comparing(DailyPrice::tradeDate))
+                .toList();
+    }
+
+    private static BigDecimal decimal(JsonNode row, String field) {
+        try {
+            return new BigDecimal(requiredText(row, field));
+        } catch (NumberFormatException exception) {
+            throw new KisApiException("KIS response contained invalid " + field, exception);
+        }
+    }
+
+    private static long longValue(JsonNode row, String field) {
+        try {
+            return Long.parseLong(requiredText(row, field));
+        } catch (NumberFormatException exception) {
+            throw new KisApiException("KIS response contained invalid " + field, exception);
+        }
+    }
+
+    private static String requiredText(JsonNode row, String field) {
+        JsonNode value = row.path(field);
+        if (!value.isValueNode() || value.asText().isBlank()) {
+            throw new KisApiException("KIS response did not contain " + field);
+        }
+        return value.asText();
+    }
+}

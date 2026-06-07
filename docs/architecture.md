@@ -62,6 +62,7 @@ domain  -X-> Spring, JPA, Web, Broker SDK
 | `adapter.persistence` | JPA 매핑과 저장소 구현 | outbound port, domain |
 | `adapter.broker` | 모의 브로커 구현 | outbound port, domain |
 | `adapter.broker.kis` | KIS 연동 경계와 스켈레톤 | outbound port, domain |
+| `adapter.marketdata.kis` | KIS 모의투자 OAuth와 읽기 전용 일봉 조회 | outbound port, domain |
 | `adapter.notification` | 알림 전송 경계 | 향후 notification port |
 | `config` | 순수 도메인 객체의 Spring Bean 조립 | application, domain |
 
@@ -130,6 +131,20 @@ DailyPrice 수집/조회
 
 현재 구현은 각 핵심 구성요소를 제공하지만, 시세 수집부터 전략 실행까지를 한 번에 연결하는 배치/유스케이스와 주문 REST API는 아직 없다.
 
+### KIS 일봉 수집
+
+```text
+ImportDailyPricesUseCase
+  -> MarketDataImportService
+  -> MarketDataPort
+  -> KisMarketDataAdapter
+  -> KIS 모의투자 기간별 시세 API
+  -> DailyPricePort
+  -> daily_prices
+```
+
+KIS adapter는 모의투자 호스트만 허용한다. OAuth 토큰은 메모리에 캐시하며, 만료 1분 전부터 새 토큰을 발급한다. 기간별 시세 API는 한 번에 최대 100건을 반환하므로 응답이 잘린 경우 날짜 범위를 나눠 다시 호출해야 한다.
+
 ## 6. 영속성 설계
 
 | 테이블 | 식별 기준 | 용도 |
@@ -167,7 +182,7 @@ DailyPrice 수집/조회
 
 ## 9. 알려진 아키텍처 부채
 
-- 일봉은 저장/기간 조회 port와 service가 있으나 외부 수집 adapter와 REST API가 없다.
+- 일봉은 KIS 수집과 저장 유스케이스가 있으나 REST API와 다중 구간 pagination이 없다.
 - 지표 저장/기간 조회 port와 service는 있으나 일봉 조회부터 계산·저장까지 조합하는 유스케이스가 없다.
 - `NotificationAdapter`는 port 없이 빈 구현으로 존재한다.
 - 도메인 상태 전이에 대한 허용 순서 검증이 없다.

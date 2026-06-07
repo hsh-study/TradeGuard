@@ -20,10 +20,21 @@ Spring Boot 기반 한국 주식 자동매매 보조 시스템입니다. MVP 1�
 
 기본 실행은 H2 인메모리 DB를 사용합니다. MySQL을 사용할 때는 `.env.example`을 참고해 환경변수를 지정합니다.
 
+KIS 모의투자 일봉 조회에는 `KIS_APP_KEY`, `KIS_APP_SECRET`이 필요합니다. 구현은 모의투자 호스트만 허용하며 실제 주문 API를 호출하지 않습니다.
+
 ## 테스트
 
 ```sh
 ./gradlew test
+```
+
+로컬 자격증명으로 KIS 읽기 전용 smoke test를 실행하려면:
+
+```sh
+set -a
+source .env
+set +a
+KIS_SMOKE_TEST=true ./gradlew test --tests '*KisMarketDataSmokeTest'
 ```
 
 ## API
