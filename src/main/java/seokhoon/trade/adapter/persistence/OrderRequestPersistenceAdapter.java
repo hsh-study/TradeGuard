@@ -1,6 +1,8 @@
 package seokhoon.trade.adapter.persistence;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
+import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
@@ -16,8 +18,26 @@ public class OrderRequestPersistenceAdapter implements OrderRequestPort {
     }
 
     @Override
-    public OrderRequest save(OrderRequest orderRequest) {
-        repository.save(OrderRequestEntity.from(orderRequest));
+    public OrderRequest create(OrderRequest orderRequest) {
+        try {
+            repository.saveAndFlush(OrderRequestEntity.from(orderRequest));
+            return orderRequest;
+        } catch (DataIntegrityViolationException exception) {
+            throw new DuplicateOrderRequestException(exception);
+        }
+    }
+
+    @Override
+    public OrderRequest update(OrderRequest orderRequest) {
+        OrderRequestEntity entity = repository.findByStockCodeAndStrategyNameAndTradeDateAndSide(
+                        orderRequest.stockCode(),
+                        orderRequest.strategyName(),
+                        orderRequest.tradeDate(),
+                        orderRequest.side()
+                )
+                .orElseThrow(() -> new IllegalStateException("Order request reservation not found"));
+        entity.update(orderRequest);
+        repository.save(entity);
         return orderRequest;
     }
 

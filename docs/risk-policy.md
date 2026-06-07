@@ -41,13 +41,13 @@ RiskManager는 전략 신호를 주문으로 전환하기 전에 손실 가능�
 
 현재 MVP는 매수만 허용하므로 사실상 “동일 날짜, 동일 종목, 동일 전략의 매수 요청은 한 번만 허용”한다.
 
-사전 조회만으로는 동시에 들어온 요청의 race condition을 완전히 차단할 수 없다. 운영 가능한 모의 주문 API를 만들 때 아래 복합 unique constraint를 추가해야 한다.
+사전 조회만으로는 동시에 들어온 요청의 race condition을 완전히 차단할 수 없으므로 아래 복합 unique constraint를 적용한다.
 
 ```text
 (trade_date, stock_code, strategy_name, side)
 ```
 
-애플리케이션은 unique constraint 위반도 `DUPLICATE_ORDER`와 동등한 결과로 변환해야 한다.
+`OrderService`는 리스크 승인 후 주문을 `CREATED` 상태로 DB에 먼저 예약한다. unique constraint 위반은 `DUPLICATE_ORDER` 거절 결과로 변환하며, 예약에 성공한 요청만 broker에 전달한다.
 
 ## 5. 점수 정책
 

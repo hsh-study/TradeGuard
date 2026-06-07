@@ -3,6 +3,7 @@ package seokhoon.trade.application.service;
 import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.MockOrderResult;
 import seokhoon.trade.application.port.out.BrokerPort;
+import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.domain.order.OrderRequest;
@@ -36,7 +37,8 @@ class OrderServiceTest {
         assertThat(result.tradingSignal().riskReasons()).containsExactly("SCORE_BELOW_70");
         assertThat(signalPort.savedStatuses).containsExactly(TradingSignalStatus.RISK_REJECTED);
         assertThat(brokerPort.calls).isZero();
-        assertThat(orderPort.saveCalls).isZero();
+        assertThat(orderPort.createCalls).isZero();
+        assertThat(orderPort.updateCalls).isZero();
     }
 
     @Test
@@ -54,7 +56,29 @@ class OrderServiceTest {
         assertThat(signalPort.savedStatuses)
                 .containsExactly(TradingSignalStatus.RISK_APPROVED, TradingSignalStatus.ORDER_REQUESTED);
         assertThat(brokerPort.calls).isEqualTo(1);
-        assertThat(orderPort.saveCalls).isEqualTo(1);
+        assertThat(orderPort.createCalls).isEqualTo(1);
+        assertThat(orderPort.updateCalls).isEqualTo(1);
+    }
+
+    @Test
+    void convertsDatabaseDuplicateIntoRiskRejectionBeforeCallingBroker() {
+        RecordingOrderRequestPort orderPort = new RecordingOrderRequestPort(false);
+        orderPort.failCreateAsDuplicate = true;
+        RecordingTradingSignalPort signalPort = new RecordingTradingSignalPort();
+        RecordingBrokerPort brokerPort = new RecordingBrokerPort();
+        OrderService service = new OrderService(orderPort, signalPort, brokerPort, new RiskManager());
+
+        MockOrderResult result = service.request(signal(80), 1, BigDecimal.valueOf(50_000));
+
+        assertThat(result.riskDecision().approved()).isFalse();
+        assertThat(result.riskDecision().reasons()).containsExactly("DUPLICATE_ORDER");
+        assertThat(result.tradingSignal().status()).isEqualTo(TradingSignalStatus.RISK_REJECTED);
+        assertThat(result.tradingSignal().riskReasons()).containsExactly("DUPLICATE_ORDER");
+        assertThat(signalPort.savedStatuses)
+                .containsExactly(TradingSignalStatus.RISK_APPROVED, TradingSignalStatus.RISK_REJECTED);
+        assertThat(orderPort.createCalls).isEqualTo(1);
+        assertThat(orderPort.updateCalls).isZero();
+        assertThat(brokerPort.calls).isZero();
     }
 
     private static TradingSignal signal(int score) {
@@ -70,15 +94,26 @@ class OrderServiceTest {
 
     private static class RecordingOrderRequestPort implements OrderRequestPort {
         private final boolean existing;
-        private int saveCalls;
+        private int createCalls;
+        private int updateCalls;
+        private boolean failCreateAsDuplicate;
 
         private RecordingOrderRequestPort(boolean existing) {
             this.existing = existing;
         }
 
         @Override
-        public OrderRequest save(OrderRequest orderRequest) {
-            saveCalls++;
+        public OrderRequest create(OrderRequest orderRequest) {
+            createCalls++;
+            if (failCreateAsDuplicate) {
+                throw new DuplicateOrderRequestException(new IllegalStateException("duplicate"));
+            }
+            return orderRequest;
+        }
+
+        @Override
+        public OrderRequest update(OrderRequest orderRequest) {
+            updateCalls++;
             return orderRequest;
         }
 

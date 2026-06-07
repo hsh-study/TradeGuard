@@ -46,8 +46,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 종가베팅 전략 | 완료 | 단건·활성 관심종목 분석 API에 연결됐으며 점수 계산과 테스트 존재 |
 | 신호 저장 | 부분 완료 | 논리 키 upsert, 상태 갱신, 리스크 거절 사유 저장 존재. 조회 API와 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
-| 모의 주문 | 부분 완료 | 승인/거절 결과 계약, OrderService와 FakeBrokerAdapter 존재. 외부 API 없음 |
-| 중복 주문 방지 | 부분 완료 | 사전 조회 존재. DB unique constraint 없음 |
+| 모의 주문 | 부분 완료 | 승인/거절 결과 계약, DB 예약 후 FakeBroker 호출 흐름 존재. 외부 API 없음 |
+| 중복 주문 방지 | 완료 | 사전 조회, DB 복합 unique constraint, 충돌의 도메인 거절 변환과 통합 테스트 존재 |
 | 알림 | 미구현 | 빈 adapter만 존재 |
 | KIS 연동 | 부분 완료 | 모의투자 OAuth와 일봉 조회 구현. 계좌/주문 연동은 의도적으로 제외 |
 | 운영 관측성 | 미구현 | 구조화 로그, metric, health 세분화 없음 |
@@ -173,8 +173,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 가장 가까운 작업 순서는 다음과 같다.
 
-1. 주문 중복 unique constraint와 통합 테스트 추가
-2. 모의 주문 및 이력 조회 REST API 추가
-3. 신호/주문 조회와 알림 구현
-4. API validation과 공통 오류 응답 추가
-5. Flyway migration과 MySQL Testcontainers 검증
+1. 모의 주문 및 이력 조회 REST API 추가
+2. 신호/주문 조회와 알림 구현
+3. API validation과 공통 오류 응답 추가
+4. Flyway migration과 MySQL Testcontainers 검증
+5. Broker 실패 상태와 재시도 정책 구현
