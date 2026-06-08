@@ -50,6 +50,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 중복 주문 방지 | 완료 | 사전 조회, DB 복합 unique constraint, 충돌의 도메인 거절 변환과 통합 테스트 존재 |
 | 알림 | 부분 완료 | Discord Webhook 기반 종가베팅 브리핑 API와 no-op 처리 존재. 일반 알림 정책은 미구현 |
 | KIS 연동 | 부분 완료 | 모의투자 OAuth와 일봉 조회 구현. 계좌/주문 연동은 의도적으로 제외 |
+| DB migration | 완료 | Flyway V1 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
 | 운영 관측성 | 미구현 | 구조화 로그, metric, health 세분화 없음 |
 
 ## 4. 구현 단계
@@ -132,7 +133,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 - 고득점 후보 및 리스크 거절 알림
 - actuator health와 DB 상태 확인
 - 비밀정보 마스킹과 구조화 로그
-- Flyway 또는 Liquibase migration 도입
+- Flyway migration 도입
 - MySQL Testcontainers 통합 테스트
 - API 예외 응답과 validation 규격 통일
 
@@ -173,8 +174,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 가장 가까운 작업 순서는 다음과 같다.
 
-1. Flyway migration과 MySQL Testcontainers 검증
-2. Broker 실패 상태와 재시도 정책 구현
-3. actuator health와 구조화 로그 추가
-4. API validation 세부 메시지와 문서 보강
-5. Discord 메시지 템플릿과 알림 대상 정책 보강
+1. Broker 실패 상태와 재시도 정책 구현
+2. actuator health와 구조화 로그 추가
+3. API validation 세부 메시지와 문서 보강
+4. Discord 메시지 템플릿과 알림 대상 정책 보강
+5. MySQL 운영 migration 변경 절차 문서화

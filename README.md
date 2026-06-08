@@ -20,6 +20,8 @@ Spring Boot 기반 한국 주식 자동매매 보조 시스템입니다. MVP 1�
 
 기본 실행은 H2 인메모리 DB를 사용합니다. MySQL을 사용할 때는 `.env.example`을 참고해 환경변수를 지정합니다.
 
+DB 스키마는 Flyway migration으로 생성합니다. Hibernate는 기본적으로 `ddl-auto=validate`로 동작하므로 JPA가 테이블을 자동 생성하지 않습니다.
+
 KIS 모의투자 일봉 조회에는 `KIS_APP_KEY`, `KIS_APP_SECRET`이 필요합니다. 100건을 초과하는 기간은 자동으로 분할 조회합니다. 구현은 모의투자 호스트만 허용하며 실제 주문 API를 호출하지 않습니다.
 
 ## 테스트
@@ -27,6 +29,8 @@ KIS 모의투자 일봉 조회에는 `KIS_APP_KEY`, `KIS_APP_SECRET`이 필요�
 ```sh
 ./gradlew test
 ```
+
+테스트는 H2 MySQL mode에서 Flyway migration과 Hibernate schema validation을 검증합니다. Docker가 사용 가능하면 `MySqlMigrationIntegrationTest`가 MySQL Testcontainers로 V1 migration과 핵심 unique constraint도 검증합니다.
 
 로컬 자격증명으로 KIS 읽기 전용 smoke test를 실행하려면:
 
