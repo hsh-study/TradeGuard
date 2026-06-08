@@ -77,6 +77,14 @@ curl -X POST 'http://localhost:8080/api/scans/closing-bet?tradeDate=2026-06-05&l
 
 스캔은 관심종목 등록 여부와 무관한 시장 순위 후보군에서 `CLOSING_BET_PRE_SCAN` 신호를 저장합니다. 자동 주문은 생성하지 않으며, 평일 14:00 Asia/Seoul 기준으로도 실행됩니다. 휴장일 처리는 아직 TODO입니다.
 
+15:00 종가베팅 최종 후보 수동 리뷰:
+
+```sh
+curl -X POST 'http://localhost:8080/api/reviews/closing-bet?tradeDate=2026-06-05&limit=5'
+```
+
+리뷰는 같은 거래일의 `CLOSING_BET_PRE_SCAN` 신호 중 리스크 사유가 없고 최종 점수 75점 이상인 후보를 `CLOSING_BET` 신호로 저장합니다. 자동 주문은 생성하지 않으며, 평일 15:00 Asia/Seoul 기준으로도 실행됩니다.
+
 거래 신호 조회:
 
 ```sh

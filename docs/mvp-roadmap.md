@@ -45,6 +45,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 지표 저장 | 부분 완료 | 계산·저장 orchestration과 종목·거래일 upsert 존재. 조회 API 없음 |
 | 종가베팅 전략 | 완료 | 단건·활성 관심종목 분석 API에 연결됐으며 점수 계산과 테스트 존재 |
 | 14:00 예비 스캔 | 부분 완료 | Fake 시장 순위 기반 CLOSING_BET_PRE_SCAN 저장, 수동 API, weekday 14:00 scheduler 존재. 실제 KIS 순위와 휴장일 처리는 TODO |
+| 15:00 최종 리뷰 | 부분 완료 | CLOSING_BET_PRE_SCAN 조회 후 리스크 없는 75점 이상 후보를 CLOSING_BET으로 승격 저장, 수동 API, weekday 15:00 scheduler 존재. 실제 15:00 snapshot 재평가는 TODO |
 | 신호 저장 | 부분 완료 | 논리 키 upsert, 상태 갱신, 리스크 거절 사유 저장, 신호 조회 API 존재. 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
 | 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, 승인/거절 결과, DB 예약 후 FakeBroker 호출 흐름 존재 |
@@ -176,7 +177,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 가장 가까운 작업 순서는 다음과 같다.
 
 1. 실제 KIS 시장 순위 read-only adapter 구현
-2. 휴장일 calendar와 scheduler skip 정책 구현
-3. Broker 실패 상태와 재시도 정책 구현
-4. actuator health와 구조화 로그 추가
-5. API validation 세부 메시지와 문서 보강
+2. 15:00 intraday snapshot 기반 최종 재평가 점수화 구현
+3. 휴장일 calendar와 scheduler skip 정책 구현
+4. Broker 실패 상태와 재시도 정책 구현
+5. actuator health와 구조화 로그 추가

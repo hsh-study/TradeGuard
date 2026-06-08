@@ -137,9 +137,14 @@ MarketRankingPort
   -> ClosingBetCandidateScanner
   -> TradingSignal 저장(CLOSING_BET_PRE_SCAN)
   -> NotificationPort
+
+TradingSignal 조회(CLOSING_BET_PRE_SCAN)
+  -> ClosingBetFinalReviewService
+  -> TradingSignal 저장(CLOSING_BET)
+  -> NotificationPort
 ```
 
-`AnalyzeStockUseCase`는 기준일까지 최근 1년 일봉을 조회하고, 최소 60개가 있으면 지표와 종가베팅 신호를 계산해 저장한다. `ClosingBetCandidateScanner`는 시장 순위 후보군에서 14:00 예비 후보를 선별해 `CLOSING_BET_PRE_SCAN` 신호로 저장한다. 두 알림 흐름은 Discord Webhook을 사용할 수 있지만 주문을 실행하지 않는다.
+`AnalyzeStockUseCase`는 기준일까지 최근 1년 일봉을 조회하고, 최소 60개가 있으면 지표와 종가베팅 신호를 계산해 저장한다. `ClosingBetCandidateScanner`는 시장 순위 후보군에서 14:00 예비 후보를 선별해 `CLOSING_BET_PRE_SCAN` 신호로 저장한다. `ClosingBetFinalReviewService`는 15:00에 예비 신호를 다시 조회해 최종 후보를 `CLOSING_BET` 신호로 승격 저장한다. 알림 흐름은 Discord Webhook을 사용할 수 있지만 주문을 실행하지 않는다.
 
 ### KIS 일봉 수집
 
@@ -194,6 +199,7 @@ KIS adapter는 모의투자 호스트만 허용한다. OAuth 토큰은 메모리
 
 - 일봉은 KIS 수집과 저장 유스케이스가 있으나 REST API와 다중 구간 pagination이 없다.
 - 실제 KIS 시장 순위 adapter와 휴장일 scheduler skip 정책이 없다.
+- 15:00 최종 리뷰는 현재 예비 스캔 점수 기반 구조이며, 실시간 15:00 snapshot 재평가 데이터가 없다.
 - 도메인 상태 전이에 대한 허용 순서 검증이 없다.
 - 관측성 구성이 없다.
 
