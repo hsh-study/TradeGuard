@@ -149,6 +149,8 @@ TradingSignal 조회(CLOSING_BET_PRE_SCAN)
 
 `MarketRankingPort`와 `MarketSnapshotPort`는 기본 fake adapter를 사용한다. `tradeguard.market-data.realtime-provider=kis`일 때만 KIS 읽기 전용 순위/current price adapter가 Bean으로 등록된다.
 
+14:00/15:00 scheduler는 실행 전에 `MarketCalendarPort`를 조회한다. `ConfigurableKoreanMarketCalendarAdapter`는 주말과 `tradeguard.market-calendar.holidays`에 설정된 날짜를 비거래일로 판단한다. REST 수동 실행 경로는 calendar를 통과하지 않으므로 휴장일에도 호출할 수 있다.
+
 ### KIS 일봉 수집
 
 ```text
@@ -203,8 +205,8 @@ KIS 시장 순위와 current price adapter도 같은 인증 정보를 사용하�
 ## 9. 알려진 아키텍처 부채
 
 - 일봉은 KIS 수집과 저장 유스케이스가 있으나 REST API와 다중 구간 pagination이 없다.
-- KIS 시장 순위/current price adapter는 단위 매핑 테스트가 있으며, 실제 자격증명 기반 smoke test는 일봉 조회에만 있다.
-- 휴장일 scheduler skip 정책이 없다.
+- KIS read-only smoke test는 환경변수 opt-in 방식이며 CI 기본 테스트에서는 실행되지 않는다.
+- 휴장일은 정적 설정 목록이며 한국거래소 calendar 자동 동기화는 없다.
 - 도메인 상태 전이에 대한 허용 순서 검증이 없다.
 - 관측성 구성이 없다.
 

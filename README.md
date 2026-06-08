@@ -40,8 +40,21 @@ KIS 모의투자 일봉 조회에는 `KIS_APP_KEY`, `KIS_APP_SECRET`이 필요�
 set -a
 source .env
 set +a
-KIS_SMOKE_TEST=true ./gradlew test --tests '*KisMarketDataSmokeTest'
+KIS_SMOKE_TEST_ENABLED=true ./gradlew test \
+  --tests '*KisMarketDataSmokeTest' \
+  --tests '*KisMarketRankingSmokeTest' \
+  --tests '*KisMarketSnapshotSmokeTest'
 ```
+
+`KIS_SMOKE_TEST_ENABLED`가 `true`가 아니면 smoke test는 실행되지 않습니다. 활성화했더라도 `KIS_APP_KEY` 또는 `KIS_APP_SECRET`이 비어 있으면 skip됩니다. smoke test는 일봉, 시장 순위, 현재가 snapshot 조회 endpoint만 호출하며 주문 endpoint는 호출하지 않습니다.
+
+한국 시장 휴장일은 쉼표로 구분한 ISO 날짜로 설정합니다.
+
+```sh
+MARKET_CALENDAR_HOLIDAYS=2026-01-01,2026-02-17,2026-02-18
+```
+
+주말과 설정된 휴장일에는 14:00 예비 스캔 및 15:00 최종 리뷰 scheduler가 use case를 호출하지 않습니다. 수동 스캔/리뷰 API는 휴장일에도 테스트와 디버깅을 위해 실행할 수 있습니다.
 
 ## API
 
@@ -77,7 +90,7 @@ curl -X POST 'http://localhost:8080/api/analyses/active?asOfDate=2026-06-05'
 curl -X POST 'http://localhost:8080/api/scans/closing-bet?tradeDate=2026-06-05&limit=5'
 ```
 
-스캔은 관심종목 등록 여부와 무관한 시장 순위 후보군에서 `CLOSING_BET_PRE_SCAN` 신호를 저장합니다. 기본은 fake 순위 데이터이며 `MARKET_DATA_REALTIME_PROVIDER=kis` 설정 시 KIS 읽기 전용 순위 API를 사용합니다. 자동 주문은 생성하지 않으며, 평일 14:00 Asia/Seoul 기준으로도 실행됩니다. 휴장일 처리는 아직 TODO입니다.
+스캔은 관심종목 등록 여부와 무관한 시장 순위 후보군에서 `CLOSING_BET_PRE_SCAN` 신호를 저장합니다. 기본은 fake 순위 데이터이며 `MARKET_DATA_REALTIME_PROVIDER=kis` 설정 시 KIS 읽기 전용 순위 API를 사용합니다. 자동 주문은 생성하지 않으며, 거래일 14:00 Asia/Seoul 기준으로도 실행됩니다.
 
 15:00 종가베팅 최종 후보 수동 리뷰:
 
