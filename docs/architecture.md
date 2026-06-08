@@ -63,7 +63,7 @@ domain  -X-> Spring, JPA, Web, Broker SDK
 | `adapter.broker` | 모의 브로커 구현 | outbound port, domain |
 | `adapter.broker.kis` | KIS 연동 경계와 스켈레톤 | outbound port, domain |
 | `adapter.marketdata.kis` | KIS 모의투자 OAuth와 읽기 전용 일봉 조회 | outbound port, domain |
-| `adapter.notification` | 알림 전송 경계 | 향후 notification port |
+| `adapter.notification` | Discord Webhook 등 알림 전송 경계 | outbound port |
 | `config` | 순수 도메인 객체의 Spring Bean 조립 | application, domain |
 
 ## 4. 핵심 도메인
@@ -115,7 +115,7 @@ POST /api/stocks
   -> stocks
 ```
 
-### 분석에서 모의 주문까지의 목표 흐름
+### 분석에서 모의 주문과 브리핑까지의 목표 흐름
 
 ```text
 DailyPrice 수집/조회
@@ -127,9 +127,14 @@ DailyPrice 수집/조회
   -> OrderService
   -> FakeBrokerAdapter
   -> OrderRequest 저장
+
+TradingSignal 조회
+  -> ClosingBetBriefingService
+  -> NotificationPort
+  -> DiscordWebhookNotificationAdapter
 ```
 
-`AnalyzeStockUseCase`는 기준일까지 최근 1년 일봉을 조회하고, 최소 60개가 있으면 지표와 종가베팅 신호를 계산해 저장한다. 분석 실행 REST API와 활성 관심종목 전체를 처리하는 scheduler는 아직 없다.
+`AnalyzeStockUseCase`는 기준일까지 최근 1년 일봉을 조회하고, 최소 60개가 있으면 지표와 종가베팅 신호를 계산해 저장한다. `ClosingBetBriefingService`는 저장된 신호를 조회해 Discord Webhook 알림을 보낼 수 있지만, 주문을 실행하지 않는다.
 
 ### KIS 일봉 수집
 
@@ -184,8 +189,7 @@ KIS adapter는 모의투자 호스트만 허용한다. OAuth 토큰은 메모리
 
 - 일봉은 KIS 수집과 저장 유스케이스가 있으나 REST API와 다중 구간 pagination이 없다.
 - 분석 유스케이스는 단일 종목 수동 호출 단위이며 REST API와 전체 관심종목 scheduler가 없다.
-- `NotificationAdapter`는 port 없이 빈 구현으로 존재한다.
 - 도메인 상태 전이에 대한 허용 순서 검증이 없다.
-- API validation, 예외 응답 규격, 관측성 구성이 없다.
+- 관측성 구성이 없다.
 
 새 기능은 이 부채를 확대하지 않고 port 중심으로 구현한다.

@@ -107,6 +107,14 @@ curl 'http://localhost:8080/api/mock-orders?stockCode=005930&tradeDate=2026-06-0
 
 모의 주문 API는 DB에 저장된 신호만 사용하며 지정가 주문만 생성합니다. 주문 이력 응답에는 `orderId`가 포함되며, 필터를 생략하면 전체 주문 이력을 최신 거래일 순으로 반환합니다.
 
+종가베팅 브리핑 알림:
+
+```sh
+curl -X POST 'http://localhost:8080/api/briefings/closing-bet?signalDate=2026-06-05'
+```
+
+`DISCORD_WEBHOOK_URL`이 설정되어 있으면 Discord Webhook으로 종가베팅 후보 브리핑을 전송합니다. 비어 있으면 실제 전송 없이 no-op 결과를 반환합니다. 알림은 정보 전달만 수행하며 주문을 실행하지 않습니다.
+
 공통 오류 응답:
 
 ```json
@@ -123,4 +131,5 @@ curl 'http://localhost:8080/api/mock-orders?stockCode=005930&tradeDate=2026-06-0
 - 실계좌 주문 기능은 구현하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
 - API Key, App Secret, 계좌번호는 코드에 하드코딩하지 않습니다.
+- Discord Webhook URL은 환경변수로만 주입하며 코드에 하드코딩하지 않습니다.
 - `KisBrokerAdapter`는 스켈레톤만 제공하며 실제 주문 API를 호출하지 않습니다.

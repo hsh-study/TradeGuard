@@ -48,7 +48,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
 | 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, 승인/거절 결과, DB 예약 후 FakeBroker 호출 흐름 존재 |
 | 중복 주문 방지 | 완료 | 사전 조회, DB 복합 unique constraint, 충돌의 도메인 거절 변환과 통합 테스트 존재 |
-| 알림 | 미구현 | 빈 adapter만 존재 |
+| 알림 | 부분 완료 | Discord Webhook 기반 종가베팅 브리핑 API와 no-op 처리 존재. 일반 알림 정책은 미구현 |
 | KIS 연동 | 부분 완료 | 모의투자 OAuth와 일봉 조회 구현. 계좌/주문 연동은 의도적으로 제외 |
 | 운영 관측성 | 미구현 | 구조화 로그, metric, health 세분화 없음 |
 
@@ -173,8 +173,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 가장 가까운 작업 순서는 다음과 같다.
 
-1. 알림 구현
-2. Flyway migration과 MySQL Testcontainers 검증
-3. Broker 실패 상태와 재시도 정책 구현
-4. actuator health와 구조화 로그 추가
-5. API validation 세부 메시지와 문서 보강
+1. Flyway migration과 MySQL Testcontainers 검증
+2. Broker 실패 상태와 재시도 정책 구현
+3. actuator health와 구조화 로그 추가
+4. API validation 세부 메시지와 문서 보강
+5. Discord 메시지 템플릿과 알림 대상 정책 보강
