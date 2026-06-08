@@ -140,7 +140,15 @@ curl -X POST http://localhost:8080/api/signals/1/mock-orders \
 curl 'http://localhost:8080/api/mock-orders?stockCode=005930&tradeDate=2026-06-05&status=ACCEPTED&side=BUY'
 ```
 
-모의 주문 API는 DB에 저장된 신호만 사용하며 지정가 주문만 생성합니다. 주문 이력 응답에는 `orderId`가 포함되며, 필터를 생략하면 전체 주문 이력을 최신 거래일 순으로 반환합니다.
+Broker 실패 주문 조회:
+
+```sh
+curl 'http://localhost:8080/api/mock-orders?status=BROKER_FAILED'
+```
+
+모의 주문 API는 DB에 저장된 신호만 사용하며 지정가 주문만 생성합니다. 주문 이력 응답에는 `orderId`, `failureReason`, `failedAt`, `retryable`이 포함됩니다. Broker 호출 중 예외가 발생하면 주문은 `BROKER_FAILED`로 저장되고 `brokerOrderNo`는 null로 유지됩니다. 필터를 생략하면 전체 주문 이력을 최신 거래일 순으로 반환합니다.
+
+Broker 실패 시 POST 응답의 `approved`는 `false`, `brokerFailed`는 `true`이며 실패 사유를 `failureReason`으로 반환합니다. 리스크 승인은 완료되었지만 Broker 요청이 성공하지 않았으므로 TradingSignal은 `RISK_APPROVED` 상태를 유지합니다.
 
 종가베팅 브리핑 알림:
 

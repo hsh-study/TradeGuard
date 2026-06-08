@@ -1,6 +1,7 @@
 package seokhoon.trade.domain.order;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Objects;
 
@@ -12,6 +13,9 @@ public class OrderRequest {
     private final BigDecimal limitPrice;
     private OrderStatus status;
     private String brokerOrderNo;
+    private String failureReason;
+    private Instant failedAt;
+    private boolean retryable;
     private final String strategyName;
     private final LocalDate tradeDate;
 
@@ -47,6 +51,9 @@ public class OrderRequest {
             BigDecimal limitPrice,
             OrderStatus status,
             String brokerOrderNo,
+            String failureReason,
+            Instant failedAt,
+            boolean retryable,
             String strategyName,
             LocalDate tradeDate
     ) {
@@ -61,6 +68,9 @@ public class OrderRequest {
         );
         orderRequest.status = Objects.requireNonNull(status, "status");
         orderRequest.brokerOrderNo = brokerOrderNo;
+        orderRequest.failureReason = failureReason;
+        orderRequest.failedAt = failedAt;
+        orderRequest.retryable = retryable;
         return orderRequest;
     }
 
@@ -75,6 +85,9 @@ public class OrderRequest {
     public BigDecimal limitPrice() { return limitPrice; }
     public OrderStatus status() { return status; }
     public String brokerOrderNo() { return brokerOrderNo; }
+    public String failureReason() { return failureReason; }
+    public Instant failedAt() { return failedAt; }
+    public boolean retryable() { return retryable; }
     public String strategyName() { return strategyName; }
     public LocalDate tradeDate() { return tradeDate; }
 
@@ -82,6 +95,22 @@ public class OrderRequest {
     public void accept(String brokerOrderNo) {
         this.status = OrderStatus.ACCEPTED;
         this.brokerOrderNo = brokerOrderNo;
+        this.failureReason = null;
+        this.failedAt = null;
+        this.retryable = false;
     }
     public void reject() { this.status = OrderStatus.REJECTED; }
+    public void markBrokerFailed(String reason, Instant failedAt, boolean retryable) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("failure reason must not be blank");
+        }
+        if (status != OrderStatus.CREATED && status != OrderStatus.REQUESTED) {
+            throw new IllegalStateException("broker failure can only be recorded before acceptance");
+        }
+        this.status = OrderStatus.BROKER_FAILED;
+        this.brokerOrderNo = null;
+        this.failureReason = reason;
+        this.failedAt = Objects.requireNonNull(failedAt, "failedAt");
+        this.retryable = retryable;
+    }
 }

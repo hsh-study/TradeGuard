@@ -14,6 +14,7 @@ import seokhoon.trade.domain.strategy.TradingSignal;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -82,6 +83,46 @@ class SignalControllerTest {
         assertThat(response.approved()).isTrue();
         assertThat(response.signalStatus()).isEqualTo(TradingSignalStatus.ORDER_REQUESTED);
         assertThat(response.order().status()).isEqualTo(OrderStatus.ACCEPTED);
+    }
+
+    @Test
+    void returnsBrokerFailureForSignalIdMockOrder() {
+        Instant failedAt = Instant.parse("2026-06-05T06:01:00Z");
+        SignalController controller = new SignalController(
+                criteria -> List.of(),
+                (signalId, command) -> {
+                    TradingSignal signal = signal();
+                    signal.approveRisk();
+                    OrderRequest failedOrder = new OrderRequest(
+                            "005930",
+                            OrderSide.BUY,
+                            OrderType.LIMIT,
+                            1,
+                            BigDecimal.valueOf(50_000),
+                            "CLOSING_BET",
+                            SIGNAL_DATE
+                    );
+                    failedOrder.markBrokerFailed("broker timeout", failedAt, true);
+                    return MockOrderResult.brokerFailed(
+                            RiskDecision.approve(),
+                            signal,
+                            failedOrder
+                    );
+                }
+        );
+
+        MockOrderController.MockOrderResponse response = controller.requestMockOrder(
+                1L,
+                new SignalController.SignalMockOrderRequest(1, BigDecimal.valueOf(50_000))
+        );
+
+        assertThat(response.approved()).isFalse();
+        assertThat(response.brokerFailed()).isTrue();
+        assertThat(response.failureReason()).isEqualTo("broker timeout");
+        assertThat(response.signalStatus()).isEqualTo(TradingSignalStatus.RISK_APPROVED);
+        assertThat(response.order().status()).isEqualTo(OrderStatus.BROKER_FAILED);
+        assertThat(response.order().failedAt()).isEqualTo(failedAt);
+        assertThat(response.order().retryable()).isTrue();
     }
 
     private static TradingSignalView signalView() {

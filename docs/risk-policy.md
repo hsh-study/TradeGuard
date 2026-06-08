@@ -74,6 +74,15 @@ TradingSignal: CREATED -> RISK_APPROVED -> ORDER_REQUESTED
 OrderRequest:  CREATED -> REQUESTED -> ACCEPTED
 ```
 
+Broker 호출 실패 시:
+
+```text
+TradingSignal: CREATED -> RISK_APPROVED
+OrderRequest:  CREATED -> BROKER_FAILED
+```
+
+Broker 예외는 주문 예약을 제거하거나 `CREATED` 상태로 방치하지 않는다. 주문에 `failureReason`, `failedAt`, `retryable`을 기록하고 `brokerOrderNo`는 null로 유지한다. 현재 RuntimeException 기반 Broker 실패는 재시도 가능 후보로 기록하지만 자동 재시도는 수행하지 않는다. 실제 Broker 요청 성공 전이므로 신호는 `ORDER_REQUESTED`로 변경하지 않고 `RISK_APPROVED`를 유지한다.
+
 거절 시:
 
 ```text
@@ -132,4 +141,6 @@ RiskManager 변경 시 최소한 다음 경계를 검증한다.
 - 지정가 이외 주문 거절
 - 복수 위반 시 모든 사유 반환
 - 승인/거절에 따른 신호 상태
+- Broker 실패 시 `BROKER_FAILED` 상태와 실패 metadata 저장
+- Broker 실패 시 신호가 `RISK_APPROVED`를 유지하고 `brokerOrderNo`가 null인지 확인
 - 동시 요청에서 DB unique constraint 동작

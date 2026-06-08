@@ -25,6 +25,7 @@ import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -80,13 +81,17 @@ public class MockOrderController {
 
     public record MockOrderResponse(
             boolean approved,
+            boolean brokerFailed,
+            String failureReason,
             List<String> rejectionReasons,
             TradingSignalStatus signalStatus,
             OrderResponse order
     ) {
         static MockOrderResponse from(MockOrderResult result) {
             return new MockOrderResponse(
-                    result.riskDecision().approved(),
+                    result.riskDecision().approved() && !result.brokerFailed(),
+                    result.brokerFailed(),
+                    result.failureReason(),
                     result.riskDecision().reasons(),
                     result.tradingSignal().status(),
                     result.orderRequest() == null ? null : OrderResponse.from(result.orderRequest())
@@ -103,6 +108,9 @@ public class MockOrderController {
             BigDecimal limitPrice,
             OrderStatus status,
             String brokerOrderNo,
+            String failureReason,
+            Instant failedAt,
+            boolean retryable,
             String strategyName,
             LocalDate tradeDate
     ) {
@@ -116,6 +124,9 @@ public class MockOrderController {
                     orderRequest.limitPrice(),
                     orderRequest.status(),
                     orderRequest.brokerOrderNo(),
+                    orderRequest.failureReason(),
+                    orderRequest.failedAt(),
+                    orderRequest.retryable(),
                     orderRequest.strategyName(),
                     orderRequest.tradeDate()
             );
@@ -131,6 +142,9 @@ public class MockOrderController {
                     orderRequest.limitPrice(),
                     orderRequest.status(),
                     orderRequest.brokerOrderNo(),
+                    orderRequest.failureReason(),
+                    orderRequest.failedAt(),
+                    orderRequest.retryable(),
                     orderRequest.strategyName(),
                     orderRequest.tradeDate()
             );

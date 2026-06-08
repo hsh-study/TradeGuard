@@ -48,7 +48,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 15:00 최종 리뷰 | 부분 완료 | MarketSnapshotPort 기반 VWAP/고가권/거래대금 재평가, 거래일 15:00 scheduler, opt-in current price smoke test 존재. 더 정교한 intraday feature는 TODO |
 | 신호 저장 | 부분 완료 | 논리 키 upsert, 상태 갱신, 리스크 거절 사유 저장, 신호 조회 API 존재. 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
-| 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, 승인/거절 결과, DB 예약 후 FakeBroker 호출 흐름 존재 |
+| 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, 승인/거절/BROKER_FAILED 결과, DB 예약 후 FakeBroker 호출 흐름 존재. 자동 재시도는 미구현 |
 | 중복 주문 방지 | 완료 | 사전 조회, DB 복합 unique constraint, 충돌의 도메인 거절 변환과 통합 테스트 존재 |
 | 알림 | 부분 완료 | Discord Webhook 기반 종가베팅 브리핑 API와 no-op 처리 존재. 일반 알림 정책은 미구현 |
 | KIS 연동 | 부분 완료 | 모의투자 OAuth, 일봉/순위/current price read-only 조회와 opt-in smoke test 구현. 계좌/주문 연동은 의도적으로 제외 |
@@ -118,7 +118,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 - 신호 Entity 식별자를 유지해 상태를 update하도록 변경
 - 주문 중복 복합 unique constraint 추가
 - DB 중복 예외를 도메인 거절 결과로 변환
-- Broker 실패 시 주문 상태와 재시도 가능 여부 기록
+- Broker 실패 시 주문 상태와 실패 사유/시각/retryable 기록
 - 주문 application integration test 추가
 
 완료 조건:
@@ -179,6 +179,6 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 1. KRX 공식 휴장일 calendar 동기화 또는 연도별 설정 검증 추가
 2. 15:00 intraday feature 확장(VWAP 이탈 시간, 체결강도, 호가 잔량 등)
-3. Broker 실패 상태와 재시도 정책 구현
+3. BROKER_FAILED 수동 재시도 API와 idempotency 정책 구현
 4. actuator health와 구조화 로그 추가
 5. scheduler 실행 이력과 skip 사유 조회 기능 추가

@@ -5,6 +5,7 @@ import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.order.OrderType;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 
 public record OrderRequestRecord(
@@ -16,6 +17,9 @@ public record OrderRequestRecord(
         BigDecimal limitPrice,
         OrderStatus status,
         String brokerOrderNo,
+        String failureReason,
+        Instant failedAt,
+        boolean retryable,
         String strategyName,
         LocalDate tradeDate
 ) {

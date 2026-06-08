@@ -12,6 +12,7 @@ import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.order.OrderType;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -77,6 +78,31 @@ class OrderRequestDuplicateIntegrationTest {
                     assertThat(order.stockCode()).isEqualTo("005930");
                     assertThat(order.status()).isEqualTo(OrderStatus.ACCEPTED);
                     assertThat(order.brokerOrderNo()).isEqualTo("FAKE-ORDER");
+                });
+    }
+
+    @Test
+    void persistsAndLoadsBrokerFailureDetails() {
+        Instant failedAt = Instant.parse("2026-06-05T06:01:00Z");
+        OrderRequest failed = orderRequest();
+        orderRequestPort.create(failed);
+        failed.markBrokerFailed("broker timeout", failedAt, true);
+
+        orderRequestPort.update(failed);
+
+        assertThat(orderRequestPort.find(
+                "005930",
+                LocalDate.of(2026, 6, 5),
+                OrderStatus.BROKER_FAILED,
+                OrderSide.BUY
+        ))
+                .singleElement()
+                .satisfies(order -> {
+                    assertThat(order.status()).isEqualTo(OrderStatus.BROKER_FAILED);
+                    assertThat(order.brokerOrderNo()).isNull();
+                    assertThat(order.failureReason()).isEqualTo("broker timeout");
+                    assertThat(order.failedAt()).isEqualTo(failedAt);
+                    assertThat(order.retryable()).isTrue();
                 });
     }
 

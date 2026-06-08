@@ -9,6 +9,7 @@ import seokhoon.trade.application.port.out.OrderRequestRecord;
 import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
+import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.risk.RiskManager;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
@@ -16,6 +17,9 @@ import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -81,6 +85,40 @@ class OrderServiceTest {
         assertThat(orderPort.createCalls).isEqualTo(1);
         assertThat(orderPort.updateCalls).isZero();
         assertThat(brokerPort.calls).isZero();
+        assertThat(result.brokerFailed()).isFalse();
+    }
+
+    @Test
+    void persistsBrokerFailureWithoutMarkingSignalAsOrderRequested() {
+        RecordingOrderRequestPort orderPort = new RecordingOrderRequestPort(false);
+        RecordingTradingSignalPort signalPort = new RecordingTradingSignalPort();
+        BrokerPort failingBroker = orderRequest -> {
+            throw new IllegalStateException("broker timeout");
+        };
+        Clock clock = Clock.fixed(Instant.parse("2026-06-05T06:01:00Z"), ZoneOffset.UTC);
+        OrderService service = new OrderService(
+                orderPort,
+                signalPort,
+                failingBroker,
+                new RiskManager(),
+                clock
+        );
+
+        MockOrderResult result = service.request(signal(80), 1, BigDecimal.valueOf(50_000));
+
+        assertThat(result.riskDecision().approved()).isTrue();
+        assertThat(result.brokerFailed()).isTrue();
+        assertThat(result.failureReason()).isEqualTo("broker timeout");
+        assertThat(result.orderRequest().status()).isEqualTo(OrderStatus.BROKER_FAILED);
+        assertThat(result.orderRequest().brokerOrderNo()).isNull();
+        assertThat(result.orderRequest().failedAt())
+                .isEqualTo(Instant.parse("2026-06-05T06:01:00Z"));
+        assertThat(result.orderRequest().retryable()).isTrue();
+        assertThat(result.tradingSignal().status()).isEqualTo(TradingSignalStatus.RISK_APPROVED);
+        assertThat(signalPort.savedStatuses).containsExactly(TradingSignalStatus.RISK_APPROVED);
+        assertThat(orderPort.createCalls).isEqualTo(1);
+        assertThat(orderPort.updateCalls).isEqualTo(1);
+        assertThat(orderPort.lastUpdated.status()).isEqualTo(OrderStatus.BROKER_FAILED);
     }
 
     private static TradingSignal signal(int score) {
@@ -99,6 +137,7 @@ class OrderServiceTest {
         private int createCalls;
         private int updateCalls;
         private boolean failCreateAsDuplicate;
+        private OrderRequest lastUpdated;
 
         private RecordingOrderRequestPort(boolean existing) {
             this.existing = existing;
@@ -116,6 +155,7 @@ class OrderServiceTest {
         @Override
         public OrderRequest update(OrderRequest orderRequest) {
             updateCalls++;
+            lastUpdated = orderRequest;
             return orderRequest;
         }
 

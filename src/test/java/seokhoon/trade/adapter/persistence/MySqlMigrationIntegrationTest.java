@@ -12,6 +12,8 @@ import org.testcontainers.containers.MySQLContainer;
 import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.sql.Date;
+import java.sql.Timestamp;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,14 +43,43 @@ class MySqlMigrationIntegrationTest {
             assertThat(tableExists(jdbcTemplate, "trading_signals")).isTrue();
             assertThat(tableExists(jdbcTemplate, "trading_signal_reasons")).isTrue();
             assertThat(tableExists(jdbcTemplate, "order_requests")).isTrue();
+            assertThat(columnExists(jdbcTemplate, "order_requests", "failure_reason")).isTrue();
+            assertThat(columnExists(jdbcTemplate, "order_requests", "failed_at")).isTrue();
+            assertThat(columnExists(jdbcTemplate, "order_requests", "retryable")).isTrue();
 
             insertTradingSignal(jdbcTemplate);
             assertThatThrownBy(() -> insertTradingSignal(jdbcTemplate))
                     .isInstanceOf(DuplicateKeyException.class);
 
             insertOrderRequest(jdbcTemplate);
+            assertThat(jdbcTemplate.queryForObject(
+                    "select retryable from order_requests where stock_code = '005930'",
+                    Boolean.class
+            )).isFalse();
             assertThatThrownBy(() -> insertOrderRequest(jdbcTemplate))
                     .isInstanceOf(DuplicateKeyException.class);
+
+            Instant failedAt = Instant.parse("2026-06-05T06:01:00Z");
+            jdbcTemplate.update(
+                    """
+                            update order_requests
+                            set status = ?, failure_reason = ?, failed_at = ?, retryable = ?
+                            where stock_code = ?
+                            """,
+                    "BROKER_FAILED",
+                    "broker timeout",
+                    Timestamp.from(failedAt),
+                    true,
+                    "005930"
+            );
+            assertThat(jdbcTemplate.queryForObject(
+                    "select failure_reason from order_requests where stock_code = '005930'",
+                    String.class
+            )).isEqualTo("broker timeout");
+            assertThat(jdbcTemplate.queryForObject(
+                    "select retryable from order_requests where stock_code = '005930'",
+                    Boolean.class
+            )).isTrue();
         }
     }
 
@@ -71,6 +102,26 @@ class MySqlMigrationIntegrationTest {
                         """,
                 Integer.class,
                 tableName
+        );
+        return count != null && count == 1;
+    }
+
+    private static boolean columnExists(
+            JdbcTemplate jdbcTemplate,
+            String tableName,
+            String columnName
+    ) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.columns
+                        where table_schema = database()
+                          and table_name = ?
+                          and column_name = ?
+                        """,
+                Integer.class,
+                tableName,
+                columnName
         );
         return count != null && count == 1;
     }

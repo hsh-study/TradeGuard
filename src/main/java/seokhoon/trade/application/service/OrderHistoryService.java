@@ -41,6 +41,9 @@ public class OrderHistoryService implements LoadOrderRequestsUseCase {
                 record.limitPrice(),
                 record.status(),
                 record.brokerOrderNo(),
+                record.failureReason(),
+                record.failedAt(),
+                record.retryable(),
                 record.strategyName(),
                 record.tradeDate()
         );
