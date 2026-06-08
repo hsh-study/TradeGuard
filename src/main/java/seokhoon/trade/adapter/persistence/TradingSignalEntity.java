@@ -15,6 +15,7 @@ import jakarta.persistence.UniqueConstraint;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
+import seokhoon.trade.application.port.out.TradingSignalRecord;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -90,6 +91,20 @@ public class TradingSignalEntity {
                 score,
                 reasons,
                 riskReasons,
+                status
+        );
+    }
+
+    TradingSignalRecord toRecord() {
+        return new TradingSignalRecord(
+                id,
+                strategyName,
+                stockCode,
+                signalDate,
+                signalType,
+                score,
+                List.copyOf(reasons),
+                List.copyOf(riskReasons),
                 status
         );
     }

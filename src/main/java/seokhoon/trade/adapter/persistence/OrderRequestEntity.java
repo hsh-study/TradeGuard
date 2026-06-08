@@ -13,6 +13,7 @@ import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.order.OrderType;
+import seokhoon.trade.application.port.out.OrderRequestRecord;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -78,6 +79,21 @@ public class OrderRequestEntity {
 
     OrderRequest toDomain() {
         return OrderRequest.restore(
+                stockCode,
+                side,
+                orderType,
+                quantity,
+                limitPrice,
+                status,
+                brokerOrderNo,
+                strategyName,
+                tradeDate
+        );
+    }
+
+    OrderRequestRecord toRecord() {
+        return new OrderRequestRecord(
+                id,
                 stockCode,
                 side,
                 orderType,

@@ -1,20 +1,22 @@
 package seokhoon.trade.adapter.web;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import seokhoon.trade.application.port.in.LoadOrderRequestsUseCase;
 import seokhoon.trade.application.port.in.MockOrderResult;
+import seokhoon.trade.application.port.in.OrderRequestView;
 import seokhoon.trade.application.port.in.RequestStoredMockOrderUseCase;
 import seokhoon.trade.application.port.in.StoredMockOrderCommand;
-import seokhoon.trade.application.service.TradingSignalNotFoundException;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
@@ -41,7 +43,7 @@ public class MockOrderController {
     }
 
     @PostMapping
-    MockOrderResponse request(@RequestBody MockOrderRequest request) {
+    MockOrderResponse request(@Valid @RequestBody MockOrderRequest request) {
         MockOrderResult result = requestStoredMockOrderUseCase.request(new StoredMockOrderCommand(
                 request.strategyName(),
                 request.stockCode(),
@@ -58,26 +60,21 @@ public class MockOrderController {
             @RequestParam(required = false) String stockCode,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradeDate,
-            @RequestParam(required = false) OrderStatus status
+            @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) OrderSide side
     ) {
-        return loadOrderRequestsUseCase.load(stockCode, tradeDate, status).stream()
+        return loadOrderRequestsUseCase.load(stockCode, tradeDate, status, side).stream()
                 .map(OrderResponse::from)
                 .toList();
     }
 
-    @ExceptionHandler(TradingSignalNotFoundException.class)
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    ErrorResponse handleSignalNotFound(TradingSignalNotFoundException exception) {
-        return new ErrorResponse("TRADING_SIGNAL_NOT_FOUND", exception.getMessage());
-    }
-
     public record MockOrderRequest(
-            String strategyName,
-            String stockCode,
-            LocalDate signalDate,
-            SignalType signalType,
-            int quantity,
-            BigDecimal limitPrice
+            @NotBlank String strategyName,
+            @NotBlank String stockCode,
+            @NotNull LocalDate signalDate,
+            @NotNull SignalType signalType,
+            @Min(1) int quantity,
+            @NotNull @DecimalMin(value = "0.0", inclusive = false) BigDecimal limitPrice
     ) {
     }
 
@@ -98,6 +95,7 @@ public class MockOrderController {
     }
 
     public record OrderResponse(
+            Long orderId,
             String stockCode,
             OrderSide side,
             OrderType orderType,
@@ -108,8 +106,9 @@ public class MockOrderController {
             String strategyName,
             LocalDate tradeDate
     ) {
-        static OrderResponse from(OrderRequest orderRequest) {
+        static OrderResponse from(OrderRequestView orderRequest) {
             return new OrderResponse(
+                    orderRequest.orderId(),
                     orderRequest.stockCode(),
                     orderRequest.side(),
                     orderRequest.orderType(),
@@ -121,8 +120,20 @@ public class MockOrderController {
                     orderRequest.tradeDate()
             );
         }
-    }
 
-    public record ErrorResponse(String code, String message) {
+        static OrderResponse from(OrderRequest orderRequest) {
+            return new OrderResponse(
+                    null,
+                    orderRequest.stockCode(),
+                    orderRequest.side(),
+                    orderRequest.orderType(),
+                    orderRequest.quantity(),
+                    orderRequest.limitPrice(),
+                    orderRequest.status(),
+                    orderRequest.brokerOrderNo(),
+                    orderRequest.strategyName(),
+                    orderRequest.tradeDate()
+            );
+        }
     }
 }

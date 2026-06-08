@@ -146,5 +146,10 @@ class StockAnalysisServiceTest {
         ) {
             return Optional.empty();
         }
+
+        @Override
+        public Optional<TradingSignal> findById(long signalId) {
+            return Optional.empty();
+        }
     }
 }

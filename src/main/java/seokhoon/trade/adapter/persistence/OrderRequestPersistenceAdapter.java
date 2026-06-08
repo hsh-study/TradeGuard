@@ -6,6 +6,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
 import seokhoon.trade.application.port.out.OrderRequestPort;
+import seokhoon.trade.application.port.out.OrderRequestRecord;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
@@ -51,7 +52,7 @@ public class OrderRequestPersistenceAdapter implements OrderRequestPort {
     }
 
     @Override
-    public List<OrderRequest> find(String stockCode, LocalDate tradeDate, OrderStatus status) {
+    public List<OrderRequestRecord> find(String stockCode, LocalDate tradeDate, OrderStatus status, OrderSide side) {
         Specification<OrderRequestEntity> specification = (root, query, criteriaBuilder) ->
                 criteriaBuilder.conjunction();
         if (stockCode != null) {
@@ -66,12 +67,16 @@ public class OrderRequestPersistenceAdapter implements OrderRequestPort {
             specification = specification.and((root, query, criteriaBuilder) ->
                     criteriaBuilder.equal(root.get("status"), status));
         }
+        if (side != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.equal(root.get("side"), side));
+        }
         return repository.findAll(
                         specification,
                         Sort.by(Sort.Order.desc("tradeDate"), Sort.Order.desc("id"))
                 )
                 .stream()
-                .map(OrderRequestEntity::toDomain)
+                .map(OrderRequestEntity::toRecord)
                 .toList();
     }
 }

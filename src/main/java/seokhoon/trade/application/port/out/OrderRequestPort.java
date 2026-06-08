@@ -11,5 +11,5 @@ public interface OrderRequestPort {
     OrderRequest create(OrderRequest orderRequest);
     OrderRequest update(OrderRequest orderRequest);
     boolean exists(String stockCode, String strategyName, LocalDate tradeDate, OrderSide side);
-    List<OrderRequest> find(String stockCode, LocalDate tradeDate, OrderStatus status);
+    List<OrderRequestRecord> find(String stockCode, LocalDate tradeDate, OrderStatus status, OrderSide side);
 }

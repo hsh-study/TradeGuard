@@ -3,8 +3,10 @@ package seokhoon.trade.application.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.in.LoadOrderRequestsUseCase;
+import seokhoon.trade.application.port.in.OrderRequestView;
 import seokhoon.trade.application.port.out.OrderRequestPort;
-import seokhoon.trade.domain.order.OrderRequest;
+import seokhoon.trade.application.port.out.OrderRequestRecord;
+import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
 
 import java.time.LocalDate;
@@ -20,10 +22,27 @@ public class OrderHistoryService implements LoadOrderRequestsUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public List<OrderRequest> load(String stockCode, LocalDate tradeDate, OrderStatus status) {
+    public List<OrderRequestView> load(String stockCode, LocalDate tradeDate, OrderStatus status, OrderSide side) {
         if (stockCode != null && stockCode.isBlank()) {
             throw new IllegalArgumentException("stockCode must not be blank");
         }
-        return orderRequestPort.find(stockCode, tradeDate, status);
+        return orderRequestPort.find(stockCode, tradeDate, status, side).stream()
+                .map(OrderHistoryService::toView)
+                .toList();
+    }
+
+    private static OrderRequestView toView(OrderRequestRecord record) {
+        return new OrderRequestView(
+                record.id(),
+                record.stockCode(),
+                record.side(),
+                record.orderType(),
+                record.quantity(),
+                record.limitPrice(),
+                record.status(),
+                record.brokerOrderNo(),
+                record.strategyName(),
+                record.tradeDate()
+        );
     }
 }

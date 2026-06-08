@@ -15,4 +15,6 @@ public interface TradingSignalPort {
             LocalDate signalDate,
             SignalType signalType
     );
+
+    Optional<TradingSignal> findById(long signalId);
 }

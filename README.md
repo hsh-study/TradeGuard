@@ -65,6 +65,14 @@ curl -X POST 'http://localhost:8080/api/analyses/active?asOfDate=2026-06-05'
 
 전체 분석에서는 일봉이 60개 미만인 종목을 `SKIPPED`로 반환하고 나머지 활성 종목 분석을 계속합니다.
 
+거래 신호 조회:
+
+```sh
+curl 'http://localhost:8080/api/signals?stockCode=005930&signalDate=2026-06-05&strategyName=CLOSING_BET&signalType=BUY_CANDIDATE&status=CREATED&minScore=70'
+```
+
+응답에는 `signalId`, 전략명, 종목코드, 신호일, 신호 유형, 점수, 점수 근거, 리스크 거절 사유, 상태가 포함됩니다.
+
 저장된 분석 신호로 모의 주문 요청:
 
 ```sh
@@ -80,13 +88,35 @@ curl -X POST http://localhost:8080/api/mock-orders \
   }'
 ```
 
+`signalId`로 모의 주문 요청:
+
+```sh
+curl -X POST http://localhost:8080/api/signals/1/mock-orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "quantity":1,
+    "limitPrice":50000
+  }'
+```
+
 모의 주문 이력 조회:
 
 ```sh
-curl 'http://localhost:8080/api/mock-orders?stockCode=005930&tradeDate=2026-06-05&status=ACCEPTED'
+curl 'http://localhost:8080/api/mock-orders?stockCode=005930&tradeDate=2026-06-05&status=ACCEPTED&side=BUY'
 ```
 
-모의 주문 API는 DB에 저장된 신호만 사용하며 지정가 주문만 생성합니다. 필터를 생략하면 전체 주문 이력을 최신 거래일 순으로 반환합니다.
+모의 주문 API는 DB에 저장된 신호만 사용하며 지정가 주문만 생성합니다. 주문 이력 응답에는 `orderId`가 포함되며, 필터를 생략하면 전체 주문 이력을 최신 거래일 순으로 반환합니다.
+
+공통 오류 응답:
+
+```json
+{
+  "code": "INVALID_REQUEST",
+  "message": "quantity must be greater than or equal to 1"
+}
+```
+
+저장된 신호가 없으면 `TRADING_SIGNAL_NOT_FOUND`를 반환합니다.
 
 ## 안전 원칙
 

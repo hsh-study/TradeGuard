@@ -71,7 +71,7 @@ class OrderRequestDuplicateIntegrationTest {
                 LocalDate.of(2026, 6, 6)
         ));
 
-        assertThat(orderRequestPort.find("005930", LocalDate.of(2026, 6, 5), OrderStatus.ACCEPTED))
+        assertThat(orderRequestPort.find("005930", LocalDate.of(2026, 6, 5), OrderStatus.ACCEPTED, OrderSide.BUY))
                 .singleElement()
                 .satisfies(order -> {
                     assertThat(order.stockCode()).isEqualTo("005930");

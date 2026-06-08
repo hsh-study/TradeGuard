@@ -2,6 +2,7 @@ package seokhoon.trade.adapter.web;
 
 import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.MockOrderResult;
+import seokhoon.trade.application.port.in.OrderRequestView;
 import seokhoon.trade.application.port.in.RequestStoredMockOrderUseCase;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
@@ -30,7 +31,10 @@ class MockOrderControllerTest {
             OrderRequest orderRequest = acceptedOrder();
             return MockOrderResult.accepted(RiskDecision.approve(), signal, orderRequest);
         };
-        MockOrderController controller = new MockOrderController(requestUseCase, (stockCode, tradeDate, status) -> List.of());
+        MockOrderController controller = new MockOrderController(
+                requestUseCase,
+                (stockCode, tradeDate, status, side) -> List.of()
+        );
 
         MockOrderController.MockOrderResponse response = controller.request(request());
 
@@ -43,29 +47,32 @@ class MockOrderControllerTest {
 
     @Test
     void mapsOrderHistoryAndPassesFilters() {
-        var filters = new Object[3];
+        var filters = new Object[4];
         MockOrderController controller = new MockOrderController(
                 command -> {
                     throw new UnsupportedOperationException();
                 },
-                (stockCode, tradeDate, status) -> {
+                (stockCode, tradeDate, status, side) -> {
                     filters[0] = stockCode;
                     filters[1] = tradeDate;
                     filters[2] = status;
-                    return List.of(acceptedOrder());
+                    filters[3] = side;
+                    return List.of(acceptedOrderView());
                 }
         );
 
         List<MockOrderController.OrderResponse> response = controller.find(
                 "005930",
                 TRADE_DATE,
-                OrderStatus.ACCEPTED
+                OrderStatus.ACCEPTED,
+                OrderSide.BUY
         );
 
-        assertThat(filters).containsExactly("005930", TRADE_DATE, OrderStatus.ACCEPTED);
+        assertThat(filters).containsExactly("005930", TRADE_DATE, OrderStatus.ACCEPTED, OrderSide.BUY);
         assertThat(response)
                 .singleElement()
                 .satisfies(order -> {
+                    assertThat(order.orderId()).isEqualTo(10L);
                     assertThat(order.stockCode()).isEqualTo("005930");
                     assertThat(order.orderType()).isEqualTo(OrderType.LIMIT);
                     assertThat(order.status()).isEqualTo(OrderStatus.ACCEPTED);
@@ -107,5 +114,20 @@ class MockOrderControllerTest {
         orderRequest.markRequested();
         orderRequest.accept("FAKE-ORDER");
         return orderRequest;
+    }
+
+    private static OrderRequestView acceptedOrderView() {
+        return new OrderRequestView(
+                10L,
+                "005930",
+                OrderSide.BUY,
+                OrderType.LIMIT,
+                1,
+                BigDecimal.valueOf(50_000),
+                OrderStatus.ACCEPTED,
+                "FAKE-ORDER",
+                "CLOSING_BET",
+                TRADE_DATE
+        );
     }
 }

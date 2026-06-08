@@ -5,6 +5,7 @@ import seokhoon.trade.application.port.in.MockOrderResult;
 import seokhoon.trade.application.port.out.BrokerPort;
 import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
 import seokhoon.trade.application.port.out.OrderRequestPort;
+import seokhoon.trade.application.port.out.OrderRequestRecord;
 import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
@@ -129,10 +130,11 @@ class OrderServiceTest {
         }
 
         @Override
-        public List<OrderRequest> find(
+        public List<OrderRequestRecord> find(
                 String stockCode,
                 LocalDate tradeDate,
-                seokhoon.trade.domain.order.OrderStatus status
+                seokhoon.trade.domain.order.OrderStatus status,
+                OrderSide side
         ) {
             return List.of();
         }
@@ -154,6 +156,11 @@ class OrderServiceTest {
                 LocalDate signalDate,
                 SignalType signalType
         ) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<TradingSignal> findById(long signalId) {
             return Optional.empty();
         }
     }
