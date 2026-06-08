@@ -9,6 +9,8 @@ import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.NotificationDeliveryResult;
 import seokhoon.trade.application.port.out.NotificationMessage;
 import seokhoon.trade.application.port.out.NotificationPort;
+import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
+import seokhoon.trade.application.port.out.MarketSnapshotPort;
 import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.application.port.out.TradingSignalQueryPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
@@ -19,6 +21,8 @@ import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -30,9 +34,15 @@ import java.util.Set;
 public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesUseCase {
     private static final int MIN_PRE_SCAN_SCORE = 70;
     private static final int MIN_FINAL_SCORE = 75;
+    private static final int BASE_FINAL_REVIEW_SCORE = 50;
+    private static final BigDecimal HIGH_ZONE_RATIO = BigDecimal.valueOf(0.80);
+    private static final BigDecimal LARGE_PULLBACK_RATIO = BigDecimal.valueOf(0.95);
+    private static final BigDecimal MIN_ACCUMULATED_TRADING_VALUE =
+            BigDecimal.valueOf(50_000_000_000L);
 
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final TradingSignalPort tradingSignalPort;
+    private final MarketSnapshotPort marketSnapshotPort;
     private final NotificationPort notificationPort;
     private final Clock clock;
 
@@ -40,19 +50,28 @@ public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesU
     public ClosingBetFinalReviewService(
             TradingSignalQueryPort tradingSignalQueryPort,
             TradingSignalPort tradingSignalPort,
+            MarketSnapshotPort marketSnapshotPort,
             NotificationPort notificationPort
     ) {
-        this(tradingSignalQueryPort, tradingSignalPort, notificationPort, Clock.systemUTC());
+        this(
+                tradingSignalQueryPort,
+                tradingSignalPort,
+                marketSnapshotPort,
+                notificationPort,
+                Clock.systemUTC()
+        );
     }
 
     ClosingBetFinalReviewService(
             TradingSignalQueryPort tradingSignalQueryPort,
             TradingSignalPort tradingSignalPort,
+            MarketSnapshotPort marketSnapshotPort,
             NotificationPort notificationPort,
             Clock clock
     ) {
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.tradingSignalPort = tradingSignalPort;
+        this.marketSnapshotPort = marketSnapshotPort;
         this.notificationPort = notificationPort;
         this.clock = clock;
     }
@@ -74,7 +93,8 @@ public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesU
         ));
         List<FinalReviewSelection> selections = preScanCandidates.stream()
                 .filter(signal -> signal.riskReasons().isEmpty())
-                .map(this::review)
+                .map(this::reviewWithSnapshot)
+                .flatMap(java.util.Optional::stream)
                 .filter(selection -> selection.finalScore() >= MIN_FINAL_SCORE)
                 .sorted(Comparator.comparingInt(FinalReviewSelection::finalScore).reversed()
                         .thenComparing(selection -> selection.preScanSignal().stockCode()))
@@ -105,13 +125,62 @@ public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesU
         );
     }
 
-    private FinalReviewSelection review(TradingSignalRecord preScanSignal) {
+    private java.util.Optional<FinalReviewSelection> reviewWithSnapshot(
+            TradingSignalRecord preScanSignal
+    ) {
+        java.util.Optional<IntradayMarketSnapshot> snapshot;
+        try {
+            snapshot = marketSnapshotPort.getSnapshot(preScanSignal.stockCode());
+        } catch (RuntimeException exception) {
+            return java.util.Optional.empty();
+        }
+        return snapshot.map(value -> review(preScanSignal, value));
+    }
+
+    private FinalReviewSelection review(
+            TradingSignalRecord preScanSignal,
+            IntradayMarketSnapshot snapshot
+    ) {
+        int score = BASE_FINAL_REVIEW_SCORE;
         List<String> reasons = new ArrayList<>();
         reasons.add("FINAL_REVIEW_15_00");
         reasons.add("PRE_SCAN_CONFIRMED");
-        reasons.addAll(preScanSignal.reasons());
-        // TODO: Replace this structural score with real 15:00 intraday snapshots when available.
-        return new FinalReviewSelection(preScanSignal, preScanSignal.score(), reasons);
+
+        if (snapshot.vwap() != null) {
+            if (snapshot.currentPrice().compareTo(snapshot.vwap()) >= 0) {
+                score += 15;
+                reasons.add("ABOVE_VWAP");
+            } else {
+                score -= 20;
+                reasons.add("BELOW_VWAP");
+            }
+        }
+
+        BigDecimal highPosition = highPosition(snapshot);
+        if (highPosition.compareTo(HIGH_ZONE_RATIO) >= 0) {
+            score += 15;
+            reasons.add("NEAR_INTRADAY_HIGH");
+        }
+        if (highPosition.compareTo(LARGE_PULLBACK_RATIO) <= 0) {
+            score -= 20;
+            reasons.add("PULLED_BACK_FROM_INTRADAY_HIGH");
+        }
+        if (snapshot.accumulatedTradingValue().compareTo(MIN_ACCUMULATED_TRADING_VALUE) >= 0) {
+            score += 10;
+            reasons.add("ACCUMULATED_TRADING_VALUE_OVER_50B_KRW");
+        }
+        return new FinalReviewSelection(preScanSignal, score, reasons);
+    }
+
+    private static BigDecimal highPosition(IntradayMarketSnapshot snapshot) {
+        if (snapshot.intradayHigh().signum() <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return snapshot.currentPrice().divide(
+                snapshot.intradayHigh(),
+                4,
+                RoundingMode.HALF_UP
+        );
     }
 
     private List<ClosingBetFinalReviewCandidate> restoreSavedCandidates(

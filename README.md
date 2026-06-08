@@ -24,6 +24,8 @@ DB 스키마는 Flyway migration으로 생성합니다. Hibernate는 기본적�
 
 KIS 모의투자 일봉 조회에는 `KIS_APP_KEY`, `KIS_APP_SECRET`이 필요합니다. 100건을 초과하는 기간은 자동으로 분할 조회합니다. 구현은 모의투자 호스트만 허용하며 실제 주문 API를 호출하지 않습니다.
 
+14:00 시장 순위와 15:00 현재가 snapshot은 기본적으로 fake adapter를 사용합니다. KIS 읽기 전용 조회로 전환하려면 `MARKET_DATA_REALTIME_PROVIDER=kis`와 `KIS_APP_KEY`, `KIS_APP_SECRET`을 설정합니다. 이 전환은 순위/현재가 조회만 활성화하며 주문 endpoint는 호출하지 않습니다.
+
 ## 테스트
 
 ```sh
@@ -75,7 +77,7 @@ curl -X POST 'http://localhost:8080/api/analyses/active?asOfDate=2026-06-05'
 curl -X POST 'http://localhost:8080/api/scans/closing-bet?tradeDate=2026-06-05&limit=5'
 ```
 
-스캔은 관심종목 등록 여부와 무관한 시장 순위 후보군에서 `CLOSING_BET_PRE_SCAN` 신호를 저장합니다. 자동 주문은 생성하지 않으며, 평일 14:00 Asia/Seoul 기준으로도 실행됩니다. 휴장일 처리는 아직 TODO입니다.
+스캔은 관심종목 등록 여부와 무관한 시장 순위 후보군에서 `CLOSING_BET_PRE_SCAN` 신호를 저장합니다. 기본은 fake 순위 데이터이며 `MARKET_DATA_REALTIME_PROVIDER=kis` 설정 시 KIS 읽기 전용 순위 API를 사용합니다. 자동 주문은 생성하지 않으며, 평일 14:00 Asia/Seoul 기준으로도 실행됩니다. 휴장일 처리는 아직 TODO입니다.
 
 15:00 종가베팅 최종 후보 수동 리뷰:
 
@@ -83,7 +85,7 @@ curl -X POST 'http://localhost:8080/api/scans/closing-bet?tradeDate=2026-06-05&l
 curl -X POST 'http://localhost:8080/api/reviews/closing-bet?tradeDate=2026-06-05&limit=5'
 ```
 
-리뷰는 같은 거래일의 `CLOSING_BET_PRE_SCAN` 신호 중 리스크 사유가 없고 최종 점수 75점 이상인 후보를 `CLOSING_BET` 신호로 저장합니다. 자동 주문은 생성하지 않으며, 평일 15:00 Asia/Seoul 기준으로도 실행됩니다.
+리뷰는 같은 거래일의 `CLOSING_BET_PRE_SCAN` 신호 중 리스크 사유가 없고 snapshot 기반 최종 점수 75점 이상인 후보를 `CLOSING_BET` 신호로 저장합니다. VWAP 상회, 당일 고가권 유지, 누적 거래대금 500억 이상을 가점하고 VWAP 하회나 고가 대비 큰 이탈을 감점합니다. 자동 주문은 생성하지 않으며, 평일 15:00 Asia/Seoul 기준으로도 실행됩니다.
 
 거래 신호 조회:
 

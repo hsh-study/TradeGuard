@@ -1,5 +1,6 @@
 package seokhoon.trade.adapter.marketdata;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.MarketRankingPort;
 import seokhoon.trade.application.port.out.MarketRankingStock;
@@ -10,6 +11,11 @@ import java.util.Comparator;
 import java.util.List;
 
 @Component
+@ConditionalOnProperty(
+        name = "tradeguard.market-data.realtime-provider",
+        havingValue = "fake",
+        matchIfMissing = true
+)
 public class FakeMarketRankingAdapter implements MarketRankingPort {
     private static final List<MarketRankingStock> STOCKS = List.of(
             stock("005930", "삼성전자", Market.KOSPI, "75000", "4.2", "52000000000", 8_000_000),

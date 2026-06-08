@@ -62,7 +62,7 @@ domain  -X-> Spring, JPA, Web, Broker SDK
 | `adapter.persistence` | JPA 매핑과 저장소 구현 | outbound port, domain |
 | `adapter.broker` | 모의 브로커 구현 | outbound port, domain |
 | `adapter.broker.kis` | KIS 연동 경계와 스켈레톤 | outbound port, domain |
-| `adapter.marketdata.kis` | KIS 모의투자 OAuth와 읽기 전용 일봉 조회 | outbound port, domain |
+| `adapter.marketdata.kis` | KIS 모의투자 OAuth, 읽기 전용 일봉/순위/current price 조회 | outbound port, domain |
 | `adapter.notification` | Discord Webhook 등 알림 전송 경계 | outbound port |
 | `config` | 순수 도메인 객체의 Spring Bean 조립 | application, domain |
 
@@ -139,12 +139,15 @@ MarketRankingPort
   -> NotificationPort
 
 TradingSignal 조회(CLOSING_BET_PRE_SCAN)
+  -> MarketSnapshotPort
   -> ClosingBetFinalReviewService
   -> TradingSignal 저장(CLOSING_BET)
   -> NotificationPort
 ```
 
-`AnalyzeStockUseCase`는 기준일까지 최근 1년 일봉을 조회하고, 최소 60개가 있으면 지표와 종가베팅 신호를 계산해 저장한다. `ClosingBetCandidateScanner`는 시장 순위 후보군에서 14:00 예비 후보를 선별해 `CLOSING_BET_PRE_SCAN` 신호로 저장한다. `ClosingBetFinalReviewService`는 15:00에 예비 신호를 다시 조회해 최종 후보를 `CLOSING_BET` 신호로 승격 저장한다. 알림 흐름은 Discord Webhook을 사용할 수 있지만 주문을 실행하지 않는다.
+`AnalyzeStockUseCase`는 기준일까지 최근 1년 일봉을 조회하고, 최소 60개가 있으면 지표와 종가베팅 신호를 계산해 저장한다. `ClosingBetCandidateScanner`는 시장 순위 후보군에서 14:00 예비 후보를 선별해 `CLOSING_BET_PRE_SCAN` 신호로 저장한다. `ClosingBetFinalReviewService`는 15:00에 예비 신호와 intraday snapshot을 다시 조회해 최종 후보를 `CLOSING_BET` 신호로 승격 저장한다. 알림 흐름은 Discord Webhook을 사용할 수 있지만 주문을 실행하지 않는다.
+
+`MarketRankingPort`와 `MarketSnapshotPort`는 기본 fake adapter를 사용한다. `tradeguard.market-data.realtime-provider=kis`일 때만 KIS 읽기 전용 순위/current price adapter가 Bean으로 등록된다.
 
 ### KIS 일봉 수집
 
@@ -159,6 +162,8 @@ ImportDailyPricesUseCase
 ```
 
 KIS adapter는 모의투자 호스트만 허용한다. OAuth 토큰은 메모리에 캐시하며, 만료 1분 전부터 새 토큰을 발급한다. 기간별 시세 API는 한 번에 최대 100건을 반환하므로 응답이 잘린 경우 날짜 범위를 나눠 다시 호출해야 한다.
+
+KIS 시장 순위와 current price adapter도 같은 인증 정보를 사용하지만 주문 endpoint를 호출하지 않는다. 현재 사용 경로는 국내주식 거래량순위, 등락률순위, 주식현재가 시세 조회뿐이다.
 
 ## 6. 영속성 설계
 
@@ -198,8 +203,8 @@ KIS adapter는 모의투자 호스트만 허용한다. OAuth 토큰은 메모리
 ## 9. 알려진 아키텍처 부채
 
 - 일봉은 KIS 수집과 저장 유스케이스가 있으나 REST API와 다중 구간 pagination이 없다.
-- 실제 KIS 시장 순위 adapter와 휴장일 scheduler skip 정책이 없다.
-- 15:00 최종 리뷰는 현재 예비 스캔 점수 기반 구조이며, 실시간 15:00 snapshot 재평가 데이터가 없다.
+- KIS 시장 순위/current price adapter는 단위 매핑 테스트가 있으며, 실제 자격증명 기반 smoke test는 일봉 조회에만 있다.
+- 휴장일 scheduler skip 정책이 없다.
 - 도메인 상태 전이에 대한 허용 순서 검증이 없다.
 - 관측성 구성이 없다.
 
