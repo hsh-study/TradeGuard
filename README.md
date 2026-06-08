@@ -69,6 +69,14 @@ curl -X POST 'http://localhost:8080/api/analyses/active?asOfDate=2026-06-05'
 
 전체 분석에서는 일봉이 60개 미만인 종목을 `SKIPPED`로 반환하고 나머지 활성 종목 분석을 계속합니다.
 
+14:00 종가베팅 예비 후보 수동 스캔:
+
+```sh
+curl -X POST 'http://localhost:8080/api/scans/closing-bet?tradeDate=2026-06-05&limit=5'
+```
+
+스캔은 관심종목 등록 여부와 무관한 시장 순위 후보군에서 `CLOSING_BET_PRE_SCAN` 신호를 저장합니다. 자동 주문은 생성하지 않으며, 평일 14:00 Asia/Seoul 기준으로도 실행됩니다. 휴장일 처리는 아직 TODO입니다.
+
 거래 신호 조회:
 
 ```sh
