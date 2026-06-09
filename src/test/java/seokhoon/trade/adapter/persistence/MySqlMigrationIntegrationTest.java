@@ -43,6 +43,14 @@ class MySqlMigrationIntegrationTest {
             assertThat(tableExists(jdbcTemplate, "trading_signals")).isTrue();
             assertThat(tableExists(jdbcTemplate, "trading_signal_reasons")).isTrue();
             assertThat(tableExists(jdbcTemplate, "order_requests")).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "trading_signal_status_histories"
+            )).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "order_request_status_histories"
+            )).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "failure_reason")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "failed_at")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "retryable")).isTrue();
@@ -56,6 +64,26 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "order_requests",
                     "idx_order_requests_signal_id"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "trading_signal_status_histories",
+                    "idx_signal_status_history_target_created"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "order_request_status_histories",
+                    "idx_order_status_history_target_created"
+            )).isTrue();
+            assertThat(foreignKeyExists(
+                    jdbcTemplate,
+                    "trading_signal_status_histories",
+                    "fk_signal_status_history_signal"
+            )).isTrue();
+            assertThat(foreignKeyExists(
+                    jdbcTemplate,
+                    "order_request_status_histories",
+                    "fk_order_status_history_order"
             )).isTrue();
             assertThat(foreignKeyExists(
                     jdbcTemplate,

@@ -7,6 +7,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderRequestRecord;
+import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
+import seokhoon.trade.application.port.out.SignalStatusHistoryPort;
 import seokhoon.trade.application.port.in.RetryBrokerFailedOrderUseCase;
 import seokhoon.trade.application.port.in.RequestSignalMockOrderUseCase;
 import seokhoon.trade.application.port.in.RequestStoredMockOrderUseCase;
@@ -51,8 +53,22 @@ class OrderRequestDuplicateIntegrationTest {
     @Autowired
     private TradingSignalJpaRepository tradingSignalRepository;
 
+    @Autowired
+    private OrderRequestStatusHistoryJpaRepository orderHistoryRepository;
+
+    @Autowired
+    private TradingSignalStatusHistoryJpaRepository signalHistoryRepository;
+
+    @Autowired
+    private OrderStatusHistoryPort orderStatusHistoryPort;
+
+    @Autowired
+    private SignalStatusHistoryPort signalStatusHistoryPort;
+
     @BeforeEach
     void clearOrders() {
+        orderHistoryRepository.deleteAll();
+        signalHistoryRepository.deleteAll();
         repository.deleteAll();
         tradingSignalRepository.deleteAll();
     }
@@ -223,6 +239,9 @@ class OrderRequestDuplicateIntegrationTest {
         assertThat(result.orderId()).isEqualTo(orderId);
         assertThat(result.orderRequest().status()).isEqualTo(OrderStatus.ACCEPTED);
         assertThat(result.orderRequest().brokerOrderNo()).startsWith("FAKE-");
+        assertThat(orderStatusHistoryPort.findByOrderRequestId(orderId))
+                .extracting(history -> history.toStatus())
+                .containsExactly(OrderStatus.RETRY_REQUESTED, OrderStatus.ACCEPTED);
         assertThat(orderRequestPort.findById(orderId))
                 .hasValueSatisfying(order -> {
                     assertThat(order.status()).isEqualTo(OrderStatus.ACCEPTED);
@@ -250,6 +269,19 @@ class OrderRequestDuplicateIntegrationTest {
                 .singleElement()
                 .extracting(OrderRequestEntity::signalId)
                 .isEqualTo(signalId);
+        long orderId = repository.findAll().getFirst().id();
+        assertThat(signalStatusHistoryPort.findByTradingSignalId(signalId))
+                .extracting(history -> history.toStatus())
+                .containsExactly(
+                        TradingSignalStatus.RISK_APPROVED,
+                        TradingSignalStatus.ORDER_REQUESTED
+                );
+        assertThat(orderStatusHistoryPort.findByOrderRequestId(orderId))
+                .singleElement()
+                .satisfies(history -> {
+                    assertThat(history.fromStatus()).isEqualTo(OrderStatus.CREATED);
+                    assertThat(history.toStatus()).isEqualTo(OrderStatus.ACCEPTED);
+                });
     }
 
     @Test

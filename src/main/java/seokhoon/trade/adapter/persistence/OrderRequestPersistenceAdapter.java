@@ -66,6 +66,18 @@ public class OrderRequestPersistenceAdapter implements OrderRequestPort {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Optional<Long> findId(OrderRequest orderRequest) {
+        return repository.findByStockCodeAndStrategyNameAndTradeDateAndSide(
+                        orderRequest.stockCode(),
+                        orderRequest.strategyName(),
+                        orderRequest.tradeDate(),
+                        orderRequest.side()
+                )
+                .map(OrderRequestEntity::id);
+    }
+
+    @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean claimRetry(long orderId) {
         return claimRetry(orderId, Instant.now());

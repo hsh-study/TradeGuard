@@ -5,6 +5,9 @@ import seokhoon.trade.application.port.in.BrokerOrderRetryResult;
 import seokhoon.trade.application.port.out.BrokerPort;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderRequestRecord;
+import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
+import seokhoon.trade.application.port.out.OrderStatusHistoryRecord;
+import seokhoon.trade.application.port.out.SignalStatusHistoryPort;
 import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
@@ -12,6 +15,7 @@ import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.order.OrderType;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
+import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -31,7 +35,8 @@ class BrokerFailedOrderRetryServiceTest {
     void retriesBrokerFailedOrderAndUpdatesSameOrderAsAccepted() {
         RecordingOrderPort orderPort = new RecordingOrderPort(failedOrder(true));
         RecordingBrokerPort brokerPort = new RecordingBrokerPort(false);
-        BrokerFailedOrderRetryService service = service(orderPort, brokerPort);
+        RecordingOrderHistoryPort historyPort = new RecordingOrderHistoryPort();
+        BrokerFailedOrderRetryService service = service(orderPort, brokerPort, historyPort);
 
         BrokerOrderRetryResult result = service.retry(ORDER_ID);
 
@@ -46,6 +51,21 @@ class BrokerFailedOrderRetryServiceTest {
         assertThat(orderPort.updateByIdCalls).isEqualTo(1);
         assertThat(orderPort.updatedOrderId).isEqualTo(ORDER_ID);
         assertThat(brokerPort.calls).isEqualTo(1);
+        assertThat(historyPort.records)
+                .extracting(
+                        OrderStatusHistoryRecord::fromStatus,
+                        OrderStatusHistoryRecord::toStatus
+                )
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                OrderStatus.BROKER_FAILED,
+                                OrderStatus.RETRY_REQUESTED
+                        ),
+                        org.assertj.core.groups.Tuple.tuple(
+                                OrderStatus.RETRY_REQUESTED,
+                                OrderStatus.ACCEPTED
+                        )
+                );
     }
 
     @Test
@@ -72,10 +92,13 @@ class BrokerFailedOrderRetryServiceTest {
         RecordingOrderPort orderPort = new RecordingOrderPort(failedOrder(true, 21L));
         RecordingBrokerPort brokerPort = new RecordingBrokerPort(true);
         RecordingSignalPort signalPort = new RecordingSignalPort(signal());
+        RecordingOrderHistoryPort historyPort = new RecordingOrderHistoryPort();
         BrokerFailedOrderRetryService service = new BrokerFailedOrderRetryService(
                 orderPort,
                 brokerPort,
                 signalPort,
+                historyPort,
+                SignalStatusHistoryPort.noop(),
                 Clock.fixed(Instant.parse("2026-06-05T06:10:00Z"), ZoneOffset.UTC)
         );
 
@@ -92,6 +115,21 @@ class BrokerFailedOrderRetryServiceTest {
         assertThat(brokerPort.calls).isEqualTo(1);
         assertThat(signalPort.requestedSignalId).isZero();
         assertThat(signalPort.savedSignal).isNull();
+        assertThat(historyPort.records)
+                .extracting(
+                        OrderStatusHistoryRecord::fromStatus,
+                        OrderStatusHistoryRecord::toStatus
+                )
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(
+                                OrderStatus.BROKER_FAILED,
+                                OrderStatus.RETRY_REQUESTED
+                        ),
+                        org.assertj.core.groups.Tuple.tuple(
+                                OrderStatus.RETRY_REQUESTED,
+                                OrderStatus.BROKER_FAILED
+                        )
+                );
     }
 
     @Test
@@ -151,10 +189,20 @@ class BrokerFailedOrderRetryServiceTest {
             RecordingOrderPort orderPort,
             BrokerPort brokerPort
     ) {
+        return service(orderPort, brokerPort, new RecordingOrderHistoryPort());
+    }
+
+    private static BrokerFailedOrderRetryService service(
+            RecordingOrderPort orderPort,
+            BrokerPort brokerPort,
+            OrderStatusHistoryPort historyPort
+    ) {
         return new BrokerFailedOrderRetryService(
                 orderPort,
                 brokerPort,
                 emptySignalPort(),
+                historyPort,
+                SignalStatusHistoryPort.noop(),
                 Clock.fixed(Instant.parse("2026-06-05T06:10:00Z"), ZoneOffset.UTC)
         );
     }
@@ -343,6 +391,34 @@ class BrokerFailedOrderRetryServiceTest {
         public Optional<TradingSignal> findById(long signalId) {
             requestedSignalId = signalId;
             return Optional.of(signal);
+        }
+    }
+
+    private static class RecordingOrderHistoryPort implements OrderStatusHistoryPort {
+        private final java.util.ArrayList<OrderStatusHistoryRecord> records =
+                new java.util.ArrayList<>();
+
+        @Override
+        public void save(
+                long orderRequestId,
+                OrderStatus fromStatus,
+                OrderStatus toStatus,
+                String reason,
+                Instant createdAt
+        ) {
+            records.add(new OrderStatusHistoryRecord(
+                    (long) records.size() + 1,
+                    orderRequestId,
+                    fromStatus,
+                    toStatus,
+                    reason,
+                    createdAt
+            ));
+        }
+
+        @Override
+        public List<OrderStatusHistoryRecord> findByOrderRequestId(long orderRequestId) {
+            return records;
         }
     }
 }

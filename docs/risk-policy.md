@@ -124,6 +124,23 @@ RETRY_REQUESTED(stuck)
 
 수동 재시도 성공 시 `signal_id`가 있으면 연결된 TradingSignal을 `ORDER_REQUESTED`로 변경한다. 재시도 실패 시 신호는 변경하지 않는다. V3 이전 주문처럼 `signal_id`가 null이면 신호 동기화를 건너뛰되 주문 재시도는 실패시키지 않는다.
 
+### 상태 변경 감사 이력
+
+`trading_signal_status_histories`와 `order_request_status_histories`는 주요 상태 전이의 이전 상태, 이후 상태, 이유, 발생 시각을 대상 ID와 함께 저장한다. 도메인 모델에는 persistence ID나 JPA 관계를 추가하지 않고 application service가 outbound history port를 호출한다.
+
+감사 대상 전이는 다음과 같다.
+
+- TradingSignal `CREATED -> RISK_APPROVED`: 리스크 정책 승인
+- TradingSignal `RISK_APPROVED -> ORDER_REQUESTED`: 최초 주문 또는 수동 재시도 Broker 승인
+- OrderRequest `CREATED -> ACCEPTED`: 최초 모의 주문 Broker 승인
+- OrderRequest `CREATED -> BROKER_FAILED`: 최초 Broker 호출 실패
+- OrderRequest `BROKER_FAILED -> RETRY_REQUESTED`: 수동 재시도 선점
+- OrderRequest `RETRY_REQUESTED -> ACCEPTED`: 수동 재시도 성공
+- OrderRequest `RETRY_REQUESTED -> BROKER_FAILED`: 수동 재시도 실패
+- OrderRequest `RETRY_REQUESTED -> BROKER_FAILED`: stuck retry 수동 복구
+
+조회 결과는 `created_at`, `id` 오름차순으로 반환한다. `reason`에는 정책 승인, 수동 재시도 요청, Broker 실패 사유 또는 stuck 복구 사유를 기록하며 API Key, App Secret, 계좌번호 같은 비밀정보는 기록하지 않는다.
+
 거절 시:
 
 ```text

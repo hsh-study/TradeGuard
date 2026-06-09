@@ -93,6 +93,10 @@ public class OrderRequestEntity {
         return status;
     }
 
+    Long id() {
+        return id;
+    }
+
     Long signalId() {
         return signalId;
     }

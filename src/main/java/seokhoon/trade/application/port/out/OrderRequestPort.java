@@ -14,6 +14,9 @@ public interface OrderRequestPort {
     OrderRequest update(OrderRequest orderRequest);
     OrderRequest updateById(long orderId, OrderRequest orderRequest);
     Optional<OrderRequest> findById(long orderId);
+    default Optional<Long> findId(OrderRequest orderRequest) {
+        return Optional.empty();
+    }
     boolean claimRetry(long orderId);
     default boolean claimRetry(long orderId, Instant retryRequestedAt) {
         return claimRetry(orderId);

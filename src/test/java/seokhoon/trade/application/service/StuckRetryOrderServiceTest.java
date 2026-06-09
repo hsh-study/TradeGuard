@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.OrderRequestView;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderRequestRecord;
+import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
+import seokhoon.trade.application.port.out.OrderStatusHistoryRecord;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
@@ -43,7 +45,8 @@ class StuckRetryOrderServiceTest {
     void recoversStuckRetryAsBrokerFailedAndKeepsItRetryable() {
         OrderRequest order = retryRequestedOrder(NOW.minusSeconds(301));
         RecordingOrderPort port = new RecordingOrderPort(order);
-        StuckRetryOrderService service = new StuckRetryOrderService(port);
+        RecordingHistoryPort historyPort = new RecordingHistoryPort();
+        StuckRetryOrderService service = new StuckRetryOrderService(port, historyPort);
 
         OrderRequestView result = service.recover(
                 10L,
@@ -59,6 +62,13 @@ class StuckRetryOrderServiceTest {
         assertThat(result.failureReason())
                 .isEqualTo("Retry request stuck recovered: application restarted during retry");
         assertThat(port.recoveredOrderId).isEqualTo(10L);
+        assertThat(historyPort.records)
+                .singleElement()
+                .satisfies(history -> {
+                    assertThat(history.fromStatus()).isEqualTo(OrderStatus.RETRY_REQUESTED);
+                    assertThat(history.toStatus()).isEqualTo(OrderStatus.BROKER_FAILED);
+                    assertThat(history.reason()).startsWith("Retry request stuck recovered:");
+                });
     }
 
     @Test
@@ -226,6 +236,33 @@ class StuckRetryOrderServiceTest {
         ) {
             recoveredOrderId = orderId;
             return recoveryResult;
+        }
+    }
+
+    private static class RecordingHistoryPort implements OrderStatusHistoryPort {
+        private final List<OrderStatusHistoryRecord> records = new ArrayList<>();
+
+        @Override
+        public void save(
+                long orderRequestId,
+                OrderStatus fromStatus,
+                OrderStatus toStatus,
+                String reason,
+                Instant createdAt
+        ) {
+            records.add(new OrderStatusHistoryRecord(
+                    (long) records.size() + 1,
+                    orderRequestId,
+                    fromStatus,
+                    toStatus,
+                    reason,
+                    createdAt
+            ));
+        }
+
+        @Override
+        public List<OrderStatusHistoryRecord> findByOrderRequestId(long orderRequestId) {
+            return records;
         }
     }
 }

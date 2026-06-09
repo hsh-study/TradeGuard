@@ -1,5 +1,6 @@
 package seokhoon.trade.application.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.in.LoadStuckRetryOrdersUseCase;
@@ -7,6 +8,7 @@ import seokhoon.trade.application.port.in.OrderRequestView;
 import seokhoon.trade.application.port.in.RecoverStuckRetryOrderUseCase;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderRequestRecord;
+import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderStatus;
 
@@ -18,9 +20,19 @@ import java.util.List;
 public class StuckRetryOrderService
         implements LoadStuckRetryOrdersUseCase, RecoverStuckRetryOrderUseCase {
     private final OrderRequestPort orderRequestPort;
+    private final OrderStatusHistoryPort orderHistoryPort;
 
-    public StuckRetryOrderService(OrderRequestPort orderRequestPort) {
+    @Autowired
+    public StuckRetryOrderService(
+            OrderRequestPort orderRequestPort,
+            OrderStatusHistoryPort orderHistoryPort
+    ) {
         this.orderRequestPort = orderRequestPort;
+        this.orderHistoryPort = orderHistoryPort;
+    }
+
+    StuckRetryOrderService(OrderRequestPort orderRequestPort) {
+        this(orderRequestPort, OrderStatusHistoryPort.noop());
     }
 
     @Override
@@ -60,6 +72,13 @@ public class StuckRetryOrderService
                     "Order retry is no longer recoverable"
             );
         }
+        orderHistoryPort.save(
+                orderId,
+                OrderStatus.RETRY_REQUESTED,
+                OrderStatus.BROKER_FAILED,
+                orderRequest.failureReason(),
+                referenceTime
+        );
         return toView(orderId, orderRequest);
     }
 
