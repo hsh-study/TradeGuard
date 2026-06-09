@@ -81,6 +81,17 @@ public class OrderRequestPersistenceAdapter implements OrderRequestPort {
 
     @Override
     public List<OrderRequestRecord> find(String stockCode, LocalDate tradeDate, OrderStatus status, OrderSide side) {
+        return find(stockCode, tradeDate, status, side, null);
+    }
+
+    @Override
+    public List<OrderRequestRecord> find(
+            String stockCode,
+            LocalDate tradeDate,
+            OrderStatus status,
+            OrderSide side,
+            Long signalId
+    ) {
         Specification<OrderRequestEntity> specification = (root, query, criteriaBuilder) ->
                 criteriaBuilder.conjunction();
         if (stockCode != null) {
@@ -98,6 +109,10 @@ public class OrderRequestPersistenceAdapter implements OrderRequestPort {
         if (side != null) {
             specification = specification.and((root, query, criteriaBuilder) ->
                     criteriaBuilder.equal(root.get("side"), side));
+        }
+        if (signalId != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                    criteriaBuilder.equal(root.get("signalId"), signalId));
         }
         return repository.findAll(
                         specification,

@@ -21,6 +21,7 @@ public record OrderRequestView(
         Instant failedAt,
         boolean retryable,
         String strategyName,
-        LocalDate tradeDate
+        LocalDate tradeDate,
+        Long signalId
 ) {
 }

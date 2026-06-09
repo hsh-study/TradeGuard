@@ -79,11 +79,21 @@ public class MockOrderController {
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradeDate,
             @RequestParam(required = false) OrderStatus status,
-            @RequestParam(required = false) OrderSide side
+            @RequestParam(required = false) OrderSide side,
+            @RequestParam(required = false) Long signalId
     ) {
-        return loadOrderRequestsUseCase.load(stockCode, tradeDate, status, side).stream()
+        return loadOrderRequestsUseCase.load(stockCode, tradeDate, status, side, signalId).stream()
                 .map(OrderResponse::from)
                 .toList();
+    }
+
+    List<OrderResponse> find(
+            String stockCode,
+            LocalDate tradeDate,
+            OrderStatus status,
+            OrderSide side
+    ) {
+        return find(stockCode, tradeDate, status, side, null);
     }
 
     @PostMapping("/{orderId}/retry")
@@ -134,7 +144,8 @@ public class MockOrderController {
             Instant failedAt,
             boolean retryable,
             String strategyName,
-            LocalDate tradeDate
+            LocalDate tradeDate,
+            Long signalId
     ) {
         static OrderResponse from(OrderRequestView orderRequest) {
             return new OrderResponse(
@@ -150,7 +161,8 @@ public class MockOrderController {
                     orderRequest.failedAt(),
                     orderRequest.retryable(),
                     orderRequest.strategyName(),
-                    orderRequest.tradeDate()
+                    orderRequest.tradeDate(),
+                    orderRequest.signalId()
             );
         }
 
@@ -168,7 +180,8 @@ public class MockOrderController {
                     orderRequest.failedAt(),
                     orderRequest.retryable(),
                     orderRequest.strategyName(),
-                    orderRequest.tradeDate()
+                    orderRequest.tradeDate(),
+                    orderRequest.signalId()
             );
         }
     }
@@ -180,7 +193,8 @@ public class MockOrderController {
             String failureReason,
             Instant failedAt,
             boolean retryable,
-            String brokerOrderNo
+            String brokerOrderNo,
+            Long signalId
     ) {
         static RetryMockOrderResponse from(BrokerOrderRetryResult result) {
             OrderRequest orderRequest = result.orderRequest();
@@ -191,7 +205,8 @@ public class MockOrderController {
                     orderRequest.failureReason(),
                     orderRequest.failedAt(),
                     orderRequest.retryable(),
-                    orderRequest.brokerOrderNo()
+                    orderRequest.brokerOrderNo(),
+                    orderRequest.signalId()
             );
         }
     }

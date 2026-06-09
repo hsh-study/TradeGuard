@@ -58,6 +58,8 @@ public class OrderRequestEntity {
     private String strategyName;
     @Column(name = "trade_date", nullable = false)
     private LocalDate tradeDate;
+    @Column(name = "signal_id")
+    private Long signalId;
 
     protected OrderRequestEntity() {
     }
@@ -81,10 +83,15 @@ public class OrderRequestEntity {
         retryable = orderRequest.retryable();
         strategyName = orderRequest.strategyName();
         tradeDate = orderRequest.tradeDate();
+        signalId = orderRequest.signalId();
     }
 
     OrderStatus status() {
         return status;
+    }
+
+    Long signalId() {
+        return signalId;
     }
 
     OrderRequest toDomain() {
@@ -100,7 +107,8 @@ public class OrderRequestEntity {
                 failedAt,
                 retryable,
                 strategyName,
-                tradeDate
+                tradeDate,
+                signalId
         );
     }
 
@@ -118,7 +126,8 @@ public class OrderRequestEntity {
                 failedAt,
                 retryable,
                 strategyName,
-                tradeDate
+                tradeDate,
+                signalId
         );
     }
 }

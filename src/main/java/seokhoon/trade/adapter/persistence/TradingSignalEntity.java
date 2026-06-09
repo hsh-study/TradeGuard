@@ -78,6 +78,10 @@ public class TradingSignalEntity {
         return status;
     }
 
+    Long id() {
+        return id;
+    }
+
     List<String> riskReasons() {
         return List.copyOf(riskReasons);
     }

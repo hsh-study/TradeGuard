@@ -24,6 +24,7 @@ public class TradingSignalPersistenceAdapter implements TradingSignalPort, Tradi
     }
 
     @Override
+    @Transactional
     public TradingSignal save(TradingSignal tradingSignal) {
         TradingSignalEntity entity = repository.findByStrategyNameAndStockCodeAndSignalDateAndSignalType(
                         tradingSignal.strategyName(),
@@ -59,6 +60,23 @@ public class TradingSignalPersistenceAdapter implements TradingSignalPort, Tradi
     public Optional<TradingSignal> findById(long signalId) {
         return repository.findById(signalId)
                 .map(TradingSignalEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Long> findId(
+            String strategyName,
+            String stockCode,
+            LocalDate signalDate,
+            SignalType signalType
+    ) {
+        return repository.findByStrategyNameAndStockCodeAndSignalDateAndSignalType(
+                        strategyName,
+                        stockCode,
+                        signalDate,
+                        signalType
+                )
+                .map(TradingSignalEntity::id);
     }
 
     @Override

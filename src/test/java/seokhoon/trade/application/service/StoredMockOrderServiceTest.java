@@ -33,6 +33,7 @@ class StoredMockOrderServiceTest {
         assertThat(signalPort.requestedStrategyName).isEqualTo("CLOSING_BET");
         assertThat(signalPort.requestedStockCode).isEqualTo("005930");
         assertThat(orderUseCase.signal).isSameAs(signal);
+        assertThat(orderUseCase.signalId).isEqualTo(7L);
         assertThat(orderUseCase.quantity).isEqualTo(1);
         assertThat(orderUseCase.limitPrice).isEqualByComparingTo("50000");
         assertThat(result.riskDecision().approved()).isTrue();
@@ -104,16 +105,38 @@ class StoredMockOrderServiceTest {
         public Optional<TradingSignal> findById(long signalId) {
             return result;
         }
+
+        @Override
+        public Optional<Long> findId(
+                String strategyName,
+                String stockCode,
+                LocalDate signalDate,
+                SignalType signalType
+        ) {
+            return result.isPresent() ? Optional.of(7L) : Optional.empty();
+        }
     }
 
     private static class RecordingOrderUseCase implements RequestMockOrderUseCase {
         private TradingSignal signal;
+        private Long signalId;
         private int quantity;
         private BigDecimal limitPrice;
 
         @Override
         public MockOrderResult request(TradingSignal signal, int quantity, BigDecimal limitPrice) {
+            return request(signal, null, quantity, limitPrice);
+        }
+
+        @Override
+        public MockOrderResult request(
+                TradingSignal signal,
+                Long signalId,
+                int quantity,
+                BigDecimal limitPrice
+        ) {
             this.signal = signal;
+            this.signalId = signalId;
             this.quantity = quantity;
             this.limitPrice = limitPrice;
             return MockOrderResult.accepted(

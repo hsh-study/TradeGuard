@@ -16,4 +16,14 @@ public interface OrderRequestPort {
     boolean claimRetry(long orderId);
     boolean exists(String stockCode, String strategyName, LocalDate tradeDate, OrderSide side);
     List<OrderRequestRecord> find(String stockCode, LocalDate tradeDate, OrderStatus status, OrderSide side);
+
+    default List<OrderRequestRecord> find(
+            String stockCode,
+            LocalDate tradeDate,
+            OrderStatus status,
+            OrderSide side,
+            Long signalId
+    ) {
+        return find(stockCode, tradeDate, status, side);
+    }
 }

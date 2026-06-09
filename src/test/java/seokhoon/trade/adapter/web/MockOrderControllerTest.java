@@ -115,7 +115,56 @@ class MockOrderControllerTest {
                     assertThat(order.stockCode()).isEqualTo("005930");
                     assertThat(order.orderType()).isEqualTo(OrderType.LIMIT);
                     assertThat(order.status()).isEqualTo(OrderStatus.ACCEPTED);
+                    assertThat(order.signalId()).isEqualTo(1L);
                 });
+    }
+
+    @Test
+    void passesSignalIdOrderHistoryFilter() {
+        var capturedSignalId = new Long[1];
+        seokhoon.trade.application.port.in.LoadOrderRequestsUseCase loadUseCase =
+                new seokhoon.trade.application.port.in.LoadOrderRequestsUseCase() {
+                    @Override
+                    public List<OrderRequestView> load(
+                            String stockCode,
+                            LocalDate tradeDate,
+                            OrderStatus status,
+                            OrderSide side
+                    ) {
+                        return List.of();
+                    }
+
+                    @Override
+                    public List<OrderRequestView> load(
+                            String stockCode,
+                            LocalDate tradeDate,
+                            OrderStatus status,
+                            OrderSide side,
+                            Long signalId
+                    ) {
+                        capturedSignalId[0] = signalId;
+                        return List.of(acceptedOrderView());
+                    }
+                };
+        MockOrderController controller = new MockOrderController(
+                command -> {
+                    throw new UnsupportedOperationException();
+                },
+                loadUseCase
+        );
+
+        List<MockOrderController.OrderResponse> response = controller.find(
+                null,
+                null,
+                null,
+                null,
+                1L
+        );
+
+        assertThat(capturedSignalId[0]).isEqualTo(1L);
+        assertThat(response).singleElement()
+                .extracting(MockOrderController.OrderResponse::signalId)
+                .isEqualTo(1L);
     }
 
     @Test
@@ -140,7 +189,8 @@ class MockOrderControllerTest {
                             failedAt,
                             true,
                             "CLOSING_BET",
-                            TRADE_DATE
+                            TRADE_DATE,
+                            1L
                     ));
                 }
         );
@@ -173,7 +223,8 @@ class MockOrderControllerTest {
                 1,
                 BigDecimal.valueOf(50_000),
                 "CLOSING_BET",
-                TRADE_DATE
+                TRADE_DATE,
+                21L
         );
         accepted.accept("FAKE-RETRY");
         MockOrderController controller = new MockOrderController(
@@ -196,6 +247,7 @@ class MockOrderControllerTest {
         assertThat(response.failedAt()).isNull();
         assertThat(response.retryable()).isFalse();
         assertThat(response.brokerOrderNo()).isEqualTo("FAKE-RETRY");
+        assertThat(response.signalId()).isEqualTo(21L);
     }
 
     @Test
@@ -280,7 +332,8 @@ class MockOrderControllerTest {
                 null,
                 false,
                 "CLOSING_BET",
-                TRADE_DATE
+                TRADE_DATE,
+                1L
         );
     }
 }

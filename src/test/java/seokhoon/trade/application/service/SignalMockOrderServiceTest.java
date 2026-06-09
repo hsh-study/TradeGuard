@@ -32,6 +32,7 @@ class SignalMockOrderServiceTest {
 
         assertThat(signalPort.requestedSignalId).isEqualTo(1L);
         assertThat(orderUseCase.signal).isSameAs(signal);
+        assertThat(orderUseCase.signalId).isEqualTo(1L);
         assertThat(result.riskDecision().approved()).isTrue();
     }
 
@@ -95,10 +96,22 @@ class SignalMockOrderServiceTest {
 
     private static class RecordingOrderUseCase implements RequestMockOrderUseCase {
         private TradingSignal signal;
+        private Long signalId;
 
         @Override
         public MockOrderResult request(TradingSignal signal, int quantity, BigDecimal limitPrice) {
+            return request(signal, null, quantity, limitPrice);
+        }
+
+        @Override
+        public MockOrderResult request(
+                TradingSignal signal,
+                Long signalId,
+                int quantity,
+                BigDecimal limitPrice
+        ) {
             this.signal = signal;
+            this.signalId = signalId;
             return MockOrderResult.accepted(
                     RiskDecision.approve(),
                     signal,

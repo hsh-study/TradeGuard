@@ -46,12 +46,35 @@ class MySqlMigrationIntegrationTest {
             assertThat(columnExists(jdbcTemplate, "order_requests", "failure_reason")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "failed_at")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "retryable")).isTrue();
+            assertThat(columnExists(jdbcTemplate, "order_requests", "signal_id")).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "order_requests",
+                    "idx_order_requests_signal_id"
+            )).isTrue();
+            assertThat(foreignKeyExists(
+                    jdbcTemplate,
+                    "order_requests",
+                    "fk_order_requests_trading_signal"
+            )).isTrue();
 
             insertTradingSignal(jdbcTemplate);
             assertThatThrownBy(() -> insertTradingSignal(jdbcTemplate))
                     .isInstanceOf(DuplicateKeyException.class);
 
             insertOrderRequest(jdbcTemplate);
+            Long signalId = jdbcTemplate.queryForObject(
+                    "select id from trading_signals where stock_code = '005930'",
+                    Long.class
+            );
+            jdbcTemplate.update(
+                    "update order_requests set signal_id = ? where stock_code = '005930'",
+                    signalId
+            );
+            assertThat(jdbcTemplate.queryForObject(
+                    "select signal_id from order_requests where stock_code = '005930'",
+                    Long.class
+            )).isEqualTo(signalId);
             assertThat(jdbcTemplate.queryForObject(
                     "select retryable from order_requests where stock_code = '005930'",
                     Boolean.class
@@ -122,6 +145,47 @@ class MySqlMigrationIntegrationTest {
                 Integer.class,
                 tableName,
                 columnName
+        );
+        return count != null && count == 1;
+    }
+
+    private static boolean indexExists(
+            JdbcTemplate jdbcTemplate,
+            String tableName,
+            String indexName
+    ) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.statistics
+                        where table_schema = database()
+                          and table_name = ?
+                          and index_name = ?
+                        """,
+                Integer.class,
+                tableName,
+                indexName
+        );
+        return count != null && count >= 1;
+    }
+
+    private static boolean foreignKeyExists(
+            JdbcTemplate jdbcTemplate,
+            String tableName,
+            String constraintName
+    ) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.table_constraints
+                        where constraint_schema = database()
+                          and table_name = ?
+                          and constraint_name = ?
+                          and constraint_type = 'FOREIGN KEY'
+                        """,
+                Integer.class,
+                tableName,
+                constraintName
         );
         return count != null && count == 1;
     }

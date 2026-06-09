@@ -5,10 +5,13 @@ import seokhoon.trade.application.port.in.BrokerOrderRetryResult;
 import seokhoon.trade.application.port.out.BrokerPort;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderRequestRecord;
+import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.order.OrderType;
+import seokhoon.trade.domain.strategy.SignalType;
+import seokhoon.trade.domain.strategy.TradingSignal;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -46,10 +49,35 @@ class BrokerFailedOrderRetryServiceTest {
     }
 
     @Test
+    void marksLinkedTradingSignalOrderRequestedAfterSuccessfulRetry() {
+        TradingSignal signal = signal();
+        RecordingSignalPort signalPort = new RecordingSignalPort(signal);
+        RecordingOrderPort orderPort = new RecordingOrderPort(failedOrder(true, 21L));
+        BrokerFailedOrderRetryService service = new BrokerFailedOrderRetryService(
+                orderPort,
+                new RecordingBrokerPort(false),
+                signalPort,
+                Clock.fixed(Instant.parse("2026-06-05T06:10:00Z"), ZoneOffset.UTC)
+        );
+
+        service.retry(ORDER_ID);
+
+        assertThat(signalPort.requestedSignalId).isEqualTo(21L);
+        assertThat(signalPort.savedSignal.status())
+                .isEqualTo(seokhoon.trade.domain.strategy.TradingSignalStatus.ORDER_REQUESTED);
+    }
+
+    @Test
     void keepsBrokerFailedAndRefreshesFailureDetailsWhenRetryFails() {
-        RecordingOrderPort orderPort = new RecordingOrderPort(failedOrder(true));
+        RecordingOrderPort orderPort = new RecordingOrderPort(failedOrder(true, 21L));
         RecordingBrokerPort brokerPort = new RecordingBrokerPort(true);
-        BrokerFailedOrderRetryService service = service(orderPort, brokerPort);
+        RecordingSignalPort signalPort = new RecordingSignalPort(signal());
+        BrokerFailedOrderRetryService service = new BrokerFailedOrderRetryService(
+                orderPort,
+                brokerPort,
+                signalPort,
+                Clock.fixed(Instant.parse("2026-06-05T06:10:00Z"), ZoneOffset.UTC)
+        );
 
         BrokerOrderRetryResult result = service.retry(ORDER_ID);
 
@@ -62,6 +90,8 @@ class BrokerFailedOrderRetryServiceTest {
         assertThat(result.orderRequest().retryable()).isTrue();
         assertThat(orderPort.updateByIdCalls).isEqualTo(1);
         assertThat(brokerPort.calls).isEqualTo(1);
+        assertThat(signalPort.requestedSignalId).isZero();
+        assertThat(signalPort.savedSignal).isNull();
     }
 
     @Test
@@ -124,18 +154,70 @@ class BrokerFailedOrderRetryServiceTest {
         return new BrokerFailedOrderRetryService(
                 orderPort,
                 brokerPort,
+                emptySignalPort(),
                 Clock.fixed(Instant.parse("2026-06-05T06:10:00Z"), ZoneOffset.UTC)
         );
     }
 
+    private static TradingSignalPort emptySignalPort() {
+        return new TradingSignalPort() {
+            @Override
+            public TradingSignal save(TradingSignal tradingSignal) {
+                return tradingSignal;
+            }
+
+            @Override
+            public Optional<TradingSignal> find(
+                    String strategyName,
+                    String stockCode,
+                    LocalDate signalDate,
+                    SignalType signalType
+            ) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<TradingSignal> findById(long signalId) {
+                return Optional.empty();
+            }
+        };
+    }
+
     private static OrderRequest failedOrder(boolean retryable) {
+        return failedOrder(retryable, null);
+    }
+
+    private static OrderRequest failedOrder(boolean retryable, Long signalId) {
         OrderRequest orderRequest = orderRequest();
+        if (signalId != null) {
+            orderRequest = new OrderRequest(
+                    "005930",
+                    OrderSide.BUY,
+                    OrderType.LIMIT,
+                    1,
+                    BigDecimal.valueOf(50_000),
+                    "CLOSING_BET",
+                    LocalDate.of(2026, 6, 5),
+                    signalId
+            );
+        }
         orderRequest.markBrokerFailed(
                 "initial failure",
                 Instant.parse("2026-06-05T06:01:00Z"),
                 retryable
         );
         return orderRequest;
+    }
+
+    private static TradingSignal signal() {
+        return new TradingSignal(
+                "CLOSING_BET",
+                "005930",
+                LocalDate.of(2026, 6, 5),
+                SignalType.BUY_CANDIDATE,
+                80,
+                List.of("TEST")
+        );
     }
 
     private static OrderRequest orderRequest() {
@@ -229,6 +311,38 @@ class BrokerFailedOrderRetryServiceTest {
             orderRequest.markRequested();
             orderRequest.accept("FAKE-RETRY");
             return orderRequest;
+        }
+    }
+
+    private static class RecordingSignalPort implements TradingSignalPort {
+        private final TradingSignal signal;
+        private long requestedSignalId;
+        private TradingSignal savedSignal;
+
+        private RecordingSignalPort(TradingSignal signal) {
+            this.signal = signal;
+        }
+
+        @Override
+        public TradingSignal save(TradingSignal tradingSignal) {
+            savedSignal = tradingSignal;
+            return tradingSignal;
+        }
+
+        @Override
+        public Optional<TradingSignal> find(
+                String strategyName,
+                String stockCode,
+                LocalDate signalDate,
+                SignalType signalType
+        ) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<TradingSignal> findById(long signalId) {
+            requestedSignalId = signalId;
+            return Optional.of(signal);
         }
     }
 }

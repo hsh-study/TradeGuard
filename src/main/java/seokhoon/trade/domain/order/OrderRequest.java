@@ -18,9 +18,23 @@ public class OrderRequest {
     private boolean retryable;
     private final String strategyName;
     private final LocalDate tradeDate;
+    private final Long signalId;
 
     public OrderRequest(String stockCode, OrderSide side, OrderType orderType, int quantity, BigDecimal limitPrice,
                         String strategyName, LocalDate tradeDate) {
+        this(stockCode, side, orderType, quantity, limitPrice, strategyName, tradeDate, null);
+    }
+
+    public OrderRequest(
+            String stockCode,
+            OrderSide side,
+            OrderType orderType,
+            int quantity,
+            BigDecimal limitPrice,
+            String strategyName,
+            LocalDate tradeDate,
+            Long signalId
+    ) {
         if (stockCode == null || stockCode.isBlank()) {
             throw new IllegalArgumentException("stockCode must not be blank");
         }
@@ -41,6 +55,7 @@ public class OrderRequest {
         this.status = OrderStatus.CREATED;
         this.strategyName = Objects.requireNonNull(strategyName, "strategyName");
         this.tradeDate = Objects.requireNonNull(tradeDate, "tradeDate");
+        this.signalId = signalId;
     }
 
     public static OrderRequest restore(
@@ -55,7 +70,8 @@ public class OrderRequest {
             Instant failedAt,
             boolean retryable,
             String strategyName,
-            LocalDate tradeDate
+            LocalDate tradeDate,
+            Long signalId
     ) {
         OrderRequest orderRequest = new OrderRequest(
                 stockCode,
@@ -64,7 +80,8 @@ public class OrderRequest {
                 quantity,
                 limitPrice,
                 strategyName,
-                tradeDate
+                tradeDate,
+                signalId
         );
         orderRequest.status = Objects.requireNonNull(status, "status");
         orderRequest.brokerOrderNo = brokerOrderNo;
@@ -90,6 +107,7 @@ public class OrderRequest {
     public boolean retryable() { return retryable; }
     public String strategyName() { return strategyName; }
     public LocalDate tradeDate() { return tradeDate; }
+    public Long signalId() { return signalId; }
 
     public void markRequested() { this.status = OrderStatus.REQUESTED; }
     public void accept(String brokerOrderNo) {

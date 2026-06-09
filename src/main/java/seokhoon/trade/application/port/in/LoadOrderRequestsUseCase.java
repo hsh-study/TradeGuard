@@ -8,4 +8,14 @@ import java.util.List;
 
 public interface LoadOrderRequestsUseCase {
     List<OrderRequestView> load(String stockCode, LocalDate tradeDate, OrderStatus status, OrderSide side);
+
+    default List<OrderRequestView> load(
+            String stockCode,
+            LocalDate tradeDate,
+            OrderStatus status,
+            OrderSide side,
+            Long signalId
+    ) {
+        return load(stockCode, tradeDate, status, side);
+    }
 }

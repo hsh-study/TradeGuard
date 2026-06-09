@@ -1,11 +1,14 @@
 package seokhoon.trade.application.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import seokhoon.trade.application.port.in.BrokerOrderRetryResult;
 import seokhoon.trade.application.port.in.RetryBrokerFailedOrderUseCase;
 import seokhoon.trade.application.port.out.BrokerPort;
 import seokhoon.trade.application.port.out.OrderRequestPort;
+import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderStatus;
 
@@ -14,25 +17,31 @@ import java.time.Instant;
 
 @Service
 public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseCase {
+    private static final Logger log = LoggerFactory.getLogger(BrokerFailedOrderRetryService.class);
+
     private final OrderRequestPort orderRequestPort;
     private final BrokerPort brokerPort;
+    private final TradingSignalPort tradingSignalPort;
     private final Clock clock;
 
     @Autowired
     public BrokerFailedOrderRetryService(
             OrderRequestPort orderRequestPort,
-            BrokerPort brokerPort
+            BrokerPort brokerPort,
+            TradingSignalPort tradingSignalPort
     ) {
-        this(orderRequestPort, brokerPort, Clock.systemUTC());
+        this(orderRequestPort, brokerPort, tradingSignalPort, Clock.systemUTC());
     }
 
     BrokerFailedOrderRetryService(
             OrderRequestPort orderRequestPort,
             BrokerPort brokerPort,
+            TradingSignalPort tradingSignalPort,
             Clock clock
     ) {
         this.orderRequestPort = orderRequestPort;
         this.brokerPort = brokerPort;
+        this.tradingSignalPort = tradingSignalPort;
         this.clock = clock;
     }
 
@@ -49,12 +58,9 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
         }
         orderRequest.markRetryRequested();
 
+        OrderRequest accepted;
         try {
-            OrderRequest accepted = brokerPort.requestOrder(orderRequest);
-            return BrokerOrderRetryResult.accepted(
-                    orderId,
-                    orderRequestPort.updateById(orderId, accepted)
-            );
+            accepted = brokerPort.requestOrder(orderRequest);
         } catch (RuntimeException exception) {
             orderRequest.markBrokerFailed(
                     brokerFailureReason(exception),
@@ -66,6 +72,27 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
                     orderRequestPort.updateById(orderId, orderRequest)
             );
         }
+        OrderRequest saved = orderRequestPort.updateById(orderId, accepted);
+        synchronizeSignal(saved);
+        return BrokerOrderRetryResult.accepted(orderId, saved);
+    }
+
+    private void synchronizeSignal(OrderRequest orderRequest) {
+        if (orderRequest.signalId() == null) {
+            log.info(
+                    "Skipping TradingSignal synchronization for legacy order without signalId: {}",
+                    orderRequest.stockCode()
+            );
+            return;
+        }
+        tradingSignalPort.findById(orderRequest.signalId())
+                .ifPresentOrElse(signal -> {
+                    signal.markOrderRequested();
+                    tradingSignalPort.save(signal);
+                }, () -> log.warn(
+                        "TradingSignal not found while synchronizing retried order: signalId={}",
+                        orderRequest.signalId()
+                ));
     }
 
     private static void validateRetry(OrderRequest orderRequest) {

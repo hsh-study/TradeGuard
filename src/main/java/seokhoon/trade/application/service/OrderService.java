@@ -54,8 +54,26 @@ public class OrderService implements RequestMockOrderUseCase {
 
     @Override
     public MockOrderResult request(TradingSignal signal, int quantity, BigDecimal limitPrice) {
-        OrderRequest orderRequest = new OrderRequest(signal.stockCode(), OrderSide.BUY, OrderType.LIMIT, quantity, limitPrice,
-                signal.strategyName(), signal.signalDate());
+        return request(signal, null, quantity, limitPrice);
+    }
+
+    @Override
+    public MockOrderResult request(
+            TradingSignal signal,
+            Long signalId,
+            int quantity,
+            BigDecimal limitPrice
+    ) {
+        OrderRequest orderRequest = new OrderRequest(
+                signal.stockCode(),
+                OrderSide.BUY,
+                OrderType.LIMIT,
+                quantity,
+                limitPrice,
+                signal.strategyName(),
+                signal.signalDate(),
+                signalId
+        );
         RiskDecision decision = riskManager.evaluate(signal, orderRequest, orderRequestPort::exists);
         tradingSignalPort.save(signal);
         if (!decision.approved()) {

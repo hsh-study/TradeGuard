@@ -28,6 +28,11 @@ public class SignalMockOrderService implements RequestSignalMockOrderUseCase {
         Objects.requireNonNull(command, "command");
         TradingSignal signal = tradingSignalPort.findById(signalId)
                 .orElseThrow(TradingSignalNotFoundException::new);
-        return requestMockOrderUseCase.request(signal, command.quantity(), command.limitPrice());
+        return requestMockOrderUseCase.request(
+                signal,
+                signalId,
+                command.quantity(),
+                command.limitPrice()
+        );
     }
 }

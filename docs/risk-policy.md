@@ -104,7 +104,9 @@ BROKER_FAILED(retryable=true)
 - `ACCEPTED`, `REJECTED`, `CANCELED`, `FILLED`, `PARTIALLY_FILLED`는 재시도할 수 없다.
 - 자동 재시도와 backoff는 구현하지 않는다.
 
-현재 `order_requests`에는 `signal_id`가 없으므로 수동 재시도 성공 시 연결된 TradingSignal을 `ORDER_REQUESTED`로 갱신하지 않는다. 신호-주문 연결 컬럼을 추가할 때 상태 동기화 정책을 함께 migration 해야 한다.
+`order_requests.signal_id`는 주문을 생성한 TradingSignal을 nullable FK로 참조한다. signalId 기반 주문은 path variable의 ID를 저장하고, 논리 키 기반 주문은 조회한 신호의 JPA ID를 별도로 조회해 저장한다. 도메인 `TradingSignal`에는 persistence ID를 추가하지 않는다.
+
+수동 재시도 성공 시 `signal_id`가 있으면 연결된 TradingSignal을 `ORDER_REQUESTED`로 변경한다. 재시도 실패 시 신호는 변경하지 않는다. V3 이전 주문처럼 `signal_id`가 null이면 신호 동기화를 건너뛰되 주문 재시도는 실패시키지 않는다.
 
 거절 시:
 

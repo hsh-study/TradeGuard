@@ -17,4 +17,13 @@ public interface TradingSignalPort {
     );
 
     Optional<TradingSignal> findById(long signalId);
+
+    default Optional<Long> findId(
+            String strategyName,
+            String stockCode,
+            LocalDate signalDate,
+            SignalType signalType
+    ) {
+        return Optional.empty();
+    }
 }

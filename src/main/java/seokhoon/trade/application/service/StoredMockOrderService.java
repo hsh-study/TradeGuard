@@ -33,7 +33,19 @@ public class StoredMockOrderService implements RequestStoredMockOrderUseCase {
                         command.signalType()
                 )
                 .orElseThrow(TradingSignalNotFoundException::new);
-        return requestMockOrderUseCase.request(signal, command.quantity(), command.limitPrice());
+        Long signalId = tradingSignalPort.findId(
+                        command.strategyName(),
+                        command.stockCode(),
+                        command.signalDate(),
+                        command.signalType()
+                )
+                .orElse(null);
+        return requestMockOrderUseCase.request(
+                signal,
+                signalId,
+                command.quantity(),
+                command.limitPrice()
+        );
     }
 
     private static void validate(StoredMockOrderCommand command) {

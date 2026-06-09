@@ -23,10 +23,22 @@ public class OrderHistoryService implements LoadOrderRequestsUseCase {
     @Override
     @Transactional(readOnly = true)
     public List<OrderRequestView> load(String stockCode, LocalDate tradeDate, OrderStatus status, OrderSide side) {
+        return load(stockCode, tradeDate, status, side, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderRequestView> load(
+            String stockCode,
+            LocalDate tradeDate,
+            OrderStatus status,
+            OrderSide side,
+            Long signalId
+    ) {
         if (stockCode != null && stockCode.isBlank()) {
             throw new IllegalArgumentException("stockCode must not be blank");
         }
-        return orderRequestPort.find(stockCode, tradeDate, status, side).stream()
+        return orderRequestPort.find(stockCode, tradeDate, status, side, signalId).stream()
                 .map(OrderHistoryService::toView)
                 .toList();
     }
@@ -45,7 +57,8 @@ public class OrderHistoryService implements LoadOrderRequestsUseCase {
                 record.failedAt(),
                 record.retryable(),
                 record.strategyName(),
-                record.tradeDate()
+                record.tradeDate(),
+                record.signalId()
         );
     }
 }
