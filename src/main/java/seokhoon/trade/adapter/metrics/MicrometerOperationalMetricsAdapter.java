@@ -93,4 +93,12 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
                 "result", result
         ).increment();
     }
+
+    @Override
+    public void recordAfterHoursLookup(String result) {
+        meterRegistry.counter(
+                "tradeguard.after_hours.lookup.count",
+                "result", result
+        ).increment();
+    }
 }

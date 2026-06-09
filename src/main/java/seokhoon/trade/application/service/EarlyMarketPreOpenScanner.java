@@ -1,5 +1,7 @@
 package seokhoon.trade.application.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import seokhoon.trade.application.port.in.EarlyMarketCandidate;
@@ -7,15 +9,18 @@ import seokhoon.trade.application.port.in.EarlyMarketScanResult;
 import seokhoon.trade.application.port.in.ScanEarlyMarketPreOpenUseCase;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.IndicatorSnapshotPort;
+import seokhoon.trade.application.port.out.AfterHoursMarketDataPort;
 import seokhoon.trade.application.port.out.MarketRankingPort;
 import seokhoon.trade.application.port.out.MarketRankingStock;
 import seokhoon.trade.application.port.out.NotificationDeliveryResult;
 import seokhoon.trade.application.port.out.NotificationMessage;
 import seokhoon.trade.application.port.out.NotificationPort;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.application.port.out.TradingSignalQueryPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.indicator.IndicatorSnapshot;
+import seokhoon.trade.domain.market.AfterHoursQuote;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
@@ -23,6 +28,7 @@ import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,36 +37,49 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
 public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase {
     public static final String STRATEGY_NAME = "EARLY_MARKET_BREAKOUT";
+    private static final Logger log = LoggerFactory.getLogger(EarlyMarketPreOpenScanner.class);
 
     private static final BigDecimal MAX_NORMAL_CHANGE_RATE = BigDecimal.valueOf(15);
+    private static final BigDecimal AFTER_HOURS_STRENGTH_RATE = BigDecimal.valueOf(3);
+    private static final BigDecimal AFTER_HOURS_OVERHEAT_RATE = BigDecimal.valueOf(7);
+    private static final BigDecimal AFTER_HOURS_WEAKNESS_RATE = BigDecimal.valueOf(-3);
+    private static final BigDecimal MIN_AFTER_HOURS_TRADING_VALUE =
+            BigDecimal.valueOf(30_000_000_000L);
     private static final List<Market> SCAN_MARKETS = List.of(Market.KOSPI, Market.KOSDAQ);
 
     private final MarketRankingPort marketRankingPort;
     private final IndicatorSnapshotPort indicatorSnapshotPort;
+    private final AfterHoursMarketDataPort afterHoursMarketDataPort;
     private final TradingSignalPort tradingSignalPort;
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final NotificationPort notificationPort;
+    private final OperationalMetricsPort operationalMetricsPort;
     private final Clock clock;
 
     @Autowired
     public EarlyMarketPreOpenScanner(
             MarketRankingPort marketRankingPort,
             IndicatorSnapshotPort indicatorSnapshotPort,
+            AfterHoursMarketDataPort afterHoursMarketDataPort,
             TradingSignalPort tradingSignalPort,
             TradingSignalQueryPort tradingSignalQueryPort,
-            NotificationPort notificationPort
+            NotificationPort notificationPort,
+            OperationalMetricsPort operationalMetricsPort
     ) {
         this(
                 marketRankingPort,
                 indicatorSnapshotPort,
+                afterHoursMarketDataPort,
                 tradingSignalPort,
                 tradingSignalQueryPort,
                 notificationPort,
+                operationalMetricsPort,
                 Clock.systemUTC()
         );
     }
@@ -73,11 +92,35 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
             NotificationPort notificationPort,
             Clock clock
     ) {
+        this(
+                marketRankingPort,
+                indicatorSnapshotPort,
+                AfterHoursMarketDataPort.empty(),
+                tradingSignalPort,
+                tradingSignalQueryPort,
+                notificationPort,
+                OperationalMetricsPort.noop(),
+                clock
+        );
+    }
+
+    EarlyMarketPreOpenScanner(
+            MarketRankingPort marketRankingPort,
+            IndicatorSnapshotPort indicatorSnapshotPort,
+            AfterHoursMarketDataPort afterHoursMarketDataPort,
+            TradingSignalPort tradingSignalPort,
+            TradingSignalQueryPort tradingSignalQueryPort,
+            NotificationPort notificationPort,
+            OperationalMetricsPort operationalMetricsPort,
+            Clock clock
+    ) {
         this.marketRankingPort = marketRankingPort;
         this.indicatorSnapshotPort = indicatorSnapshotPort;
+        this.afterHoursMarketDataPort = afterHoursMarketDataPort;
         this.tradingSignalPort = tradingSignalPort;
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.notificationPort = notificationPort;
+        this.operationalMetricsPort = operationalMetricsPort;
         this.clock = clock;
     }
 
@@ -179,10 +222,73 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         if (aboveMovingAverages) {
             score += 15;
         }
+        AfterHoursScore afterHoursScore = scoreAfterHours(
+                seed.stock().stockCode(),
+                previousWeekday(tradeDate)
+        );
+        score += afterHoursScore.scoreAdjustment();
+        reasons.addAll(afterHoursScore.reasons());
         return new ScoredCandidate(seed.stock(), score, reasons);
     }
 
-    private java.util.Optional<IndicatorSnapshot> latestIndicator(
+    private AfterHoursScore scoreAfterHours(String stockCode, LocalDate afterHoursTradeDate) {
+        Optional<AfterHoursQuote> quote;
+        try {
+            quote = afterHoursMarketDataPort.findByStockCode(stockCode, afterHoursTradeDate);
+        } catch (RuntimeException exception) {
+            operationalMetricsPort.recordAfterHoursLookup("failure");
+            log.atWarn()
+                    .addKeyValue("stockCode", stockCode)
+                    .addKeyValue("result", "failure")
+                    .addKeyValue("errorType", exception.getClass().getSimpleName())
+                    .log("After-hours quote lookup failed");
+            return new AfterHoursScore(0, List.of("AFTER_HOURS_DATA_UNAVAILABLE"));
+        }
+        if (quote.isEmpty()) {
+            operationalMetricsPort.recordAfterHoursLookup("not_found");
+            log.atInfo()
+                    .addKeyValue("stockCode", stockCode)
+                    .addKeyValue("result", "not_found")
+                    .log("After-hours quote lookup completed");
+            return new AfterHoursScore(0, List.of("AFTER_HOURS_DATA_UNAVAILABLE"));
+        }
+
+        operationalMetricsPort.recordAfterHoursLookup("found");
+        log.atInfo()
+                .addKeyValue("stockCode", stockCode)
+                .addKeyValue("result", "found")
+                .log("After-hours quote lookup completed");
+        return scoreAfterHoursQuote(quote.orElseThrow());
+    }
+
+    private static AfterHoursScore scoreAfterHoursQuote(AfterHoursQuote quote) {
+        int score = 0;
+        List<String> reasons = new ArrayList<>();
+        BigDecimal changeRate = quote.afterHoursChangeRate();
+        if (changeRate.compareTo(AFTER_HOURS_STRENGTH_RATE) >= 0) {
+            score += 15;
+            reasons.add("AFTER_HOURS_CHANGE_RATE_OVER_3PCT");
+        }
+        if (quote.afterHoursTradingValue().compareTo(MIN_AFTER_HOURS_TRADING_VALUE) >= 0) {
+            score += 15;
+            reasons.add("AFTER_HOURS_TRADING_VALUE_SUFFICIENT");
+        }
+        if (changeRate.compareTo(AFTER_HOURS_OVERHEAT_RATE) >= 0) {
+            score -= 10;
+            reasons.add("AFTER_HOURS_OVERHEATED");
+        }
+        if (changeRate.compareTo(AFTER_HOURS_WEAKNESS_RATE) <= 0) {
+            score -= 10;
+            reasons.add("AFTER_HOURS_DECLINE");
+        }
+        reasons.add("AFTER_HOURS_SUMMARY_CHANGE_RATE_"
+                + changeRate.stripTrailingZeros().toPlainString()
+                + "_TRADING_VALUE_"
+                + quote.afterHoursTradingValue().stripTrailingZeros().toPlainString());
+        return new AfterHoursScore(score, reasons);
+    }
+
+    private Optional<IndicatorSnapshot> latestIndicator(
             String stockCode,
             LocalDate tradeDate
     ) {
@@ -296,6 +402,15 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         }
     }
 
+    private static LocalDate previousWeekday(LocalDate tradeDate) {
+        LocalDate previousDate = tradeDate.minusDays(1);
+        while (previousDate.getDayOfWeek() == DayOfWeek.SATURDAY
+                || previousDate.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            previousDate = previousDate.minusDays(1);
+        }
+        return previousDate;
+    }
+
     private enum Source {
         TRADING_VALUE_TOP,
         RISING_TOP,
@@ -306,5 +421,8 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
     }
 
     private record ScoredCandidate(MarketRankingStock stock, int score, List<String> reasons) {
+    }
+
+    private record AfterHoursScore(int scoreAdjustment, List<String> reasons) {
     }
 }

@@ -106,7 +106,15 @@ curl -X POST 'http://localhost:8080/api/reviews/closing-bet?tradeDate=2026-06-05
 curl -X POST 'http://localhost:8080/api/scans/early-market/pre-open?tradeDate=2026-06-10&limit=10'
 ```
 
-거래대금 상위 `+20`, 양호한 등락률 `+15`, 거래량 상위 `+15`를 적용합니다. 저장된 지표가 있고 현재가가 MA5와 MA20 위이면 `+15`이며, 과열 또는 지표 부족은 reason에 기록합니다. 결과는 `strategyName=EARLY_MARKET_BREAKOUT`, `signalType=EARLY_MARKET_PRE_SCAN`으로 저장합니다.
+거래대금 상위 `+20`, 양호한 등락률 `+15`, 거래량 상위 `+15`를 적용합니다. 저장된 지표가 있고 현재가가 MA5와 MA20 위이면 `+15`이며, 과열 또는 지표 부족은 reason에 기록합니다. 전일 시간외 데이터가 있으면 상승률 3% 이상 `+15`, 거래대금 300억 원 이상 `+15`, 상승률 7% 이상 과열 `-10`, 하락률 -3% 이하 `-10`을 추가 적용합니다. 시간외 데이터가 없으면 감점하지 않고 `AFTER_HOURS_DATA_UNAVAILABLE` reason을 남깁니다. 결과는 `strategyName=EARLY_MARKET_BREAKOUT`, `signalType=EARLY_MARKET_PRE_SCAN`으로 저장합니다.
+
+시간외 데이터는 현재 `FakeAfterHoursMarketDataAdapter`만 제공합니다. 로컬 기본값은 활성화이며 아래 환경변수로 no-op adapter로 전환할 수 있습니다.
+
+```sh
+AFTER_HOURS_DATA_ENABLED=false ./gradlew bootRun
+```
+
+Fake adapter는 고정 데이터를 반환해 장초반 점수와 브리핑을 재현 가능하게 합니다. 조회일은 직전 평일이며 공휴일을 포함한 정확한 직전 거래일 계산은 KRX calendar 연동과 함께 보강할 TODO입니다. 실제 KIS 시간외 조회 endpoint adapter는 구현하지 않았으며 후속 TODO입니다.
 
 09:05 장초반 압축 후보 수동 스캔:
 
@@ -300,6 +308,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.order.retry_recovery.count`: `result`
 - `tradeguard.notification.discord.count`: `result`
 - `tradeguard.kis.read_only.count`: `operation`, `result`
+- `tradeguard.after_hours.lookup.count`: `result=found|not_found|failure`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
 
@@ -340,6 +349,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - 실계좌 주문 기능은 구현하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
 - 08:30/09:05 장초반 후보 생성은 자동 주문을 실행하지 않습니다.
+- 시간외 데이터 연동은 fake/no-op adapter만 제공하며 KIS 실제 시간외 endpoint는 호출하지 않습니다.
 - API Key, App Secret, 계좌번호는 코드에 하드코딩하지 않습니다.
 - Discord Webhook URL은 환경변수로만 주입하며 코드에 하드코딩하지 않습니다.
 - `KisBrokerAdapter`는 스켈레톤만 제공하며 실제 주문 API를 호출하지 않습니다.

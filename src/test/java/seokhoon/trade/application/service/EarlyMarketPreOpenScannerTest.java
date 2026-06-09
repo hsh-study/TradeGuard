@@ -3,15 +3,18 @@ package seokhoon.trade.application.service;
 import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.EarlyMarketScanResult;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
+import seokhoon.trade.application.port.out.AfterHoursMarketDataPort;
 import seokhoon.trade.application.port.out.IndicatorSnapshotPort;
 import seokhoon.trade.application.port.out.MarketRankingPort;
 import seokhoon.trade.application.port.out.MarketRankingStock;
 import seokhoon.trade.application.port.out.NotificationDeliveryResult;
 import seokhoon.trade.application.port.out.NotificationPort;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.application.port.out.TradingSignalQueryPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.indicator.IndicatorSnapshot;
+import seokhoon.trade.domain.market.AfterHoursQuote;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
@@ -96,6 +99,99 @@ class EarlyMarketPreOpenScannerTest {
 
         assertThat(result.selectedCount()).isEqualTo(10);
         assertThat(store.saved).hasSize(10);
+    }
+
+    @Test
+    void addsAfterHoursStrengthAndTradingValueScores() {
+        TradingSignal signal = scanWithAfterHours(
+                Optional.of(afterHoursQuote("3.5", "30000000000"))
+        );
+
+        assertThat(signal.score()).isEqualTo(110);
+        assertThat(signal.reasons()).contains(
+                "AFTER_HOURS_CHANGE_RATE_OVER_3PCT",
+                "AFTER_HOURS_TRADING_VALUE_SUFFICIENT",
+                "AFTER_HOURS_SUMMARY_CHANGE_RATE_3.5_TRADING_VALUE_30000000000"
+        );
+    }
+
+    @Test
+    void appliesAfterHoursOverheatPenalty() {
+        TradingSignal signal = scanWithAfterHours(
+                Optional.of(afterHoursQuote("7.5", "30000000000"))
+        );
+
+        assertThat(signal.score()).isEqualTo(100);
+        assertThat(signal.reasons()).contains("AFTER_HOURS_OVERHEATED");
+    }
+
+    @Test
+    void appliesAfterHoursDeclinePenalty() {
+        TradingSignal signal = scanWithAfterHours(
+                Optional.of(afterHoursQuote("-3.0", "10000000000"))
+        );
+
+        assertThat(signal.score()).isEqualTo(70);
+        assertThat(signal.reasons()).contains("AFTER_HOURS_DECLINE");
+    }
+
+    @Test
+    void recordsReasonWithoutPenaltyWhenAfterHoursDataIsUnavailable() {
+        TradingSignal signal = scanWithAfterHours(Optional.empty());
+
+        assertThat(signal.score()).isEqualTo(80);
+        assertThat(signal.reasons()).contains("AFTER_HOURS_DATA_UNAVAILABLE");
+    }
+
+    private static TradingSignal scanWithAfterHours(Optional<AfterHoursQuote> quote) {
+        SignalStore store = new SignalStore();
+        MarketRankingStock stock = stock("005930", "5.0", "60000000000");
+        AfterHoursMarketDataPort afterHoursPort = new AfterHoursMarketDataPort() {
+            @Override
+            public List<AfterHoursQuote> findTopAfterHoursMovers(
+                    LocalDate tradeDate,
+                    int limit
+            ) {
+                return quote.stream().toList();
+            }
+
+            @Override
+            public Optional<AfterHoursQuote> findByStockCode(
+                    String stockCode,
+                    LocalDate tradeDate
+            ) {
+                return quote;
+            }
+        };
+        EarlyMarketPreOpenScanner scanner = new EarlyMarketPreOpenScanner(
+                new RankingPort(List.of(stock), List.of(stock), List.of(stock)),
+                indicatorPort(),
+                afterHoursPort,
+                store,
+                store,
+                message -> NotificationDeliveryResult.success(),
+                OperationalMetricsPort.noop(),
+                Clock.fixed(Instant.parse("2026-06-09T23:30:00Z"), ZoneOffset.UTC)
+        );
+
+        scanner.scan(TRADE_DATE, 10);
+        return store.saved.getFirst();
+    }
+
+    private static AfterHoursQuote afterHoursQuote(
+            String changeRate,
+            String tradingValue
+    ) {
+        return new AfterHoursQuote(
+                "005930",
+                "삼성전자",
+                TRADE_DATE.minusDays(1),
+                BigDecimal.valueOf(52_000),
+                new BigDecimal(changeRate),
+                100_000,
+                new BigDecimal(tradingValue),
+                Instant.parse("2026-06-09T09:30:00Z")
+        );
     }
 
     private static EarlyMarketPreOpenScanner scanner(

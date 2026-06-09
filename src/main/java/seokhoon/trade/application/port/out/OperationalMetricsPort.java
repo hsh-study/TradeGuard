@@ -25,6 +25,8 @@ public interface OperationalMetricsPort {
 
     void recordKisReadOnly(String operation, String result);
 
+    void recordAfterHoursLookup(String result);
+
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
             @Override
@@ -70,6 +72,10 @@ public interface OperationalMetricsPort {
 
             @Override
             public void recordKisReadOnly(String operation, String result) {
+            }
+
+            @Override
+            public void recordAfterHoursLookup(String result) {
             }
         };
     }
