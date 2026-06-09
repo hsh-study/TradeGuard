@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.in.BrokerOrderRetryResult;
 import seokhoon.trade.application.port.in.RetryBrokerFailedOrderUseCase;
 import seokhoon.trade.application.port.out.BrokerPort;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
 import seokhoon.trade.application.port.out.SignalStatusHistoryPort;
@@ -28,6 +29,7 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
     private final TradingSignalPort tradingSignalPort;
     private final OrderStatusHistoryPort orderHistoryPort;
     private final SignalStatusHistoryPort signalHistoryPort;
+    private final OperationalMetricsPort operationalMetricsPort;
     private final Clock clock;
 
     @Autowired
@@ -36,7 +38,8 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
             BrokerPort brokerPort,
             TradingSignalPort tradingSignalPort,
             OrderStatusHistoryPort orderHistoryPort,
-            SignalStatusHistoryPort signalHistoryPort
+            SignalStatusHistoryPort signalHistoryPort,
+            OperationalMetricsPort operationalMetricsPort
     ) {
         this(
                 orderRequestPort,
@@ -44,6 +47,7 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
                 tradingSignalPort,
                 orderHistoryPort,
                 signalHistoryPort,
+                operationalMetricsPort,
                 Clock.systemUTC()
         );
     }
@@ -60,6 +64,7 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
                 tradingSignalPort,
                 OrderStatusHistoryPort.noop(),
                 SignalStatusHistoryPort.noop(),
+                OperationalMetricsPort.noop(),
                 clock
         );
     }
@@ -72,17 +77,51 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
             SignalStatusHistoryPort signalHistoryPort,
             Clock clock
     ) {
+        this(
+                orderRequestPort,
+                brokerPort,
+                tradingSignalPort,
+                orderHistoryPort,
+                signalHistoryPort,
+                OperationalMetricsPort.noop(),
+                clock
+        );
+    }
+
+    BrokerFailedOrderRetryService(
+            OrderRequestPort orderRequestPort,
+            BrokerPort brokerPort,
+            TradingSignalPort tradingSignalPort,
+            OrderStatusHistoryPort orderHistoryPort,
+            SignalStatusHistoryPort signalHistoryPort,
+            OperationalMetricsPort operationalMetricsPort,
+            Clock clock
+    ) {
         this.orderRequestPort = orderRequestPort;
         this.brokerPort = brokerPort;
         this.tradingSignalPort = tradingSignalPort;
         this.orderHistoryPort = orderHistoryPort;
         this.signalHistoryPort = signalHistoryPort;
+        this.operationalMetricsPort = operationalMetricsPort;
         this.clock = clock;
     }
 
     @Override
     @Transactional
     public BrokerOrderRetryResult retry(long orderId) {
+        try {
+            return retryOrder(orderId);
+        } catch (OrderRequestNotFoundException | OrderRetryNotAllowedException exception) {
+            operationalMetricsPort.recordOrderRetry("rejected");
+            log.atWarn()
+                    .addKeyValue("orderId", orderId)
+                    .addKeyValue("status", "REJECTED")
+                    .log("Manual broker retry rejected");
+            throw exception;
+        }
+    }
+
+    private BrokerOrderRetryResult retryOrder(long orderId) {
         OrderRequest orderRequest = orderRequestPort.findById(orderId)
                 .orElseThrow(() -> new OrderRequestNotFoundException(orderId));
         validateRetry(orderRequest);
@@ -101,6 +140,12 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
                 "Manual broker retry requested",
                 retryRequestedAt
         );
+        log.atInfo()
+                .addKeyValue("orderId", orderId)
+                .addKeyValue("signalId", orderRequest.signalId())
+                .addKeyValue("status", orderRequest.status())
+                .addKeyValue("retryable", orderRequest.retryable())
+                .log("Manual broker retry started");
 
         OrderRequest accepted;
         try {
@@ -119,6 +164,14 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
                     failed.failureReason(),
                     failed.failedAt()
             );
+            operationalMetricsPort.recordOrderRetry("failed");
+            operationalMetricsPort.recordBrokerFailure(failed.retryable());
+            log.atWarn()
+                    .addKeyValue("orderId", orderId)
+                    .addKeyValue("signalId", failed.signalId())
+                    .addKeyValue("status", failed.status())
+                    .addKeyValue("retryable", failed.retryable())
+                    .log("Manual broker retry failed");
             return BrokerOrderRetryResult.brokerFailed(orderId, failed);
         }
         OrderRequest saved = orderRequestPort.updateById(orderId, accepted);
@@ -130,6 +183,13 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
                 Instant.now(clock)
         );
         synchronizeSignal(saved);
+        operationalMetricsPort.recordOrderRetry("succeeded");
+        log.atInfo()
+                .addKeyValue("orderId", orderId)
+                .addKeyValue("signalId", saved.signalId())
+                .addKeyValue("status", saved.status())
+                .addKeyValue("retryable", saved.retryable())
+                .log("Manual broker retry succeeded");
         return BrokerOrderRetryResult.accepted(orderId, saved);
     }
 

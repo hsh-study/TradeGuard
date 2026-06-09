@@ -1,6 +1,8 @@
 package seokhoon.trade.application.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
 import seokhoon.trade.application.port.in.BrokerOrderRetryResult;
 import seokhoon.trade.application.port.out.BrokerPort;
 import seokhoon.trade.application.port.out.OrderRequestPort;
@@ -36,7 +38,16 @@ class BrokerFailedOrderRetryServiceTest {
         RecordingOrderPort orderPort = new RecordingOrderPort(failedOrder(true));
         RecordingBrokerPort brokerPort = new RecordingBrokerPort(false);
         RecordingOrderHistoryPort historyPort = new RecordingOrderHistoryPort();
-        BrokerFailedOrderRetryService service = service(orderPort, brokerPort, historyPort);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        BrokerFailedOrderRetryService service = new BrokerFailedOrderRetryService(
+                orderPort,
+                brokerPort,
+                emptySignalPort(),
+                historyPort,
+                SignalStatusHistoryPort.noop(),
+                new MicrometerOperationalMetricsAdapter(registry),
+                Clock.fixed(Instant.parse("2026-06-05T06:10:00Z"), ZoneOffset.UTC)
+        );
 
         BrokerOrderRetryResult result = service.retry(ORDER_ID);
 
@@ -66,6 +77,10 @@ class BrokerFailedOrderRetryServiceTest {
                                 OrderStatus.ACCEPTED
                         )
                 );
+        assertThat(registry.find("tradeguard.order.retry.count")
+                .tag("result", "succeeded")
+                .counter()
+                .count()).isEqualTo(1.0);
     }
 
     @Test
@@ -93,12 +108,14 @@ class BrokerFailedOrderRetryServiceTest {
         RecordingBrokerPort brokerPort = new RecordingBrokerPort(true);
         RecordingSignalPort signalPort = new RecordingSignalPort(signal());
         RecordingOrderHistoryPort historyPort = new RecordingOrderHistoryPort();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
         BrokerFailedOrderRetryService service = new BrokerFailedOrderRetryService(
                 orderPort,
                 brokerPort,
                 signalPort,
                 historyPort,
                 SignalStatusHistoryPort.noop(),
+                new MicrometerOperationalMetricsAdapter(registry),
                 Clock.fixed(Instant.parse("2026-06-05T06:10:00Z"), ZoneOffset.UTC)
         );
 
@@ -130,6 +147,14 @@ class BrokerFailedOrderRetryServiceTest {
                                 OrderStatus.BROKER_FAILED
                         )
                 );
+        assertThat(registry.find("tradeguard.order.retry.count")
+                .tag("result", "failed")
+                .counter()
+                .count()).isEqualTo(1.0);
+        assertThat(registry.find("tradeguard.order.broker_failure.count")
+                .tag("retryable", "true")
+                .counter()
+                .count()).isEqualTo(1.0);
     }
 
     @Test

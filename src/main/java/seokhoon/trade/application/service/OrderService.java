@@ -1,12 +1,15 @@
 package seokhoon.trade.application.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.in.MockOrderResult;
 import seokhoon.trade.application.port.in.RequestMockOrderUseCase;
 import seokhoon.trade.application.port.out.BrokerPort;
 import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
 import seokhoon.trade.application.port.out.SignalStatusHistoryPort;
@@ -27,12 +30,15 @@ import java.util.List;
 
 @Service
 public class OrderService implements RequestMockOrderUseCase {
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
     private final OrderRequestPort orderRequestPort;
     private final TradingSignalPort tradingSignalPort;
     private final BrokerPort brokerPort;
     private final RiskManager riskManager;
     private final SignalStatusHistoryPort signalHistoryPort;
     private final OrderStatusHistoryPort orderHistoryPort;
+    private final OperationalMetricsPort operationalMetricsPort;
     private final Clock clock;
 
     @Autowired
@@ -42,7 +48,8 @@ public class OrderService implements RequestMockOrderUseCase {
             BrokerPort brokerPort,
             RiskManager riskManager,
             SignalStatusHistoryPort signalHistoryPort,
-            OrderStatusHistoryPort orderHistoryPort
+            OrderStatusHistoryPort orderHistoryPort,
+            OperationalMetricsPort operationalMetricsPort
     ) {
         this(
                 orderRequestPort,
@@ -51,6 +58,7 @@ public class OrderService implements RequestMockOrderUseCase {
                 riskManager,
                 signalHistoryPort,
                 orderHistoryPort,
+                operationalMetricsPort,
                 Clock.systemUTC()
         );
     }
@@ -68,6 +76,7 @@ public class OrderService implements RequestMockOrderUseCase {
                 riskManager,
                 SignalStatusHistoryPort.noop(),
                 OrderStatusHistoryPort.noop(),
+                OperationalMetricsPort.noop(),
                 Clock.systemUTC()
         );
     }
@@ -86,6 +95,7 @@ public class OrderService implements RequestMockOrderUseCase {
                 riskManager,
                 SignalStatusHistoryPort.noop(),
                 OrderStatusHistoryPort.noop(),
+                OperationalMetricsPort.noop(),
                 clock
         );
     }
@@ -99,12 +109,35 @@ public class OrderService implements RequestMockOrderUseCase {
             OrderStatusHistoryPort orderHistoryPort,
             Clock clock
     ) {
+        this(
+                orderRequestPort,
+                tradingSignalPort,
+                brokerPort,
+                riskManager,
+                signalHistoryPort,
+                orderHistoryPort,
+                OperationalMetricsPort.noop(),
+                clock
+        );
+    }
+
+    OrderService(
+            OrderRequestPort orderRequestPort,
+            TradingSignalPort tradingSignalPort,
+            BrokerPort brokerPort,
+            RiskManager riskManager,
+            SignalStatusHistoryPort signalHistoryPort,
+            OrderStatusHistoryPort orderHistoryPort,
+            OperationalMetricsPort operationalMetricsPort,
+            Clock clock
+    ) {
         this.orderRequestPort = orderRequestPort;
         this.tradingSignalPort = tradingSignalPort;
         this.brokerPort = brokerPort;
         this.riskManager = riskManager;
         this.signalHistoryPort = signalHistoryPort;
         this.orderHistoryPort = orderHistoryPort;
+        this.operationalMetricsPort = operationalMetricsPort;
         this.clock = clock;
     }
 
@@ -151,6 +184,7 @@ public class OrderService implements RequestMockOrderUseCase {
             );
         }
         if (!decision.approved()) {
+            operationalMetricsPort.recordOrderRequest("RISK_REJECTED");
             return MockOrderResult.rejected(decision, signal);
         }
 
@@ -160,6 +194,7 @@ public class OrderService implements RequestMockOrderUseCase {
             RiskDecision duplicateDecision = RiskDecision.rejected(List.of("DUPLICATE_ORDER"));
             signal.rejectRisk(duplicateDecision.reasons());
             tradingSignalPort.save(signal);
+            operationalMetricsPort.recordOrderRequest("DUPLICATE_ORDER");
             return MockOrderResult.rejected(duplicateDecision, signal);
         }
         Long orderId = orderRequestPort.findId(orderRequest).orElse(null);
@@ -181,6 +216,14 @@ public class OrderService implements RequestMockOrderUseCase {
                     OrderStatus.BROKER_FAILED,
                     failureReason
             );
+            operationalMetricsPort.recordOrderRequest(OrderStatus.BROKER_FAILED.name());
+            operationalMetricsPort.recordBrokerFailure(failedOrder.retryable());
+            log.atWarn()
+                    .addKeyValue("orderId", orderId)
+                    .addKeyValue("signalId", effectiveSignalId)
+                    .addKeyValue("status", failedOrder.status())
+                    .addKeyValue("retryable", failedOrder.retryable())
+                    .log("Broker order request failed");
             return MockOrderResult.brokerFailed(decision, signal, failedOrder);
         }
         OrderRequest acceptedOrder = orderRequestPort.update(requested);
@@ -199,6 +242,13 @@ public class OrderService implements RequestMockOrderUseCase {
                 signal.status(),
                 "Mock order accepted by broker"
         );
+        operationalMetricsPort.recordOrderRequest(acceptedOrder.status().name());
+        log.atInfo()
+                .addKeyValue("orderId", orderId)
+                .addKeyValue("signalId", effectiveSignalId)
+                .addKeyValue("status", acceptedOrder.status())
+                .addKeyValue("retryable", acceptedOrder.retryable())
+                .log("Broker order request accepted");
         return MockOrderResult.accepted(decision, signal, acceptedOrder);
     }
 

@@ -5,15 +5,19 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import seokhoon.trade.application.port.in.ScanClosingBetCandidatesUseCase;
 import seokhoon.trade.application.port.out.MarketCalendarPort;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.SchedulerExecutionHistoryPort;
+import seokhoon.trade.domain.scheduler.SchedulerExecutionStatus;
 import seokhoon.trade.domain.scheduler.SchedulerName;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.UUID;
 
 @Component
 public class ClosingBetCandidateScanScheduler {
@@ -24,18 +28,21 @@ public class ClosingBetCandidateScanScheduler {
     private final ScanClosingBetCandidatesUseCase scanClosingBetCandidatesUseCase;
     private final MarketCalendarPort marketCalendarPort;
     private final SchedulerExecutionHistoryPort historyPort;
+    private final OperationalMetricsPort metricsPort;
     private final Clock clock;
 
     @Autowired
     public ClosingBetCandidateScanScheduler(
             ScanClosingBetCandidatesUseCase scanClosingBetCandidatesUseCase,
             MarketCalendarPort marketCalendarPort,
-            SchedulerExecutionHistoryPort historyPort
+            SchedulerExecutionHistoryPort historyPort,
+            OperationalMetricsPort metricsPort
     ) {
         this(
                 scanClosingBetCandidatesUseCase,
                 marketCalendarPort,
                 historyPort,
+                metricsPort,
                 Clock.system(SEOUL)
         );
     }
@@ -49,6 +56,7 @@ public class ClosingBetCandidateScanScheduler {
                 scanClosingBetCandidatesUseCase,
                 marketCalendarPort,
                 SchedulerExecutionHistoryPort.noop(),
+                OperationalMetricsPort.noop(),
                 clock
         );
     }
@@ -59,30 +67,75 @@ public class ClosingBetCandidateScanScheduler {
             SchedulerExecutionHistoryPort historyPort,
             Clock clock
     ) {
+        this(
+                scanClosingBetCandidatesUseCase,
+                marketCalendarPort,
+                historyPort,
+                OperationalMetricsPort.noop(),
+                clock
+        );
+    }
+
+    ClosingBetCandidateScanScheduler(
+            ScanClosingBetCandidatesUseCase scanClosingBetCandidatesUseCase,
+            MarketCalendarPort marketCalendarPort,
+            SchedulerExecutionHistoryPort historyPort,
+            OperationalMetricsPort metricsPort,
+            Clock clock
+    ) {
         this.scanClosingBetCandidatesUseCase = scanClosingBetCandidatesUseCase;
         this.marketCalendarPort = marketCalendarPort;
         this.historyPort = historyPort;
+        this.metricsPort = metricsPort;
         this.clock = clock;
     }
 
     @Scheduled(cron = "0 0 14 * * MON-FRI", zone = "Asia/Seoul")
     public void scanAtMarketAfternoon() {
+        String correlationId = UUID.randomUUID().toString();
+        MDC.put("correlationId", correlationId);
+        try {
+            executeScheduledScan();
+        } finally {
+            MDC.remove("correlationId");
+        }
+    }
+
+    private void executeScheduledScan() {
+        SchedulerName schedulerName = SchedulerName.CLOSING_BET_PRE_SCAN_14;
         LocalDate tradeDate = LocalDate.now(clock);
         if (!marketCalendarPort.isTradingDay(tradeDate)) {
             historyPort.markSkipped(
-                    SchedulerName.CLOSING_BET_PRE_SCAN_14,
+                    schedulerName,
                     tradeDate,
                     "NON_TRADING_DAY",
                     Instant.now(clock)
             );
-            log.info("Skipping 14:00 closing bet candidate scan on non-trading day: {}", tradeDate);
+            metricsPort.recordSchedulerExecution(
+                    schedulerName,
+                    SchedulerExecutionStatus.SKIPPED
+            );
+            log.atInfo()
+                    .addKeyValue("schedulerName", schedulerName)
+                    .addKeyValue("tradeDate", tradeDate)
+                    .addKeyValue("status", SchedulerExecutionStatus.SKIPPED)
+                    .log("Scheduler execution skipped");
             return;
         }
         long historyId = historyPort.saveStarted(
-                SchedulerName.CLOSING_BET_PRE_SCAN_14,
+                schedulerName,
                 tradeDate,
                 Instant.now(clock)
         );
+        metricsPort.recordSchedulerExecution(
+                schedulerName,
+                SchedulerExecutionStatus.STARTED
+        );
+        log.atInfo()
+                .addKeyValue("schedulerName", schedulerName)
+                .addKeyValue("tradeDate", tradeDate)
+                .addKeyValue("status", SchedulerExecutionStatus.STARTED)
+                .log("Scheduler execution started");
         try {
             var result = scanClosingBetCandidatesUseCase.scan(tradeDate, DEFAULT_LIMIT);
             historyPort.markSucceeded(
@@ -92,12 +145,36 @@ public class ClosingBetCandidateScanScheduler {
                     result.briefingSent(),
                     Instant.now(clock)
             );
+            metricsPort.recordSchedulerExecution(
+                    schedulerName,
+                    SchedulerExecutionStatus.SUCCEEDED
+            );
+            metricsPort.recordSchedulerSelected(schedulerName, result.selectedCount());
+            metricsPort.recordSchedulerNotification(schedulerName, result.briefingSent());
+            log.atInfo()
+                    .addKeyValue("schedulerName", schedulerName)
+                    .addKeyValue("tradeDate", tradeDate)
+                    .addKeyValue("status", SchedulerExecutionStatus.SUCCEEDED)
+                    .addKeyValue("scannedCount", result.scannedCount())
+                    .addKeyValue("selectedCount", result.selectedCount())
+                    .addKeyValue("notificationSent", result.briefingSent())
+                    .log("Scheduler execution succeeded");
         } catch (RuntimeException exception) {
             historyPort.markFailed(
                     historyId,
                     failureReason(exception),
                     Instant.now(clock)
             );
+            metricsPort.recordSchedulerExecution(
+                    schedulerName,
+                    SchedulerExecutionStatus.FAILED
+            );
+            log.atError()
+                    .addKeyValue("schedulerName", schedulerName)
+                    .addKeyValue("tradeDate", tradeDate)
+                    .addKeyValue("status", SchedulerExecutionStatus.FAILED)
+                    .setCause(exception)
+                    .log("Scheduler execution failed");
             throw exception;
         }
     }

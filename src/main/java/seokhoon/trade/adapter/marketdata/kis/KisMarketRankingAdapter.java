@@ -1,9 +1,13 @@
 package seokhoon.trade.adapter.marketdata.kis;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.MarketRankingPort;
 import seokhoon.trade.application.port.out.MarketRankingStock;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.domain.stock.Market;
 import tools.jackson.databind.JsonNode;
 
@@ -14,10 +18,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 @Component
 @ConditionalOnProperty(name = "tradeguard.market-data.realtime-provider", havingValue = "kis")
 public class KisMarketRankingAdapter implements MarketRankingPort {
+    private static final Logger log = LoggerFactory.getLogger(KisMarketRankingAdapter.class);
     private static final String VOLUME_RANK_PATH =
             "/uapi/domestic-stock/v1/quotations/volume-rank";
     private static final String VOLUME_RANK_TR_ID = "FHPST01710000";
@@ -28,47 +34,80 @@ public class KisMarketRankingAdapter implements MarketRankingPort {
     private final KisHttpClient httpClient;
     private final KisAccessTokenProvider tokenProvider;
     private final KisProperties properties;
+    private final OperationalMetricsPort operationalMetricsPort;
 
+    @Autowired
     public KisMarketRankingAdapter(
             KisHttpClient httpClient,
             KisAccessTokenProvider tokenProvider,
-            KisProperties properties
+            KisProperties properties,
+            OperationalMetricsPort operationalMetricsPort
     ) {
         this.httpClient = httpClient;
         this.tokenProvider = tokenProvider;
         this.properties = properties;
+        this.operationalMetricsPort = operationalMetricsPort;
+    }
+
+    KisMarketRankingAdapter(
+            KisHttpClient httpClient,
+            KisAccessTokenProvider tokenProvider,
+            KisProperties properties
+    ) {
+        this(httpClient, tokenProvider, properties, OperationalMetricsPort.noop());
     }
 
     @Override
     public List<MarketRankingStock> findTopTradingValueStocks(Market market, int limit) {
-        return fetchVolumeRank(market, limit, "3");
+        return observe(() -> fetchVolumeRank(market, limit, "3"));
     }
 
     @Override
     public List<MarketRankingStock> findTopRisingStocks(Market market, int limit) {
-        validateLimit(limit);
-        Map<String, String> parameters = new LinkedHashMap<>();
-        parameters.put("FID_COND_MRKT_DIV_CODE", "J");
-        parameters.put("FID_COND_SCR_DIV_CODE", "20170");
-        parameters.put("FID_INPUT_ISCD", marketCode(market));
-        parameters.put("FID_RANK_SORT_CLS_CODE", "0");
-        parameters.put("FID_INPUT_CNT_1", Integer.toString(limit));
-        parameters.put("FID_PRC_CLS_CODE", "0");
-        parameters.put("FID_INPUT_PRICE_1", "");
-        parameters.put("FID_INPUT_PRICE_2", "");
-        parameters.put("FID_VOL_CNT", "");
-        parameters.put("FID_TRGT_CLS_CODE", "0");
-        parameters.put("FID_TRGT_EXLS_CLS_CODE", "0");
-        parameters.put("FID_DIV_CLS_CODE", "0");
-        parameters.put("FID_RSFL_RATE1", "");
-        parameters.put("FID_RSFL_RATE2", "");
-        JsonNode output = request(FLUCTUATION_PATH, FLUCTUATION_TR_ID, parameters);
-        return mapRanking(output, market, limit, "stck_shrn_iscd");
+        return observe(() -> {
+            validateLimit(limit);
+            Map<String, String> parameters = new LinkedHashMap<>();
+            parameters.put("FID_COND_MRKT_DIV_CODE", "J");
+            parameters.put("FID_COND_SCR_DIV_CODE", "20170");
+            parameters.put("FID_INPUT_ISCD", marketCode(market));
+            parameters.put("FID_RANK_SORT_CLS_CODE", "0");
+            parameters.put("FID_INPUT_CNT_1", Integer.toString(limit));
+            parameters.put("FID_PRC_CLS_CODE", "0");
+            parameters.put("FID_INPUT_PRICE_1", "");
+            parameters.put("FID_INPUT_PRICE_2", "");
+            parameters.put("FID_VOL_CNT", "");
+            parameters.put("FID_TRGT_CLS_CODE", "0");
+            parameters.put("FID_TRGT_EXLS_CLS_CODE", "0");
+            parameters.put("FID_DIV_CLS_CODE", "0");
+            parameters.put("FID_RSFL_RATE1", "");
+            parameters.put("FID_RSFL_RATE2", "");
+            JsonNode output = request(FLUCTUATION_PATH, FLUCTUATION_TR_ID, parameters);
+            return mapRanking(output, market, limit, "stck_shrn_iscd");
+        });
     }
 
     @Override
     public List<MarketRankingStock> findVolumeSurgeStocks(Market market, int limit) {
-        return fetchVolumeRank(market, limit, "1");
+        return observe(() -> fetchVolumeRank(market, limit, "1"));
+    }
+
+    private List<MarketRankingStock> observe(Supplier<List<MarketRankingStock>> request) {
+        try {
+            List<MarketRankingStock> result = request.get();
+            recordResult("success");
+            return result;
+        } catch (RuntimeException exception) {
+            recordResult("failure");
+            throw exception;
+        }
+    }
+
+    private void recordResult(String result) {
+        operationalMetricsPort.recordKisReadOnly("ranking", result);
+        log.atInfo()
+                .addKeyValue("operation", "ranking")
+                .addKeyValue("result", result)
+                .log("KIS read-only request completed");
     }
 
     private List<MarketRankingStock> fetchVolumeRank(Market market, int limit, String rankingType) {

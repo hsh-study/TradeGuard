@@ -34,11 +34,13 @@ class ActuatorHealthEndpointIntegrationTest {
         HttpResponse<String> info = get("/actuator/info");
         HttpResponse<String> liveness = get("/actuator/health/liveness");
         HttpResponse<String> readiness = get("/actuator/health/readiness");
+        HttpResponse<String> metrics = get("/actuator/metrics");
 
         assertThat(health.statusCode()).isEqualTo(200);
         assertThat(info.statusCode()).isEqualTo(200);
         assertThat(liveness.statusCode()).isEqualTo(200);
         assertThat(readiness.statusCode()).isEqualTo(200);
+        assertThat(metrics.statusCode()).isEqualTo(200);
         assertThat(health.body()).contains("\"status\":\"UP\"");
         assertThat(liveness.body()).contains("\"status\":\"UP\"");
         assertThat(readiness.body()).contains("\"status\":\"UP\"");
@@ -51,6 +53,7 @@ class ActuatorHealthEndpointIntegrationTest {
                 .doesNotContain("sensitive-health-app-secret")
                 .doesNotContain("sensitive-health-webhook")
                 .doesNotContain("discord.example");
+        assertThat(health.headers().firstValue("X-Request-Id")).isPresent();
     }
 
     private HttpResponse<String> get(String path) throws IOException, InterruptedException {

@@ -1,6 +1,8 @@
 package seokhoon.trade.application.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
 import seokhoon.trade.application.port.in.ClosingBetCandidateScanResult;
 import seokhoon.trade.application.port.in.ScanClosingBetCandidatesUseCase;
 import seokhoon.trade.application.port.out.SchedulerExecutionHistoryPort;
@@ -22,10 +24,12 @@ class ClosingBetCandidateScanSchedulerTest {
     void delegatesScheduledScanToUseCase() {
         RecordingScanUseCase useCase = new RecordingScanUseCase();
         RecordingHistoryPort historyPort = new RecordingHistoryPort();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
         ClosingBetCandidateScanScheduler scheduler = new ClosingBetCandidateScanScheduler(
                 useCase,
                 date -> true,
                 historyPort,
+                new MicrometerOperationalMetricsAdapter(registry),
                 Clock.fixed(Instant.parse("2026-06-05T05:00:00Z"), ZoneId.of("Asia/Seoul"))
         );
 
@@ -39,6 +43,15 @@ class ClosingBetCandidateScanSchedulerTest {
         assertThat(historyPort.scannedCount).isEqualTo(12);
         assertThat(historyPort.selectedCount).isEqualTo(2);
         assertThat(historyPort.notificationSent).isTrue();
+        assertThat(registry.find("tradeguard.scheduler.execution.count")
+                .tag("schedulerName", "CLOSING_BET_PRE_SCAN_14")
+                .tag("status", "SUCCEEDED")
+                .counter()
+                .count()).isEqualTo(1.0);
+        assertThat(registry.find("tradeguard.scheduler.selected.count")
+                .tag("schedulerName", "CLOSING_BET_PRE_SCAN_14")
+                .counter()
+                .count()).isEqualTo(2.0);
     }
 
     @Test
@@ -63,12 +76,14 @@ class ClosingBetCandidateScanSchedulerTest {
     @Test
     void recordsFailedAndRethrowsWhenScheduledScanFails() {
         RecordingHistoryPort historyPort = new RecordingHistoryPort();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
         ClosingBetCandidateScanScheduler scheduler = new ClosingBetCandidateScanScheduler(
                 (tradeDate, limit) -> {
                     throw new IllegalStateException("ranking unavailable");
                 },
                 date -> true,
                 historyPort,
+                new MicrometerOperationalMetricsAdapter(registry),
                 Clock.fixed(Instant.parse("2026-06-05T05:00:00Z"), ZoneId.of("Asia/Seoul"))
         );
 
@@ -78,6 +93,11 @@ class ClosingBetCandidateScanSchedulerTest {
         assertThat(historyPort.failedHistoryId).isEqualTo(10L);
         assertThat(historyPort.failureReason)
                 .isEqualTo("IllegalStateException: ranking unavailable");
+        assertThat(registry.find("tradeguard.scheduler.execution.count")
+                .tag("schedulerName", "CLOSING_BET_PRE_SCAN_14")
+                .tag("status", "FAILED")
+                .counter()
+                .count()).isEqualTo(1.0);
     }
 
     private static class RecordingScanUseCase implements ScanClosingBetCandidatesUseCase {

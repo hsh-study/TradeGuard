@@ -1,6 +1,8 @@
 package seokhoon.trade.application.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.in.LoadStuckRetryOrdersUseCase;
@@ -9,6 +11,7 @@ import seokhoon.trade.application.port.in.RecoverStuckRetryOrderUseCase;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderRequestRecord;
 import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderStatus;
 
@@ -19,20 +22,36 @@ import java.util.List;
 @Service
 public class StuckRetryOrderService
         implements LoadStuckRetryOrdersUseCase, RecoverStuckRetryOrderUseCase {
+    private static final Logger log = LoggerFactory.getLogger(StuckRetryOrderService.class);
+
     private final OrderRequestPort orderRequestPort;
     private final OrderStatusHistoryPort orderHistoryPort;
+    private final OperationalMetricsPort operationalMetricsPort;
 
     @Autowired
     public StuckRetryOrderService(
             OrderRequestPort orderRequestPort,
-            OrderStatusHistoryPort orderHistoryPort
+            OrderStatusHistoryPort orderHistoryPort,
+            OperationalMetricsPort operationalMetricsPort
     ) {
         this.orderRequestPort = orderRequestPort;
         this.orderHistoryPort = orderHistoryPort;
+        this.operationalMetricsPort = operationalMetricsPort;
     }
 
     StuckRetryOrderService(OrderRequestPort orderRequestPort) {
-        this(orderRequestPort, OrderStatusHistoryPort.noop());
+        this(
+                orderRequestPort,
+                OrderStatusHistoryPort.noop(),
+                OperationalMetricsPort.noop()
+        );
+    }
+
+    StuckRetryOrderService(
+            OrderRequestPort orderRequestPort,
+            OrderStatusHistoryPort orderHistoryPort
+    ) {
+        this(orderRequestPort, orderHistoryPort, OperationalMetricsPort.noop());
     }
 
     @Override
@@ -47,6 +66,24 @@ public class StuckRetryOrderService
     @Override
     @Transactional
     public OrderRequestView recover(
+            long orderId,
+            String reason,
+            Instant referenceTime,
+            Duration threshold
+    ) {
+        try {
+            return recoverOrder(orderId, reason, referenceTime, threshold);
+        } catch (OrderRequestNotFoundException | StuckRetryRecoveryNotAllowedException exception) {
+            operationalMetricsPort.recordOrderRetryRecovery("rejected");
+            log.atWarn()
+                    .addKeyValue("orderId", orderId)
+                    .addKeyValue("status", "REJECTED")
+                    .log("Stuck retry recovery rejected");
+            throw exception;
+        }
+    }
+
+    private OrderRequestView recoverOrder(
             long orderId,
             String reason,
             Instant referenceTime,
@@ -79,6 +116,13 @@ public class StuckRetryOrderService
                 orderRequest.failureReason(),
                 referenceTime
         );
+        operationalMetricsPort.recordOrderRetryRecovery("succeeded");
+        log.atInfo()
+                .addKeyValue("orderId", orderId)
+                .addKeyValue("signalId", orderRequest.signalId())
+                .addKeyValue("status", orderRequest.status())
+                .addKeyValue("retryable", orderRequest.retryable())
+                .log("Stuck retry recovered");
         return toView(orderId, orderRequest);
     }
 

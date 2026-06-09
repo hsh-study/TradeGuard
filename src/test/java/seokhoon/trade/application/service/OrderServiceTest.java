@@ -1,6 +1,8 @@
 package seokhoon.trade.application.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
 import seokhoon.trade.application.port.in.MockOrderResult;
 import seokhoon.trade.application.port.out.BrokerPort;
 import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
@@ -134,6 +136,7 @@ class OrderServiceTest {
         Clock clock = Clock.fixed(Instant.parse("2026-06-05T06:01:00Z"), ZoneOffset.UTC);
         RecordingSignalHistoryPort signalHistory = new RecordingSignalHistoryPort();
         RecordingOrderHistoryPort orderHistory = new RecordingOrderHistoryPort();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
         OrderService service = new OrderService(
                 orderPort,
                 signalPort,
@@ -141,6 +144,7 @@ class OrderServiceTest {
                 new RiskManager(),
                 signalHistory,
                 orderHistory,
+                new MicrometerOperationalMetricsAdapter(registry),
                 clock
         );
 
@@ -172,6 +176,14 @@ class OrderServiceTest {
                     assertThat(history.toStatus()).isEqualTo(OrderStatus.BROKER_FAILED);
                     assertThat(history.reason()).isEqualTo("broker timeout");
                 });
+        assertThat(registry.find("tradeguard.order.request.count")
+                .tag("status", "BROKER_FAILED")
+                .counter()
+                .count()).isEqualTo(1.0);
+        assertThat(registry.find("tradeguard.order.broker_failure.count")
+                .tag("retryable", "true")
+                .counter()
+                .count()).isEqualTo(1.0);
     }
 
     private static TradingSignal signal(int score) {

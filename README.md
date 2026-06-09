@@ -219,13 +219,14 @@ curl -X POST 'http://localhost:8080/api/briefings/closing-bet?signalDate=2026-06
 
 ## 운영 Health 확인
 
-Actuator는 `health`, `info` endpoint만 외부에 노출하며 health 상세정보는 기본적으로 반환하지 않습니다.
+Actuator는 `health`, `info`, `metrics` endpoint를 외부에 노출하며 health 상세정보는 기본적으로 반환하지 않습니다.
 
 ```sh
 curl 'http://localhost:8080/actuator/health'
 curl 'http://localhost:8080/actuator/health/liveness'
 curl 'http://localhost:8080/actuator/health/readiness'
 curl 'http://localhost:8080/actuator/info'
+curl 'http://localhost:8080/actuator/metrics'
 ```
 
 - `liveness`: Spring 애플리케이션 생존 상태만 확인한다.
@@ -267,6 +268,31 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - 15:00 `CLOSING_BET_FINAL_REVIEW_15`가 실행됐는지
 - `FAILED` 실행의 `failureReason`
 - 후보 스캔/선정 수와 Discord 알림 전송 여부
+
+## 운영 Metrics와 요청 추적
+
+기본 Micrometer registry로 아래 counter를 기록합니다. Prometheus/Grafana 의존성은 포함하지 않습니다.
+
+- `tradeguard.scheduler.execution.count`: `schedulerName`, `status`
+- `tradeguard.scheduler.selected.count`: `schedulerName`
+- `tradeguard.scheduler.notification.sent.count`: `schedulerName`, `sent`
+- `tradeguard.order.request.count`: `status`
+- `tradeguard.order.broker_failure.count`: `retryable`
+- `tradeguard.order.retry.count`: `result`
+- `tradeguard.order.retry_recovery.count`: `result`
+- `tradeguard.notification.discord.count`: `result`
+- `tradeguard.kis.read_only.count`: `operation`, `result`
+
+개별 metric 조회 예시:
+
+```sh
+curl 'http://localhost:8080/actuator/metrics/tradeguard.scheduler.execution.count'
+curl 'http://localhost:8080/actuator/metrics/tradeguard.order.broker_failure.count'
+```
+
+HTTP 요청에 `X-Request-Id`가 있으면 정제 후 MDC와 응답 헤더에 사용하고, 없으면 UUID를 생성합니다. scheduler 실행은 별도 correlation ID를 생성합니다. 구조화 로그에는 scheduler 실행 결과, 주문/Broker 재시도 결과, KIS read-only/Discord 결과를 key-value로 기록합니다.
+
+API Key, App Secret, Discord webhook URL, 계좌번호, 종목코드는 metric tag로 사용하지 않습니다. HTTP 로그에는 query string을 남기지 않으며 KIS/Discord 로그에는 URL이나 자격증명을 기록하지 않습니다.
 
 ## 안전 원칙
 

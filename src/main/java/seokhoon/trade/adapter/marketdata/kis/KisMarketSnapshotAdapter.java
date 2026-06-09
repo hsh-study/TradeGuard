@@ -1,9 +1,13 @@
 package seokhoon.trade.adapter.marketdata.kis;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
 import seokhoon.trade.application.port.out.MarketSnapshotPort;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
@@ -17,6 +21,7 @@ import java.util.Optional;
 @Component
 @ConditionalOnProperty(name = "tradeguard.market-data.realtime-provider", havingValue = "kis")
 public class KisMarketSnapshotAdapter implements MarketSnapshotPort {
+    private static final Logger log = LoggerFactory.getLogger(KisMarketSnapshotAdapter.class);
     private static final String CURRENT_PRICE_PATH =
             "/uapi/domestic-stock/v1/quotations/inquire-price";
     private static final String CURRENT_PRICE_TR_ID = "FHKST01010100";
@@ -24,14 +29,37 @@ public class KisMarketSnapshotAdapter implements MarketSnapshotPort {
     private final KisHttpClient httpClient;
     private final KisAccessTokenProvider tokenProvider;
     private final KisProperties properties;
+    private final OperationalMetricsPort operationalMetricsPort;
     private final Clock clock;
 
+    @Autowired
     public KisMarketSnapshotAdapter(
+            KisHttpClient httpClient,
+            KisAccessTokenProvider tokenProvider,
+            KisProperties properties,
+            OperationalMetricsPort operationalMetricsPort
+    ) {
+        this(
+                httpClient,
+                tokenProvider,
+                properties,
+                operationalMetricsPort,
+                Clock.systemUTC()
+        );
+    }
+
+    KisMarketSnapshotAdapter(
             KisHttpClient httpClient,
             KisAccessTokenProvider tokenProvider,
             KisProperties properties
     ) {
-        this(httpClient, tokenProvider, properties, Clock.systemUTC());
+        this(
+                httpClient,
+                tokenProvider,
+                properties,
+                OperationalMetricsPort.noop(),
+                Clock.systemUTC()
+        );
     }
 
     KisMarketSnapshotAdapter(
@@ -40,14 +68,42 @@ public class KisMarketSnapshotAdapter implements MarketSnapshotPort {
             KisProperties properties,
             Clock clock
     ) {
+        this(
+                httpClient,
+                tokenProvider,
+                properties,
+                OperationalMetricsPort.noop(),
+                clock
+        );
+    }
+
+    KisMarketSnapshotAdapter(
+            KisHttpClient httpClient,
+            KisAccessTokenProvider tokenProvider,
+            KisProperties properties,
+            OperationalMetricsPort operationalMetricsPort,
+            Clock clock
+    ) {
         this.httpClient = httpClient;
         this.tokenProvider = tokenProvider;
         this.properties = properties;
+        this.operationalMetricsPort = operationalMetricsPort;
         this.clock = clock;
     }
 
     @Override
     public Optional<IntradayMarketSnapshot> getSnapshot(String stockCode) {
+        try {
+            Optional<IntradayMarketSnapshot> snapshot = fetchSnapshot(stockCode);
+            recordResult("success");
+            return snapshot;
+        } catch (RuntimeException exception) {
+            recordResult("failure");
+            throw exception;
+        }
+    }
+
+    private Optional<IntradayMarketSnapshot> fetchSnapshot(String stockCode) {
         properties.validateForRequest();
         Map<String, String> headers = Map.of(
                 "authorization", "Bearer " + tokenProvider.getAccessToken(),
@@ -73,6 +129,14 @@ public class KisMarketSnapshotAdapter implements MarketSnapshotPort {
                 nullableDecimal(output, "wghn_avrg_stck_prc"),
                 clock.instant()
         ));
+    }
+
+    private void recordResult(String result) {
+        operationalMetricsPort.recordKisReadOnly("currentPrice", result);
+        log.atInfo()
+                .addKeyValue("operation", "currentPrice")
+                .addKeyValue("result", result)
+                .log("KIS read-only request completed");
     }
 
     private URI buildUri(String stockCode) {

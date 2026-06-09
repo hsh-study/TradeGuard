@@ -1,7 +1,11 @@
 package seokhoon.trade.adapter.marketdata.kis;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.MarketDataPort;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.domain.market.DailyPrice;
 import tools.jackson.databind.JsonNode;
 
@@ -20,6 +24,7 @@ import java.util.TreeMap;
 
 @Component
 public class KisMarketDataAdapter implements MarketDataPort {
+    private static final Logger log = LoggerFactory.getLogger(KisMarketDataAdapter.class);
     private static final String DAILY_PRICE_PATH =
             "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice";
     private static final String DAILY_PRICE_TR_ID = "FHKST03010100";
@@ -29,19 +34,42 @@ public class KisMarketDataAdapter implements MarketDataPort {
     private final KisHttpClient httpClient;
     private final KisAccessTokenProvider tokenProvider;
     private final KisProperties properties;
+    private final OperationalMetricsPort operationalMetricsPort;
 
+    @Autowired
     public KisMarketDataAdapter(
             KisHttpClient httpClient,
             KisAccessTokenProvider tokenProvider,
-            KisProperties properties
+            KisProperties properties,
+            OperationalMetricsPort operationalMetricsPort
     ) {
         this.httpClient = httpClient;
         this.tokenProvider = tokenProvider;
         this.properties = properties;
+        this.operationalMetricsPort = operationalMetricsPort;
+    }
+
+    KisMarketDataAdapter(
+            KisHttpClient httpClient,
+            KisAccessTokenProvider tokenProvider,
+            KisProperties properties
+    ) {
+        this(httpClient, tokenProvider, properties, OperationalMetricsPort.noop());
     }
 
     @Override
     public List<DailyPrice> fetchDailyPrices(String stockCode, LocalDate from, LocalDate to) {
+        try {
+            List<DailyPrice> prices = fetch(stockCode, from, to);
+            recordResult("success");
+            return prices;
+        } catch (RuntimeException exception) {
+            recordResult("failure");
+            throw exception;
+        }
+    }
+
+    private List<DailyPrice> fetch(String stockCode, LocalDate from, LocalDate to) {
         properties.validateForRequest();
         Map<String, String> headers = Map.of(
                 "authorization", "Bearer " + tokenProvider.getAccessToken(),
@@ -76,6 +104,14 @@ public class KisMarketDataAdapter implements MarketDataPort {
             pageTo = nextPageTo;
         }
         return List.copyOf(pricesByDate.values());
+    }
+
+    private void recordResult(String result) {
+        operationalMetricsPort.recordKisReadOnly("dailyPrice", result);
+        log.atInfo()
+                .addKeyValue("operation", "dailyPrice")
+                .addKeyValue("result", result)
+                .log("KIS read-only request completed");
     }
 
     private URI buildUri(String stockCode, LocalDate from, LocalDate to) {

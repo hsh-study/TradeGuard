@@ -1,6 +1,8 @@
 package seokhoon.trade.application.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
 import seokhoon.trade.application.port.in.ClosingBetFinalReviewResult;
 import seokhoon.trade.application.port.in.ReviewClosingBetCandidatesUseCase;
 import seokhoon.trade.application.port.out.SchedulerExecutionHistoryPort;
@@ -22,10 +24,12 @@ class ClosingBetFinalReviewSchedulerTest {
     void delegatesScheduledReviewToUseCase() {
         RecordingReviewUseCase useCase = new RecordingReviewUseCase();
         RecordingHistoryPort historyPort = new RecordingHistoryPort();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
         ClosingBetFinalReviewScheduler scheduler = new ClosingBetFinalReviewScheduler(
                 useCase,
                 date -> true,
                 historyPort,
+                new MicrometerOperationalMetricsAdapter(registry),
                 Clock.fixed(Instant.parse("2026-06-05T06:00:00Z"), ZoneId.of("Asia/Seoul"))
         );
 
@@ -40,6 +44,11 @@ class ClosingBetFinalReviewSchedulerTest {
         assertThat(historyPort.scannedCount).isEqualTo(7);
         assertThat(historyPort.selectedCount).isEqualTo(1);
         assertThat(historyPort.notificationSent).isTrue();
+        assertThat(registry.find("tradeguard.scheduler.execution.count")
+                .tag("schedulerName", "CLOSING_BET_FINAL_REVIEW_15")
+                .tag("status", "SUCCEEDED")
+                .counter()
+                .count()).isEqualTo(1.0);
     }
 
     @Test
@@ -65,12 +74,14 @@ class ClosingBetFinalReviewSchedulerTest {
     @Test
     void recordsFailedAndRethrowsWhenScheduledReviewFails() {
         RecordingHistoryPort historyPort = new RecordingHistoryPort();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
         ClosingBetFinalReviewScheduler scheduler = new ClosingBetFinalReviewScheduler(
                 (tradeDate, limit) -> {
                     throw new IllegalStateException("snapshot unavailable");
                 },
                 date -> true,
                 historyPort,
+                new MicrometerOperationalMetricsAdapter(registry),
                 Clock.fixed(Instant.parse("2026-06-05T06:00:00Z"), ZoneId.of("Asia/Seoul"))
         );
 
@@ -80,6 +91,11 @@ class ClosingBetFinalReviewSchedulerTest {
         assertThat(historyPort.failedHistoryId).isEqualTo(20L);
         assertThat(historyPort.failureReason)
                 .isEqualTo("IllegalStateException: snapshot unavailable");
+        assertThat(registry.find("tradeguard.scheduler.execution.count")
+                .tag("schedulerName", "CLOSING_BET_FINAL_REVIEW_15")
+                .tag("status", "FAILED")
+                .counter()
+                .count()).isEqualTo(1.0);
     }
 
     private static class RecordingReviewUseCase implements ReviewClosingBetCandidatesUseCase {

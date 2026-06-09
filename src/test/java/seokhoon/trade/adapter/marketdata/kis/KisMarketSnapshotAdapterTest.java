@@ -1,6 +1,8 @@
 package seokhoon.trade.adapter.marketdata.kis;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
 import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -33,10 +35,12 @@ class KisMarketSnapshotAdapterTest {
                 }
                 """));
         KisProperties properties = properties();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
         KisMarketSnapshotAdapter adapter = new KisMarketSnapshotAdapter(
                 httpClient,
                 tokenProvider(httpClient, properties),
                 properties,
+                new MicrometerOperationalMetricsAdapter(registry),
                 Clock.fixed(Instant.parse("2026-06-05T06:00:00Z"), ZoneOffset.UTC)
         );
 
@@ -58,6 +62,16 @@ class KisMarketSnapshotAdapterTest {
         assertThat(httpClient.lastGetHeaders)
                 .containsEntry("tr_id", "FHKST01010100");
         assertThat(httpClient.lastGetUri.toString()).doesNotContain("order");
+        assertThat(registry.find("tradeguard.kis.read_only.count")
+                .tag("operation", "currentPrice")
+                .tag("result", "success")
+                .counter()
+                .count()).isEqualTo(1.0);
+        assertThat(registry.getMeters())
+                .flatExtracting(meter -> meter.getId().getTags())
+                .noneMatch(tag -> tag.getValue().contains("005930"))
+                .noneMatch(tag -> tag.getValue().contains("test-app-key"))
+                .noneMatch(tag -> tag.getValue().contains("test-app-secret"));
     }
 
     @Test

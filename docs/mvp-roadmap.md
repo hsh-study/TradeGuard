@@ -52,10 +52,9 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 중복 주문 방지 | 완료 | 사전 조회, DB 복합 unique constraint, 충돌의 도메인 거절 변환과 통합 테스트 존재 |
 | 알림 | 부분 완료 | Discord Webhook 기반 종가베팅 브리핑 API와 no-op 처리 존재. 일반 알림 정책은 미구현 |
 | KIS 연동 | 부분 완료 | 모의투자 OAuth, 일봉/순위/current price read-only 조회와 opt-in smoke test 구현. 계좌/주문 연동은 의도적으로 제외 |
-| 운영 관측성 | 부분 완료 | Actuator health/info, liveness/readiness, DB/Flyway/KIS read-only/Discord/scheduler health 진단과 14:00/15:00 scheduler 실행·skip·실패 이력 조회 구현. metrics는 미구현 |
+| 운영 관측성 | 부분 완료 | Actuator health/info/metrics, liveness/readiness, dependency health, scheduler 실행 이력, 핵심 Micrometer counter, 구조화 로그와 X-Request-Id 구현. 외부 metrics backend와 감사 이력 correlation 연결은 미구현 |
 | 시장 calendar | 부분 완료 | 주말 및 설정 휴일 scheduler skip 구현. KRX 공식 휴장일 자동 수집은 미구현 |
 | DB migration | 완료 | Flyway V1 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
-| 운영 관측성 | 미구현 | 구조화 로그, metric, health 세분화 없음 |
 
 ## 4. 구현 단계
 
@@ -182,4 +181,4 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 2. 15:00 intraday feature 확장(VWAP 이탈 시간, 체결강도, 호가 잔량 등)
 3. 재시도/복구 동시성에 대한 optimistic locking 또는 조건부 update 강화
 4. 감사 이력 actor/request correlation ID 확장
-5. scheduler 실행 이력 보존 정책, metrics 및 구조화 로그 추가
+5. scheduler 실행 이력과 metric의 보존/외부 수집 정책 수립
