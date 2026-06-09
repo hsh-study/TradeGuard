@@ -53,6 +53,58 @@ class RiskManagerTest {
     }
 
     @Test
+    void approvesEarlyMarketEntryCandidateButRejectsPreScanSignal() {
+        TradingSignal entry = new TradingSignal(
+                "EARLY_MARKET_BREAKOUT",
+                "005930",
+                LocalDate.of(2026, 6, 10),
+                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                80,
+                List.of("ABOVE_VWAP")
+        );
+        TradingSignal preScan = new TradingSignal(
+                "EARLY_MARKET_BREAKOUT",
+                "000660",
+                LocalDate.of(2026, 6, 10),
+                SignalType.EARLY_MARKET_PRE_SCAN,
+                80,
+                List.of("TRADING_VALUE_TOP")
+        );
+
+        RiskDecision entryDecision = riskManager.evaluate(
+                entry,
+                new OrderRequest(
+                        "005930",
+                        OrderSide.BUY,
+                        OrderType.LIMIT,
+                        1,
+                        BigDecimal.valueOf(50_000),
+                        "EARLY_MARKET_BREAKOUT",
+                        LocalDate.of(2026, 6, 10)
+                ),
+                (stockCode, strategyName, tradeDate, side) -> false
+        );
+        RiskDecision preScanDecision = riskManager.evaluate(
+                preScan,
+                new OrderRequest(
+                        "000660",
+                        OrderSide.BUY,
+                        OrderType.LIMIT,
+                        1,
+                        BigDecimal.valueOf(50_000),
+                        "EARLY_MARKET_BREAKOUT",
+                        LocalDate.of(2026, 6, 10)
+                ),
+                (stockCode, strategyName, tradeDate, side) -> false
+        );
+
+        assertThat(entryDecision.approved()).isTrue();
+        assertThat(preScanDecision.approved()).isFalse();
+        assertThat(preScanDecision.reasons())
+                .contains("ONLY_BUY_CANDIDATE_SUPPORTED_IN_MVP");
+    }
+
+    @Test
     void storesAllRejectionReasonsOnSignal() {
         TradingSignal signal = signal(69);
 

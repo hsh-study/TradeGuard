@@ -27,7 +27,9 @@ public class RiskManager {
         if (signal.score() < MINIMUM_SCORE) {
             reasons.add("SCORE_BELOW_70");
         }
-        if (signal.signalType() != SignalType.BUY_CANDIDATE || orderRequest.side() != OrderSide.BUY) {
+        boolean supportedBuySignal = signal.signalType() == SignalType.BUY_CANDIDATE
+                || signal.signalType() == SignalType.EARLY_MARKET_ENTRY_CANDIDATE;
+        if (!supportedBuySignal || orderRequest.side() != OrderSide.BUY) {
             reasons.add("ONLY_BUY_CANDIDATE_SUPPORTED_IN_MVP");
         }
         if (orderRequest.orderType() != OrderType.LIMIT) {

@@ -100,6 +100,24 @@ curl -X POST 'http://localhost:8080/api/reviews/closing-bet?tradeDate=2026-06-05
 
 리뷰는 같은 거래일의 `CLOSING_BET_PRE_SCAN` 신호 중 리스크 사유가 없고 snapshot 기반 최종 점수 75점 이상인 후보를 `CLOSING_BET` 신호로 저장합니다. VWAP 상회, 당일 고가권 유지, 누적 거래대금 500억 이상을 가점하고 VWAP 하회나 고가 대비 큰 이탈을 감점합니다. 자동 주문은 생성하지 않으며, 평일 15:00 Asia/Seoul 기준으로도 실행됩니다.
 
+08:30 장초반 예비 후보 수동 스캔:
+
+```sh
+curl -X POST 'http://localhost:8080/api/scans/early-market/pre-open?tradeDate=2026-06-10&limit=10'
+```
+
+거래대금 상위 `+20`, 양호한 등락률 `+15`, 거래량 상위 `+15`를 적용합니다. 저장된 지표가 있고 현재가가 MA5와 MA20 위이면 `+15`이며, 과열 또는 지표 부족은 reason에 기록합니다. 결과는 `strategyName=EARLY_MARKET_BREAKOUT`, `signalType=EARLY_MARKET_PRE_SCAN`으로 저장합니다.
+
+09:05 장초반 압축 후보 수동 스캔:
+
+```sh
+curl -X POST 'http://localhost:8080/api/scans/early-market/opening?tradeDate=2026-06-10&limit=3'
+```
+
+같은 거래일의 예비 신호를 snapshot으로 재평가합니다. VWAP 위 `+25`, 당일 고가권 `+20`, 누적 거래대금 충분 `+20`, VWAP 이탈 `-30`, 고가 대비 큰 이탈 `-20`을 적용하며 70점 이상만 최대 3개 저장합니다. 결과는 `signalType=EARLY_MARKET_ENTRY_CANDIDATE`입니다.
+
+장초반 최종 후보는 기존 signalId 기반 지정가 모의 주문 API에서 사용할 수 있습니다. `EARLY_MARKET_PRE_SCAN`은 관찰 후보이므로 주문 요청이 거절됩니다. 08:30/09:05 스캔과 scheduler는 실제 주문을 생성하지 않습니다.
+
 거래 신호 조회:
 
 ```sh
@@ -283,6 +301,13 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.notification.discord.count`: `result`
 - `tradeguard.kis.read_only.count`: `operation`, `result`
 
+장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
+
+- `EARLY_MARKET_PRE_OPEN_830`
+- `EARLY_MARKET_OPENING_905`
+
+두 scheduler는 평일 Asia/Seoul 기준 08:30과 09:05에 실행하며 `MarketCalendarPort`가 비거래일로 판단하면 `SKIPPED` 이력을 남깁니다. 거래일에는 `STARTED` 후 `SUCCEEDED` 또는 `FAILED`로 전환하고 후보 수와 Discord 전송 여부를 저장합니다.
+
 개별 metric 조회 예시:
 
 ```sh
@@ -314,6 +339,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 
 - 실계좌 주문 기능은 구현하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
+- 08:30/09:05 장초반 후보 생성은 자동 주문을 실행하지 않습니다.
 - API Key, App Secret, 계좌번호는 코드에 하드코딩하지 않습니다.
 - Discord Webhook URL은 환경변수로만 주입하며 코드에 하드코딩하지 않습니다.
 - `KisBrokerAdapter`는 스켈레톤만 제공하며 실제 주문 API를 호출하지 않습니다.

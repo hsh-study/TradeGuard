@@ -46,6 +46,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 종가베팅 전략 | 완료 | 단건·활성 관심종목 분석 API에 연결됐으며 점수 계산과 테스트 존재 |
 | 14:00 예비 스캔 | 부분 완료 | Fake 또는 설정 기반 KIS read-only 시장 순위로 CLOSING_BET_PRE_SCAN 저장, 수동 API, 거래일 14:00 scheduler, opt-in smoke test 존재. KRX calendar 자동 동기화는 TODO |
 | 15:00 최종 리뷰 | 부분 완료 | MarketSnapshotPort 기반 VWAP/고가권/거래대금 재평가, 거래일 15:00 scheduler, opt-in current price smoke test 존재. 더 정교한 intraday feature는 TODO |
+| 장초반 매매 후보 | 부분 완료 | 08:30 시장 순위 기반 EARLY_MARKET_PRE_SCAN 최대 10개, 09:05 snapshot 기반 EARLY_MARKET_ENTRY_CANDIDATE 최대 3개, 수동 API/scheduler/Discord/실행 이력/metrics 구현. 시간외 실제 데이터와 정교한 장초반 feature는 TODO |
 | 신호 저장 | 부분 완료 | 논리 키 upsert, 상태 갱신, 리스크 거절 사유 저장, 신호 조회 API와 주요 상태 변경 감사 이력 존재. 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
 | 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, order_requests.signal_id FK 추적, 승인/거절/BROKER_FAILED 결과, 동일 row 수동 재시도, 성공 시 신호 상태 동기화, RETRY_REQUESTED 정체 조회/수동 복구, 주요 상태 변경 감사 이력 존재. 자동 재시도/복구는 미구현 |

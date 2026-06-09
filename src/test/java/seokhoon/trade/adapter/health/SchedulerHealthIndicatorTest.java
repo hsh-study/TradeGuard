@@ -6,6 +6,8 @@ import org.springframework.boot.health.contributor.Status;
 import seokhoon.trade.application.port.out.MarketCalendarPort;
 import seokhoon.trade.application.service.ClosingBetCandidateScanScheduler;
 import seokhoon.trade.application.service.ClosingBetFinalReviewScheduler;
+import seokhoon.trade.application.service.EarlyMarketOpeningScheduler;
+import seokhoon.trade.application.service.EarlyMarketPreOpenScheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -17,6 +19,8 @@ class SchedulerHealthIndicatorTest {
         SchedulerHealthIndicator indicator = new SchedulerHealthIndicator(
                 providerWith(mock(ClosingBetCandidateScanScheduler.class)),
                 providerWith(mock(ClosingBetFinalReviewScheduler.class)),
+                providerWith(mock(EarlyMarketPreOpenScheduler.class)),
+                providerWith(mock(EarlyMarketOpeningScheduler.class)),
                 providerWith(mock(MarketCalendarPort.class))
         );
 
@@ -26,6 +30,8 @@ class SchedulerHealthIndicatorTest {
         assertThat(health.getDetails())
                 .containsEntry("candidateScanSchedulerLoaded", true)
                 .containsEntry("finalReviewSchedulerLoaded", true)
+                .containsEntry("earlyMarketPreOpenSchedulerLoaded", true)
+                .containsEntry("earlyMarketOpeningSchedulerLoaded", true)
                 .containsEntry("marketCalendarLoaded", true);
     }
 
@@ -34,6 +40,8 @@ class SchedulerHealthIndicatorTest {
         SchedulerHealthIndicator indicator = new SchedulerHealthIndicator(
                 providerWith(mock(ClosingBetCandidateScanScheduler.class)),
                 providerWith(null),
+                providerWith(mock(EarlyMarketPreOpenScheduler.class)),
+                providerWith(mock(EarlyMarketOpeningScheduler.class)),
                 providerWith(mock(MarketCalendarPort.class))
         );
 

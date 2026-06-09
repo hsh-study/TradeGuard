@@ -2,5 +2,7 @@ package seokhoon.trade.domain.scheduler;
 
 public enum SchedulerName {
     CLOSING_BET_PRE_SCAN_14,
-    CLOSING_BET_FINAL_REVIEW_15
+    CLOSING_BET_FINAL_REVIEW_15,
+    EARLY_MARKET_PRE_OPEN_830,
+    EARLY_MARKET_OPENING_905
 }

@@ -1,6 +1,7 @@
 package seokhoon.trade.adapter.persistence;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -71,6 +72,11 @@ class OrderRequestDuplicateIntegrationTest {
         signalHistoryRepository.deleteAll();
         repository.deleteAll();
         tradingSignalRepository.deleteAll();
+    }
+
+    @AfterEach
+    void cleanUpOrders() {
+        clearOrders();
     }
 
     @Test
@@ -344,6 +350,81 @@ class OrderRequestDuplicateIntegrationTest {
         assertThat(tradingSignalPort.findById(signalId))
                 .hasValueSatisfying(stored ->
                         assertThat(stored.status()).isEqualTo(TradingSignalStatus.ORDER_REQUESTED));
+    }
+
+    @Test
+    void upsertsEarlyMarketSignalsBySignalTypeWithoutMixingStages() {
+        LocalDate tradeDate = LocalDate.of(2026, 6, 10);
+        TradingSignal preScan = new TradingSignal(
+                "EARLY_MARKET_BREAKOUT",
+                "005930",
+                tradeDate,
+                SignalType.EARLY_MARKET_PRE_SCAN,
+                80,
+                java.util.List.of("TRADING_VALUE_TOP")
+        );
+        TradingSignal entry = new TradingSignal(
+                "EARLY_MARKET_BREAKOUT",
+                "005930",
+                tradeDate,
+                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                90,
+                java.util.List.of("ABOVE_VWAP")
+        );
+
+        tradingSignalPort.save(preScan);
+        tradingSignalPort.save(new TradingSignal(
+                "EARLY_MARKET_BREAKOUT",
+                "005930",
+                tradeDate,
+                SignalType.EARLY_MARKET_PRE_SCAN,
+                85,
+                java.util.List.of("TRADING_VALUE_TOP", "VOLUME_TOP")
+        ));
+        tradingSignalPort.save(entry);
+
+        assertThat(tradingSignalRepository.count()).isEqualTo(2);
+        assertThat(tradingSignalPort.find(
+                "EARLY_MARKET_BREAKOUT",
+                "005930",
+                tradeDate,
+                SignalType.EARLY_MARKET_PRE_SCAN
+        )).hasValueSatisfying(signal -> assertThat(signal.score()).isEqualTo(85));
+        assertThat(tradingSignalPort.find(
+                "EARLY_MARKET_BREAKOUT",
+                "005930",
+                tradeDate,
+                SignalType.EARLY_MARKET_ENTRY_CANDIDATE
+        )).hasValueSatisfying(signal -> assertThat(signal.score()).isEqualTo(90));
+    }
+
+    @Test
+    void requestsMockLimitOrderFromEarlyMarketEntryCandidate() {
+        LocalDate tradeDate = LocalDate.of(2026, 6, 10);
+        TradingSignal entry = new TradingSignal(
+                "EARLY_MARKET_BREAKOUT",
+                "035420",
+                tradeDate,
+                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                90,
+                java.util.List.of("ABOVE_VWAP", "NEAR_INTRADAY_HIGH")
+        );
+        tradingSignalPort.save(entry);
+        long signalId = tradingSignalPort.findId(
+                entry.strategyName(),
+                entry.stockCode(),
+                entry.signalDate(),
+                entry.signalType()
+        ).orElseThrow();
+
+        var result = requestSignalMockOrderUseCase.request(
+                signalId,
+                new SignalMockOrderCommand(1, BigDecimal.valueOf(50_000))
+        );
+
+        assertThat(result.riskDecision().approved()).isTrue();
+        assertThat(result.orderRequest().orderType()).isEqualTo(OrderType.LIMIT);
+        assertThat(result.orderRequest().signalId()).isEqualTo(signalId);
     }
 
     private static OrderRequest orderRequest() {
