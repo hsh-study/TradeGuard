@@ -47,6 +47,11 @@ class MySqlMigrationIntegrationTest {
             assertThat(columnExists(jdbcTemplate, "order_requests", "failed_at")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "retryable")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "signal_id")).isTrue();
+            assertThat(columnExists(
+                    jdbcTemplate,
+                    "order_requests",
+                    "retry_requested_at"
+            )).isTrue();
             assertThat(indexExists(
                     jdbcTemplate,
                     "order_requests",
@@ -56,6 +61,11 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "order_requests",
                     "fk_order_requests_trading_signal"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "order_requests",
+                    "idx_order_requests_status_retry_requested_at"
             )).isTrue();
 
             insertTradingSignal(jdbcTemplate);

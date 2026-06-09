@@ -190,7 +190,8 @@ class MockOrderControllerTest {
                             true,
                             "CLOSING_BET",
                             TRADE_DATE,
-                            1L
+                            1L,
+                            null
                     ));
                 }
         );
@@ -333,7 +334,8 @@ class MockOrderControllerTest {
                 false,
                 "CLOSING_BET",
                 TRADE_DATE,
-                1L
+                1L,
+                null
         );
     }
 }

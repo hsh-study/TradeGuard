@@ -13,6 +13,7 @@ import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -67,10 +68,17 @@ public class OrderRequestPersistenceAdapter implements OrderRequestPort {
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean claimRetry(long orderId) {
+        return claimRetry(orderId, Instant.now());
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean claimRetry(long orderId, Instant retryRequestedAt) {
         return repository.claimRetry(
                 orderId,
                 OrderStatus.BROKER_FAILED,
-                OrderStatus.RETRY_REQUESTED
+                OrderStatus.RETRY_REQUESTED,
+                retryRequestedAt
         ) == 1;
     }
 
@@ -121,5 +129,35 @@ public class OrderRequestPersistenceAdapter implements OrderRequestPort {
                 .stream()
                 .map(OrderRequestEntity::toRecord)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderRequestRecord> findStuckRetries(Instant cutoff) {
+        return repository
+                .findByStatusAndRetryRequestedAtLessThanEqualOrderByRetryRequestedAtAsc(
+                        OrderStatus.RETRY_REQUESTED,
+                        cutoff
+                )
+                .stream()
+                .map(OrderRequestEntity::toRecord)
+                .toList();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean recoverStuckRetry(
+            long orderId,
+            Instant cutoff,
+            OrderRequest recoveredOrder
+    ) {
+        return repository.recoverStuckRetry(
+                orderId,
+                OrderStatus.RETRY_REQUESTED,
+                OrderStatus.BROKER_FAILED,
+                cutoff,
+                recoveredOrder.failureReason(),
+                recoveredOrder.failedAt()
+        ) == 1;
     }
 }

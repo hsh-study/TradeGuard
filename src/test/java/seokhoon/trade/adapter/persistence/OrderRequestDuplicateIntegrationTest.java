@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
 import seokhoon.trade.application.port.out.OrderRequestPort;
+import seokhoon.trade.application.port.out.OrderRequestRecord;
 import seokhoon.trade.application.port.in.RetryBrokerFailedOrderUseCase;
 import seokhoon.trade.application.port.in.RequestSignalMockOrderUseCase;
 import seokhoon.trade.application.port.in.RequestStoredMockOrderUseCase;
@@ -143,15 +144,65 @@ class OrderRequestDuplicateIntegrationTest {
         orderRequestPort.update(failed);
         long orderId = repository.findAll().getFirst().toRecord().id();
 
-        boolean firstClaim = orderRequestPort.claimRetry(orderId);
-        boolean secondClaim = orderRequestPort.claimRetry(orderId);
+        Instant retryRequestedAt = Instant.parse("2026-06-05T06:05:00Z");
+        boolean firstClaim = orderRequestPort.claimRetry(orderId, retryRequestedAt);
+        boolean secondClaim = orderRequestPort.claimRetry(orderId, retryRequestedAt);
 
         assertThat(firstClaim).isTrue();
         assertThat(secondClaim).isFalse();
+        assertThat(orderRequestPort.findById(orderId).orElseThrow().retryRequestedAt())
+                .isEqualTo(retryRequestedAt);
+        assertThat(orderRequestPort.findStuckRetries(retryRequestedAt.minusSeconds(1)))
+                .isEmpty();
+        assertThat(orderRequestPort.findStuckRetries(retryRequestedAt))
+                .singleElement()
+                .extracting(OrderRequestRecord::id)
+                .isEqualTo(orderId);
         assertThat(repository.count()).isEqualTo(1);
         assertThat(orderRequestPort.findById(orderId))
                 .hasValueSatisfying(order ->
                         assertThat(order.status()).isEqualTo(OrderStatus.RETRY_REQUESTED));
+    }
+
+    @Test
+    void conditionallyRecoversStuckRetryWithoutCreatingNewRow() {
+        OrderRequest failed = orderRequest();
+        orderRequestPort.create(failed);
+        failed.markBrokerFailed(
+                "broker timeout",
+                Instant.parse("2026-06-05T06:01:00Z"),
+                true
+        );
+        orderRequestPort.update(failed);
+        long orderId = repository.findAll().getFirst().toRecord().id();
+        Instant requestedAt = Instant.parse("2026-06-05T06:05:00Z");
+        orderRequestPort.claimRetry(orderId, requestedAt);
+        OrderRequest recovered = orderRequestPort.findById(orderId).orElseThrow();
+        recovered.markRetryStuckRecovered(
+                "application restarted during retry",
+                Instant.parse("2026-06-05T06:11:00Z")
+        );
+
+        boolean firstRecovery = orderRequestPort.recoverStuckRetry(
+                orderId,
+                Instant.parse("2026-06-05T06:06:00Z"),
+                recovered
+        );
+        boolean secondRecovery = orderRequestPort.recoverStuckRetry(
+                orderId,
+                Instant.parse("2026-06-05T06:06:00Z"),
+                recovered
+        );
+
+        assertThat(firstRecovery).isTrue();
+        assertThat(secondRecovery).isFalse();
+        assertThat(repository.count()).isEqualTo(1);
+        assertThat(orderRequestPort.findById(orderId)).hasValueSatisfying(order -> {
+            assertThat(order.status()).isEqualTo(OrderStatus.BROKER_FAILED);
+            assertThat(order.retryable()).isTrue();
+            assertThat(order.retryRequestedAt()).isNull();
+            assertThat(order.failureReason()).startsWith("Retry request stuck recovered:");
+        });
     }
 
     @Test

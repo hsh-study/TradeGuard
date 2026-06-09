@@ -145,7 +145,8 @@ public class MockOrderController {
             boolean retryable,
             String strategyName,
             LocalDate tradeDate,
-            Long signalId
+            Long signalId,
+            Instant retryRequestedAt
     ) {
         static OrderResponse from(OrderRequestView orderRequest) {
             return new OrderResponse(
@@ -162,7 +163,8 @@ public class MockOrderController {
                     orderRequest.retryable(),
                     orderRequest.strategyName(),
                     orderRequest.tradeDate(),
-                    orderRequest.signalId()
+                    orderRequest.signalId(),
+                    orderRequest.retryRequestedAt()
             );
         }
 
@@ -181,7 +183,8 @@ public class MockOrderController {
                     orderRequest.retryable(),
                     orderRequest.strategyName(),
                     orderRequest.tradeDate(),
-                    orderRequest.signalId()
+                    orderRequest.signalId(),
+                    orderRequest.retryRequestedAt()
             );
         }
     }

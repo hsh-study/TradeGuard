@@ -54,6 +54,8 @@ public class OrderRequestEntity {
     private Instant failedAt;
     @Column(name = "retryable", nullable = false)
     private boolean retryable;
+    @Column(name = "retry_requested_at")
+    private Instant retryRequestedAt;
     @Column(name = "strategy_name", nullable = false)
     private String strategyName;
     @Column(name = "trade_date", nullable = false)
@@ -81,6 +83,7 @@ public class OrderRequestEntity {
         failureReason = orderRequest.failureReason();
         failedAt = orderRequest.failedAt();
         retryable = orderRequest.retryable();
+        retryRequestedAt = orderRequest.retryRequestedAt();
         strategyName = orderRequest.strategyName();
         tradeDate = orderRequest.tradeDate();
         signalId = orderRequest.signalId();
@@ -106,6 +109,7 @@ public class OrderRequestEntity {
                 failureReason,
                 failedAt,
                 retryable,
+                retryRequestedAt,
                 strategyName,
                 tradeDate,
                 signalId
@@ -127,7 +131,8 @@ public class OrderRequestEntity {
                 retryable,
                 strategyName,
                 tradeDate,
-                signalId
+                signalId,
+                retryRequestedAt
         );
     }
 }

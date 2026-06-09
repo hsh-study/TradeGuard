@@ -51,12 +51,13 @@ public class BrokerFailedOrderRetryService implements RetryBrokerFailedOrderUseC
                 .orElseThrow(() -> new OrderRequestNotFoundException(orderId));
         validateRetry(orderRequest);
 
-        if (!orderRequestPort.claimRetry(orderId)) {
+        Instant retryRequestedAt = Instant.now(clock);
+        if (!orderRequestPort.claimRetry(orderId, retryRequestedAt)) {
             throw new OrderRetryNotAllowedException(
                     "Order retry is already in progress or no longer allowed"
             );
         }
-        orderRequest.markRetryRequested();
+        orderRequest.markRetryRequested(retryRequestedAt);
 
         OrderRequest accepted;
         try {

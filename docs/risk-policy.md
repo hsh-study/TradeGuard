@@ -104,6 +104,22 @@ BROKER_FAILED(retryable=true)
 - `ACCEPTED`, `REJECTED`, `CANCELED`, `FILLED`, `PARTIALLY_FILLED`는 재시도할 수 없다.
 - 자동 재시도와 backoff는 구현하지 않는다.
 
+### 정체된 재시도 복구
+
+`BROKER_FAILED -> RETRY_REQUESTED` 선점 시 `retry_requested_at`을 함께 기록한다. `RETRY_REQUESTED`가 설정된 기준 시간보다 오래 지속되면 stuck retry로 판단한다. 기본 기준은 5분이며 `tradeguard.order.retry-stuck-threshold-minutes`로 변경할 수 있다.
+
+```text
+RETRY_REQUESTED(stuck)
+  -> BROKER_FAILED(retryable=true)
+```
+
+- 운영 조회는 `status=RETRY_REQUESTED`이고 `retry_requested_at <= 기준시각 - threshold`인 주문만 반환한다.
+- 수동 복구는 동일한 threshold를 넘긴 `RETRY_REQUESTED` 주문에만 허용한다.
+- 복구 시 `failureReason`은 `Retry request stuck recovered: {reason}`으로 기록하고 `failedAt`을 복구 시각으로 갱신한다.
+- 복구 후 `retryable=true`를 유지하므로 운영자가 원인을 확인한 뒤 다시 수동 재시도할 수 있다.
+- `ACCEPTED` 또는 `BROKER_FAILED`로 전이가 끝나면 `retry_requested_at`은 null로 비운다.
+- 자동 재시도와 자동 stuck recovery scheduler는 구현하지 않는다.
+
 `order_requests.signal_id`는 주문을 생성한 TradingSignal을 nullable FK로 참조한다. signalId 기반 주문은 path variable의 ID를 저장하고, 논리 키 기반 주문은 조회한 신호의 JPA ID를 별도로 조회해 저장한다. 도메인 `TradingSignal`에는 persistence ID를 추가하지 않는다.
 
 수동 재시도 성공 시 `signal_id`가 있으면 연결된 TradingSignal을 `ORDER_REQUESTED`로 변경한다. 재시도 실패 시 신호는 변경하지 않는다. V3 이전 주문처럼 `signal_id`가 null이면 신호 동기화를 건너뛰되 주문 재시도는 실패시키지 않는다.

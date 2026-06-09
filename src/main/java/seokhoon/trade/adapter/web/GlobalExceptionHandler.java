@@ -1,5 +1,6 @@
 package seokhoon.trade.adapter.web;
 
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -36,6 +37,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             MethodArgumentTypeMismatchException.class,
             HttpMessageNotReadableException.class,
+            ConstraintViolationException.class,
             IllegalArgumentException.class
     })
     ResponseEntity<ErrorResponse> handleInvalidRequest(Exception exception) {

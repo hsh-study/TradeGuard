@@ -158,13 +158,31 @@ Broker 실패 주문 수동 재시도:
 curl -X POST 'http://localhost:8080/api/mock-orders/10/retry'
 ```
 
-모의 주문 API는 DB에 저장된 신호만 사용하며 지정가 주문만 생성합니다. 주문 이력 응답에는 `orderId`, `signalId`, `failureReason`, `failedAt`, `retryable`이 포함됩니다. signalId 기반 및 논리 키 기반 주문 모두 조회된 TradingSignal ID를 `order_requests.signal_id`에 저장합니다. Broker 호출 중 예외가 발생하면 주문은 `BROKER_FAILED`로 저장되고 `brokerOrderNo`는 null로 유지됩니다. 필터를 생략하면 전체 주문 이력을 최신 거래일 순으로 반환합니다.
+5분 이상 정체된 재시도 조회:
+
+```sh
+curl 'http://localhost:8080/api/mock-orders/retries/stuck?thresholdMinutes=5'
+```
+
+정체된 재시도를 수동으로 `BROKER_FAILED`로 복구:
+
+```sh
+curl -X POST 'http://localhost:8080/api/mock-orders/10/retry/recover' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "reason":"application restarted during retry"
+  }'
+```
+
+모의 주문 API는 DB에 저장된 신호만 사용하며 지정가 주문만 생성합니다. 주문 이력 응답에는 `orderId`, `signalId`, `failureReason`, `failedAt`, `retryable`, `retryRequestedAt`이 포함됩니다. signalId 기반 및 논리 키 기반 주문 모두 조회된 TradingSignal ID를 `order_requests.signal_id`에 저장합니다. Broker 호출 중 예외가 발생하면 주문은 `BROKER_FAILED`로 저장되고 `brokerOrderNo`는 null로 유지됩니다. 필터를 생략하면 전체 주문 이력을 최신 거래일 순으로 반환합니다.
 
 Broker 실패 시 POST 응답의 `approved`는 `false`, `brokerFailed`는 `true`이며 실패 사유를 `failureReason`으로 반환합니다. 리스크 승인은 완료되었지만 Broker 요청이 성공하지 않았으므로 TradingSignal은 `RISK_APPROVED` 상태를 유지합니다.
 
 수동 재시도는 `BROKER_FAILED`이면서 `retryable=true`인 주문만 허용합니다. 재시도는 새로운 주문 row를 만들지 않고 기존 orderId row를 `RETRY_REQUESTED`로 원자적으로 선점합니다. 자동 재시도는 수행하지 않습니다.
 
 재시도가 성공하고 주문에 `signalId`가 연결되어 있으면 해당 TradingSignal을 `ORDER_REQUESTED`로 동기화합니다. V3 이전에 생성되어 `signalId`가 null인 기존 주문은 신호 동기화를 건너뛰고 주문 재시도 자체는 정상 처리합니다.
+
+`RETRY_REQUESTED` 전환 시 `retryRequestedAt`을 기록합니다. 기본 5분 이상 정체되면 운영 조회 대상이며, 복구 API는 상태를 `BROKER_FAILED`로 되돌리고 실패 사유/시각을 갱신한 뒤 `retryable=true`를 유지합니다. 기준은 `tradeguard.order.retry-stuck-threshold-minutes` 또는 `ORDER_RETRY_STUCK_THRESHOLD_MINUTES`로 변경할 수 있습니다. 자동 정체 복구 scheduler는 없습니다.
 
 종가베팅 브리핑 알림:
 

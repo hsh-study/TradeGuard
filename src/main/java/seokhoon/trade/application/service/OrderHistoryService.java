@@ -58,7 +58,8 @@ public class OrderHistoryService implements LoadOrderRequestsUseCase {
                 record.retryable(),
                 record.strategyName(),
                 record.tradeDate(),
-                record.signalId()
+                record.signalId(),
+                record.retryRequestedAt()
         );
     }
 }

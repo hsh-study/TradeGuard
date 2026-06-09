@@ -48,7 +48,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 15:00 최종 리뷰 | 부분 완료 | MarketSnapshotPort 기반 VWAP/고가권/거래대금 재평가, 거래일 15:00 scheduler, opt-in current price smoke test 존재. 더 정교한 intraday feature는 TODO |
 | 신호 저장 | 부분 완료 | 논리 키 upsert, 상태 갱신, 리스크 거절 사유 저장, 신호 조회 API 존재. 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
-| 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, order_requests.signal_id FK 추적, 승인/거절/BROKER_FAILED 결과, 동일 row 수동 재시도와 성공 시 신호 상태 동기화 존재. 자동 재시도는 미구현 |
+| 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, order_requests.signal_id FK 추적, 승인/거절/BROKER_FAILED 결과, 동일 row 수동 재시도, 성공 시 신호 상태 동기화, RETRY_REQUESTED 정체 조회/수동 복구 존재. 자동 재시도/복구는 미구현 |
 | 중복 주문 방지 | 완료 | 사전 조회, DB 복합 unique constraint, 충돌의 도메인 거절 변환과 통합 테스트 존재 |
 | 알림 | 부분 완료 | Discord Webhook 기반 종가베팅 브리핑 API와 no-op 처리 존재. 일반 알림 정책은 미구현 |
 | KIS 연동 | 부분 완료 | 모의투자 OAuth, 일봉/순위/current price read-only 조회와 opt-in smoke test 구현. 계좌/주문 연동은 의도적으로 제외 |
@@ -179,6 +179,6 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 1. KRX 공식 휴장일 calendar 동기화 또는 연도별 설정 검증 추가
 2. 15:00 intraday feature 확장(VWAP 이탈 시간, 체결강도, 호가 잔량 등)
-3. RETRY_REQUESTED 장기 정체 복구 정책과 운영 조회 추가
-4. 주문/신호 상태 변경 감사 이력 추가
+3. 주문/신호 상태 변경 감사 이력 추가
+4. 재시도/복구 동시성에 대한 optimistic locking 또는 조건부 update 강화
 5. actuator health와 구조화 로그 추가

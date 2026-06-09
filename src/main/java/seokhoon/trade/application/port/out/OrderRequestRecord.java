@@ -22,6 +22,7 @@ public record OrderRequestRecord(
         boolean retryable,
         String strategyName,
         LocalDate tradeDate,
-        Long signalId
+        Long signalId,
+        Instant retryRequestedAt
 ) {
 }

@@ -49,9 +49,11 @@ class OrderRequestTest {
                 true
         );
 
-        orderRequest.markRetryRequested();
+        Instant requestedAt = Instant.parse("2026-06-05T06:05:00Z");
+        orderRequest.markRetryRequested(requestedAt);
 
         assertThat(orderRequest.status()).isEqualTo(OrderStatus.RETRY_REQUESTED);
+        assertThat(orderRequest.retryRequestedAt()).isEqualTo(requestedAt);
     }
 
     @Test
@@ -63,9 +65,44 @@ class OrderRequestTest {
                 false
         );
 
-        assertThatThrownBy(orderRequest::markRetryRequested)
+        assertThatThrownBy(() -> orderRequest.markRetryRequested(
+                Instant.parse("2026-06-05T06:05:00Z")
+        ))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("order is not retryable");
+    }
+
+    @Test
+    void recoversStuckRetryAsRetryableBrokerFailure() {
+        OrderRequest orderRequest = orderRequest();
+        orderRequest.markBrokerFailed(
+                "broker timeout",
+                Instant.parse("2026-06-05T06:01:00Z"),
+                true
+        );
+        orderRequest.markRetryRequested(Instant.parse("2026-06-05T06:05:00Z"));
+        Instant recoveredAt = Instant.parse("2026-06-05T06:11:00Z");
+
+        orderRequest.markRetryStuckRecovered("application restarted during retry", recoveredAt);
+
+        assertThat(orderRequest.status()).isEqualTo(OrderStatus.BROKER_FAILED);
+        assertThat(orderRequest.failureReason())
+                .isEqualTo("Retry request stuck recovered: application restarted during retry");
+        assertThat(orderRequest.failedAt()).isEqualTo(recoveredAt);
+        assertThat(orderRequest.retryable()).isTrue();
+        assertThat(orderRequest.retryRequestedAt()).isNull();
+    }
+
+    @Test
+    void rejectsStuckRecoveryForNonRetryRequestedOrder() {
+        OrderRequest orderRequest = orderRequest();
+
+        assertThatThrownBy(() -> orderRequest.markRetryStuckRecovered(
+                "unexpected restart",
+                Instant.parse("2026-06-05T06:11:00Z")
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("only RETRY_REQUESTED orders can be recovered");
     }
 
     private static OrderRequest orderRequest() {

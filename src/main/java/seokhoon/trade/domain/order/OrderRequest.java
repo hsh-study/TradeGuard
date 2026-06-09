@@ -16,6 +16,7 @@ public class OrderRequest {
     private String failureReason;
     private Instant failedAt;
     private boolean retryable;
+    private Instant retryRequestedAt;
     private final String strategyName;
     private final LocalDate tradeDate;
     private final Long signalId;
@@ -69,6 +70,7 @@ public class OrderRequest {
             String failureReason,
             Instant failedAt,
             boolean retryable,
+            Instant retryRequestedAt,
             String strategyName,
             LocalDate tradeDate,
             Long signalId
@@ -88,6 +90,7 @@ public class OrderRequest {
         orderRequest.failureReason = failureReason;
         orderRequest.failedAt = failedAt;
         orderRequest.retryable = retryable;
+        orderRequest.retryRequestedAt = retryRequestedAt;
         return orderRequest;
     }
 
@@ -105,6 +108,7 @@ public class OrderRequest {
     public String failureReason() { return failureReason; }
     public Instant failedAt() { return failedAt; }
     public boolean retryable() { return retryable; }
+    public Instant retryRequestedAt() { return retryRequestedAt; }
     public String strategyName() { return strategyName; }
     public LocalDate tradeDate() { return tradeDate; }
     public Long signalId() { return signalId; }
@@ -116,9 +120,10 @@ public class OrderRequest {
         this.failureReason = null;
         this.failedAt = null;
         this.retryable = false;
+        this.retryRequestedAt = null;
     }
     public void reject() { this.status = OrderStatus.REJECTED; }
-    public void markRetryRequested() {
+    public void markRetryRequested(Instant requestedAt) {
         if (status != OrderStatus.BROKER_FAILED) {
             throw new IllegalStateException("only BROKER_FAILED orders can be retried");
         }
@@ -126,6 +131,7 @@ public class OrderRequest {
             throw new IllegalStateException("order is not retryable");
         }
         this.status = OrderStatus.RETRY_REQUESTED;
+        this.retryRequestedAt = Objects.requireNonNull(requestedAt, "requestedAt");
     }
     public void markBrokerFailed(String reason, Instant failedAt, boolean retryable) {
         if (reason == null || reason.isBlank()) {
@@ -141,5 +147,21 @@ public class OrderRequest {
         this.failureReason = reason;
         this.failedAt = Objects.requireNonNull(failedAt, "failedAt");
         this.retryable = retryable;
+        this.retryRequestedAt = null;
+    }
+
+    public void markRetryStuckRecovered(String reason, Instant recoveredAt) {
+        if (status != OrderStatus.RETRY_REQUESTED) {
+            throw new IllegalStateException("only RETRY_REQUESTED orders can be recovered");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("recovery reason must not be blank");
+        }
+        this.status = OrderStatus.BROKER_FAILED;
+        this.brokerOrderNo = null;
+        this.failureReason = "Retry request stuck recovered: " + reason;
+        this.failedAt = Objects.requireNonNull(recoveredAt, "recoveredAt");
+        this.retryable = true;
+        this.retryRequestedAt = null;
     }
 }
