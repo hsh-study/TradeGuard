@@ -237,6 +237,37 @@ curl 'http://localhost:8080/actuator/info'
 - KIS/Discord health는 외부 API 호출이나 메시지 전송을 수행하지 않는다.
 - API Key, App Secret, Discord webhook URL은 health 응답에 포함하지 않는다.
 
+## Scheduler 실행 이력
+
+14:00 예비 스캔과 15:00 최종 리뷰의 자동 scheduler 실행 이력을 조회할 수 있습니다.
+
+```sh
+curl 'http://localhost:8080/api/scheduler-executions'
+```
+
+거래일과 scheduler를 지정한 조회:
+
+```sh
+curl 'http://localhost:8080/api/scheduler-executions?tradeDate=2026-06-05&schedulerName=CLOSING_BET_PRE_SCAN_14'
+```
+
+실패 실행 조회:
+
+```sh
+curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
+```
+
+실행 상태는 `STARTED`, `SUCCEEDED`, `SKIPPED`, `FAILED`이며 최신 `startedAt` 순으로 반환됩니다. 비거래일에는 `SKIPPED`와 `NON_TRADING_DAY` 사유를 기록합니다. 실행 예외가 발생하면 `FAILED`를 저장한 뒤 예외를 다시 전파합니다.
+
+응답의 `scannedCount`는 14:00에는 시장 후보군 수, 15:00에는 재검토한 pre-scan 후보 수를 의미합니다. `selectedCount`와 Discord 브리핑 전송 여부인 `notificationSent`도 함께 기록합니다. 수동 scan/review API 호출은 scheduler 실행 이력에 포함하지 않습니다.
+
+운영자는 매 거래일 아래 항목을 확인할 수 있습니다.
+
+- 14:00 `CLOSING_BET_PRE_SCAN_14`가 `SUCCEEDED` 또는 의도된 `SKIPPED`인지
+- 15:00 `CLOSING_BET_FINAL_REVIEW_15`가 실행됐는지
+- `FAILED` 실행의 `failureReason`
+- 후보 스캔/선정 수와 Discord 알림 전송 여부
+
 ## 안전 원칙
 
 - 실계좌 주문 기능은 구현하지 않습니다.

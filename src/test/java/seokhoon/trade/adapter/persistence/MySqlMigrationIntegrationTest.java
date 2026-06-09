@@ -51,6 +51,10 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "order_request_status_histories"
             )).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "scheduler_execution_histories"
+            )).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "failure_reason")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "failed_at")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "retryable")).isTrue();
@@ -79,6 +83,21 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "trading_signal_status_histories",
                     "fk_signal_status_history_signal"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "scheduler_execution_histories",
+                    "idx_scheduler_execution_trade_date"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "scheduler_execution_histories",
+                    "idx_scheduler_execution_name_trade_date"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "scheduler_execution_histories",
+                    "idx_scheduler_execution_status"
             )).isTrue();
             assertThat(foreignKeyExists(
                     jdbcTemplate,

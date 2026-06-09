@@ -3,6 +3,10 @@ package seokhoon.trade.application.service;
 import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.ClosingBetFinalReviewResult;
 import seokhoon.trade.application.port.in.ReviewClosingBetCandidatesUseCase;
+import seokhoon.trade.application.port.out.SchedulerExecutionHistoryPort;
+import seokhoon.trade.application.port.out.SchedulerExecutionHistoryRecord;
+import seokhoon.trade.domain.scheduler.SchedulerExecutionStatus;
+import seokhoon.trade.domain.scheduler.SchedulerName;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -11,14 +15,17 @@ import java.time.ZoneId;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ClosingBetFinalReviewSchedulerTest {
     @Test
     void delegatesScheduledReviewToUseCase() {
         RecordingReviewUseCase useCase = new RecordingReviewUseCase();
+        RecordingHistoryPort historyPort = new RecordingHistoryPort();
         ClosingBetFinalReviewScheduler scheduler = new ClosingBetFinalReviewScheduler(
                 useCase,
                 date -> true,
+                historyPort,
                 Clock.fixed(Instant.parse("2026-06-05T06:00:00Z"), ZoneId.of("Asia/Seoul"))
         );
 
@@ -27,20 +34,52 @@ class ClosingBetFinalReviewSchedulerTest {
         assertThat(useCase.tradeDate).isEqualTo(LocalDate.of(2026, 6, 5));
         assertThat(useCase.limit).isEqualTo(5);
         assertThat(useCase.invocationCount).isEqualTo(1);
+        assertThat(historyPort.startedName)
+                .isEqualTo(SchedulerName.CLOSING_BET_FINAL_REVIEW_15);
+        assertThat(historyPort.succeededHistoryId).isEqualTo(20L);
+        assertThat(historyPort.scannedCount).isEqualTo(7);
+        assertThat(historyPort.selectedCount).isEqualTo(1);
+        assertThat(historyPort.notificationSent).isTrue();
     }
 
     @Test
     void skipsScheduledReviewOnNonTradingDay() {
         RecordingReviewUseCase useCase = new RecordingReviewUseCase();
+        RecordingHistoryPort historyPort = new RecordingHistoryPort();
         ClosingBetFinalReviewScheduler scheduler = new ClosingBetFinalReviewScheduler(
                 useCase,
                 date -> false,
+                historyPort,
                 Clock.fixed(Instant.parse("2026-06-06T06:00:00Z"), ZoneId.of("Asia/Seoul"))
         );
 
         scheduler.reviewAtMarketLateAfternoon();
 
         assertThat(useCase.invocationCount).isZero();
+        assertThat(historyPort.skippedName)
+                .isEqualTo(SchedulerName.CLOSING_BET_FINAL_REVIEW_15);
+        assertThat(historyPort.skipReason).isEqualTo("NON_TRADING_DAY");
+        assertThat(historyPort.startedName).isNull();
+    }
+
+    @Test
+    void recordsFailedAndRethrowsWhenScheduledReviewFails() {
+        RecordingHistoryPort historyPort = new RecordingHistoryPort();
+        ClosingBetFinalReviewScheduler scheduler = new ClosingBetFinalReviewScheduler(
+                (tradeDate, limit) -> {
+                    throw new IllegalStateException("snapshot unavailable");
+                },
+                date -> true,
+                historyPort,
+                Clock.fixed(Instant.parse("2026-06-05T06:00:00Z"), ZoneId.of("Asia/Seoul"))
+        );
+
+        assertThatThrownBy(scheduler::reviewAtMarketLateAfternoon)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("snapshot unavailable");
+        assertThat(historyPort.failedHistoryId).isEqualTo(20L);
+        assertThat(historyPort.failureReason)
+                .isEqualTo("IllegalStateException: snapshot unavailable");
     }
 
     private static class RecordingReviewUseCase implements ReviewClosingBetCandidatesUseCase {
@@ -53,7 +92,76 @@ class ClosingBetFinalReviewSchedulerTest {
             invocationCount++;
             this.tradeDate = tradeDate;
             this.limit = limit;
-            return new ClosingBetFinalReviewResult(tradeDate, 0, 0, false, "summary", List.of());
+            return new ClosingBetFinalReviewResult(
+                    tradeDate,
+                    7,
+                    1,
+                    true,
+                    "summary",
+                    List.of()
+            );
+        }
+    }
+
+    private static class RecordingHistoryPort implements SchedulerExecutionHistoryPort {
+        private SchedulerName startedName;
+        private SchedulerName skippedName;
+        private String skipReason;
+        private long succeededHistoryId;
+        private int scannedCount;
+        private int selectedCount;
+        private boolean notificationSent;
+        private long failedHistoryId;
+        private String failureReason;
+
+        @Override
+        public long saveStarted(
+                SchedulerName schedulerName,
+                LocalDate tradeDate,
+                Instant startedAt
+        ) {
+            startedName = schedulerName;
+            return 20L;
+        }
+
+        @Override
+        public void markSucceeded(
+                long historyId,
+                int scannedCount,
+                int selectedCount,
+                boolean notificationSent,
+                Instant finishedAt
+        ) {
+            succeededHistoryId = historyId;
+            this.scannedCount = scannedCount;
+            this.selectedCount = selectedCount;
+            this.notificationSent = notificationSent;
+        }
+
+        @Override
+        public void markSkipped(
+                SchedulerName schedulerName,
+                LocalDate tradeDate,
+                String skipReason,
+                Instant occurredAt
+        ) {
+            skippedName = schedulerName;
+            this.skipReason = skipReason;
+        }
+
+        @Override
+        public void markFailed(long historyId, String failureReason, Instant finishedAt) {
+            failedHistoryId = historyId;
+            this.failureReason = failureReason;
+        }
+
+        @Override
+        public List<SchedulerExecutionHistoryRecord> find(
+                LocalDate tradeDate,
+                SchedulerName schedulerName,
+                SchedulerExecutionStatus status
+        ) {
+            return List.of();
         }
     }
 }
