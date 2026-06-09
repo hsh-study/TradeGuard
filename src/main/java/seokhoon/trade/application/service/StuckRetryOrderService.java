@@ -12,6 +12,8 @@ import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderRequestRecord;
 import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
+import seokhoon.trade.application.port.out.CorrelationIdProvider;
+import seokhoon.trade.domain.audit.AuditActor;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderStatus;
 
@@ -27,23 +29,27 @@ public class StuckRetryOrderService
     private final OrderRequestPort orderRequestPort;
     private final OrderStatusHistoryPort orderHistoryPort;
     private final OperationalMetricsPort operationalMetricsPort;
+    private final CorrelationIdProvider correlationIdProvider;
 
     @Autowired
     public StuckRetryOrderService(
             OrderRequestPort orderRequestPort,
             OrderStatusHistoryPort orderHistoryPort,
-            OperationalMetricsPort operationalMetricsPort
+            OperationalMetricsPort operationalMetricsPort,
+            CorrelationIdProvider correlationIdProvider
     ) {
         this.orderRequestPort = orderRequestPort;
         this.orderHistoryPort = orderHistoryPort;
         this.operationalMetricsPort = operationalMetricsPort;
+        this.correlationIdProvider = correlationIdProvider;
     }
 
     StuckRetryOrderService(OrderRequestPort orderRequestPort) {
         this(
                 orderRequestPort,
                 OrderStatusHistoryPort.noop(),
-                OperationalMetricsPort.noop()
+                OperationalMetricsPort.noop(),
+                CorrelationIdProvider.generated()
         );
     }
 
@@ -51,7 +57,12 @@ public class StuckRetryOrderService
             OrderRequestPort orderRequestPort,
             OrderStatusHistoryPort orderHistoryPort
     ) {
-        this(orderRequestPort, orderHistoryPort, OperationalMetricsPort.noop());
+        this(
+                orderRequestPort,
+                orderHistoryPort,
+                OperationalMetricsPort.noop(),
+                CorrelationIdProvider.generated()
+        );
     }
 
     @Override
@@ -89,6 +100,7 @@ public class StuckRetryOrderService
             Instant referenceTime,
             Duration threshold
     ) {
+        String correlationId = correlationIdProvider.currentCorrelationId();
         Instant cutoff = cutoff(referenceTime, threshold);
         OrderRequest orderRequest = orderRequestPort.findById(orderId)
                 .orElseThrow(() -> new OrderRequestNotFoundException(orderId));
@@ -114,6 +126,8 @@ public class StuckRetryOrderService
                 OrderStatus.RETRY_REQUESTED,
                 OrderStatus.BROKER_FAILED,
                 orderRequest.failureReason(),
+                AuditActor.SYSTEM,
+                correlationId,
                 referenceTime
         );
         operationalMetricsPort.recordOrderRetryRecovery("succeeded");

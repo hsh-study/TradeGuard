@@ -47,6 +47,7 @@ public class SchedulerExecutionController {
             Integer scannedCount,
             Integer selectedCount,
             Boolean notificationSent,
+            String correlationId,
             Instant startedAt,
             Instant finishedAt
     ) {
@@ -61,6 +62,7 @@ public class SchedulerExecutionController {
                     view.scannedCount(),
                     view.selectedCount(),
                     view.notificationSent(),
+                    view.correlationId(),
                     view.startedAt(),
                     view.finishedAt()
             );

@@ -14,6 +14,7 @@ class SchedulerExecutionHistoryTest {
         SchedulerExecutionHistory history = SchedulerExecutionHistory.started(
                 SchedulerName.CLOSING_BET_PRE_SCAN_14,
                 LocalDate.of(2026, 6, 5),
+                "scheduler-correlation-success",
                 Instant.parse("2026-06-05T05:00:00Z")
         );
 
@@ -28,6 +29,7 @@ class SchedulerExecutionHistoryTest {
         assertThat(history.scannedCount()).isEqualTo(12);
         assertThat(history.selectedCount()).isEqualTo(2);
         assertThat(history.notificationSent()).isTrue();
+        assertThat(history.correlationId()).isEqualTo("scheduler-correlation-success");
     }
 
     @Test
@@ -35,6 +37,7 @@ class SchedulerExecutionHistoryTest {
         SchedulerExecutionHistory history = SchedulerExecutionHistory.started(
                 SchedulerName.CLOSING_BET_FINAL_REVIEW_15,
                 LocalDate.of(2026, 6, 5),
+                "scheduler-correlation-failed",
                 Instant.parse("2026-06-05T06:00:00Z")
         );
         history.markFailed(

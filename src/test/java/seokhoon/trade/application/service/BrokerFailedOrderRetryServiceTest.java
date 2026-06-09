@@ -12,6 +12,7 @@ import seokhoon.trade.application.port.out.OrderStatusHistoryRecord;
 import seokhoon.trade.application.port.out.SignalStatusHistoryPort;
 import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.domain.order.OrderRequest;
+import seokhoon.trade.domain.audit.AuditActor;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.order.OrderType;
@@ -77,6 +78,11 @@ class BrokerFailedOrderRetryServiceTest {
                                 OrderStatus.ACCEPTED
                         )
                 );
+        assertThat(historyPort.records)
+                .allSatisfy(history -> {
+                    assertThat(history.actor()).isEqualTo(AuditActor.SYSTEM);
+                    assertThat(history.requestCorrelationId()).isNotBlank();
+                });
         assertThat(registry.find("tradeguard.order.retry.count")
                 .tag("result", "succeeded")
                 .counter()
@@ -429,6 +435,8 @@ class BrokerFailedOrderRetryServiceTest {
                 OrderStatus fromStatus,
                 OrderStatus toStatus,
                 String reason,
+                AuditActor actor,
+                String requestCorrelationId,
                 Instant createdAt
         ) {
             records.add(new OrderStatusHistoryRecord(
@@ -437,6 +445,8 @@ class BrokerFailedOrderRetryServiceTest {
                     fromStatus,
                     toStatus,
                     reason,
+                    actor,
+                    requestCorrelationId,
                     createdAt
             ));
         }

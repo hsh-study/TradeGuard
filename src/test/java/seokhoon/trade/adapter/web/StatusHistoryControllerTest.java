@@ -5,6 +5,7 @@ import seokhoon.trade.application.port.in.OrderStatusHistoryView;
 import seokhoon.trade.application.port.in.SignalStatusHistoryView;
 import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
+import seokhoon.trade.domain.audit.AuditActor;
 
 import java.time.Instant;
 import java.util.List;
@@ -25,6 +26,8 @@ class StatusHistoryControllerTest {
                             TradingSignalStatus.CREATED,
                             TradingSignalStatus.RISK_APPROVED,
                             "Risk policy approved",
+                            AuditActor.API,
+                            "request-123",
                             CREATED_AT
                     ));
                 },
@@ -38,6 +41,8 @@ class StatusHistoryControllerTest {
             assertThat(history.fromStatus()).isEqualTo(TradingSignalStatus.CREATED);
             assertThat(history.toStatus()).isEqualTo(TradingSignalStatus.RISK_APPROVED);
             assertThat(history.reason()).isEqualTo("Risk policy approved");
+            assertThat(history.actor()).isEqualTo(AuditActor.API);
+            assertThat(history.requestCorrelationId()).isEqualTo("request-123");
             assertThat(history.createdAt()).isEqualTo(CREATED_AT);
         });
     }
@@ -54,6 +59,8 @@ class StatusHistoryControllerTest {
                             OrderStatus.BROKER_FAILED,
                             OrderStatus.RETRY_REQUESTED,
                             "Manual broker retry requested",
+                            AuditActor.API,
+                            "request-456",
                             CREATED_AT
                     ));
                 }
@@ -65,6 +72,8 @@ class StatusHistoryControllerTest {
             assertThat(history.orderId()).isEqualTo(10L);
             assertThat(history.fromStatus()).isEqualTo(OrderStatus.BROKER_FAILED);
             assertThat(history.toStatus()).isEqualTo(OrderStatus.RETRY_REQUESTED);
+            assertThat(history.actor()).isEqualTo(AuditActor.API);
+            assertThat(history.requestCorrelationId()).isEqualTo("request-456");
         });
     }
 }

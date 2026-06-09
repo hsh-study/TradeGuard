@@ -8,7 +8,12 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface SchedulerExecutionHistoryPort {
-    long saveStarted(SchedulerName schedulerName, LocalDate tradeDate, Instant startedAt);
+    long saveStarted(
+            SchedulerName schedulerName,
+            LocalDate tradeDate,
+            String correlationId,
+            Instant startedAt
+    );
 
     void markSucceeded(
             long historyId,
@@ -22,6 +27,7 @@ public interface SchedulerExecutionHistoryPort {
             SchedulerName schedulerName,
             LocalDate tradeDate,
             String skipReason,
+            String correlationId,
             Instant occurredAt
     );
 
@@ -39,6 +45,7 @@ public interface SchedulerExecutionHistoryPort {
             public long saveStarted(
                     SchedulerName schedulerName,
                     LocalDate tradeDate,
+                    String correlationId,
                     Instant startedAt
             ) {
                 return 0L;
@@ -59,6 +66,7 @@ public interface SchedulerExecutionHistoryPort {
                     SchedulerName schedulerName,
                     LocalDate tradeDate,
                     String skipReason,
+                    String correlationId,
                     Instant occurredAt
             ) {
             }

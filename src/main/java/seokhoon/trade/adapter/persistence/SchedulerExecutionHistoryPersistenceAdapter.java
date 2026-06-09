@@ -31,10 +31,16 @@ public class SchedulerExecutionHistoryPersistenceAdapter
     public long saveStarted(
             SchedulerName schedulerName,
             LocalDate tradeDate,
+            String correlationId,
             Instant startedAt
     ) {
         return repository.saveAndFlush(SchedulerExecutionHistoryEntity.from(
-                SchedulerExecutionHistory.started(schedulerName, tradeDate, startedAt)
+                SchedulerExecutionHistory.started(
+                        schedulerName,
+                        tradeDate,
+                        correlationId,
+                        startedAt
+                )
         )).id();
     }
 
@@ -60,6 +66,7 @@ public class SchedulerExecutionHistoryPersistenceAdapter
             SchedulerName schedulerName,
             LocalDate tradeDate,
             String skipReason,
+            String correlationId,
             Instant occurredAt
     ) {
         repository.saveAndFlush(SchedulerExecutionHistoryEntity.from(
@@ -67,6 +74,7 @@ public class SchedulerExecutionHistoryPersistenceAdapter
                         schedulerName,
                         tradeDate,
                         skipReason,
+                        correlationId,
                         occurredAt
                 )
         ));

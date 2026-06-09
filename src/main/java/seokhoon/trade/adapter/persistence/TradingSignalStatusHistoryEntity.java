@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import seokhoon.trade.application.port.out.SignalStatusHistoryRecord;
+import seokhoon.trade.domain.audit.AuditActor;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
 import java.time.Instant;
@@ -29,6 +30,11 @@ public class TradingSignalStatusHistoryEntity {
     private TradingSignalStatus toStatus;
     @Column(length = 1000)
     private String reason;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private AuditActor actor;
+    @Column(name = "request_correlation_id", length = 128)
+    private String requestCorrelationId;
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -40,12 +46,16 @@ public class TradingSignalStatusHistoryEntity {
             TradingSignalStatus fromStatus,
             TradingSignalStatus toStatus,
             String reason,
+            AuditActor actor,
+            String requestCorrelationId,
             Instant createdAt
     ) {
         this.tradingSignalId = tradingSignalId;
         this.fromStatus = fromStatus;
         this.toStatus = toStatus;
         this.reason = reason;
+        this.actor = actor;
+        this.requestCorrelationId = requestCorrelationId;
         this.createdAt = createdAt;
     }
 
@@ -56,6 +66,8 @@ public class TradingSignalStatusHistoryEntity {
                 fromStatus,
                 toStatus,
                 reason,
+                actor,
+                requestCorrelationId,
                 createdAt
         );
     }

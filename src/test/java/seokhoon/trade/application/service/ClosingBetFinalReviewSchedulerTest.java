@@ -2,7 +2,9 @@ package seokhoon.trade.application.service;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
+import seokhoon.trade.application.port.out.CorrelationIdProvider;
 import seokhoon.trade.application.port.in.ClosingBetFinalReviewResult;
 import seokhoon.trade.application.port.in.ReviewClosingBetCandidatesUseCase;
 import seokhoon.trade.application.port.out.SchedulerExecutionHistoryPort;
@@ -30,6 +32,7 @@ class ClosingBetFinalReviewSchedulerTest {
                 date -> true,
                 historyPort,
                 new MicrometerOperationalMetricsAdapter(registry),
+                fixedCorrelationId("scheduler-correlation-15"),
                 Clock.fixed(Instant.parse("2026-06-05T06:00:00Z"), ZoneId.of("Asia/Seoul"))
         );
 
@@ -44,6 +47,8 @@ class ClosingBetFinalReviewSchedulerTest {
         assertThat(historyPort.scannedCount).isEqualTo(7);
         assertThat(historyPort.selectedCount).isEqualTo(1);
         assertThat(historyPort.notificationSent).isTrue();
+        assertThat(historyPort.correlationId).isEqualTo("scheduler-correlation-15");
+        assertThat(useCase.correlationId).isEqualTo("scheduler-correlation-15");
         assertThat(registry.find("tradeguard.scheduler.execution.count")
                 .tag("schedulerName", "CLOSING_BET_FINAL_REVIEW_15")
                 .tag("status", "SUCCEEDED")
@@ -68,6 +73,7 @@ class ClosingBetFinalReviewSchedulerTest {
         assertThat(historyPort.skippedName)
                 .isEqualTo(SchedulerName.CLOSING_BET_FINAL_REVIEW_15);
         assertThat(historyPort.skipReason).isEqualTo("NON_TRADING_DAY");
+        assertThat(historyPort.correlationId).isNotBlank();
         assertThat(historyPort.startedName).isNull();
     }
 
@@ -102,12 +108,14 @@ class ClosingBetFinalReviewSchedulerTest {
         private LocalDate tradeDate;
         private int limit;
         private int invocationCount;
+        private String correlationId;
 
         @Override
         public ClosingBetFinalReviewResult review(LocalDate tradeDate, int limit) {
             invocationCount++;
             this.tradeDate = tradeDate;
             this.limit = limit;
+            this.correlationId = MDC.get("correlationId");
             return new ClosingBetFinalReviewResult(
                     tradeDate,
                     7,
@@ -117,6 +125,20 @@ class ClosingBetFinalReviewSchedulerTest {
                     List.of()
             );
         }
+    }
+
+    private static CorrelationIdProvider fixedCorrelationId(String correlationId) {
+        return new CorrelationIdProvider() {
+            @Override
+            public String currentCorrelationId() {
+                return correlationId;
+            }
+
+            @Override
+            public String newCorrelationId() {
+                return correlationId;
+            }
+        };
     }
 
     private static class RecordingHistoryPort implements SchedulerExecutionHistoryPort {
@@ -129,14 +151,17 @@ class ClosingBetFinalReviewSchedulerTest {
         private boolean notificationSent;
         private long failedHistoryId;
         private String failureReason;
+        private String correlationId;
 
         @Override
         public long saveStarted(
                 SchedulerName schedulerName,
                 LocalDate tradeDate,
+                String correlationId,
                 Instant startedAt
         ) {
             startedName = schedulerName;
+            this.correlationId = correlationId;
             return 20L;
         }
 
@@ -159,10 +184,12 @@ class ClosingBetFinalReviewSchedulerTest {
                 SchedulerName schedulerName,
                 LocalDate tradeDate,
                 String skipReason,
+                String correlationId,
                 Instant occurredAt
         ) {
             skippedName = schedulerName;
             this.skipReason = skipReason;
+            this.correlationId = correlationId;
         }
 
         @Override

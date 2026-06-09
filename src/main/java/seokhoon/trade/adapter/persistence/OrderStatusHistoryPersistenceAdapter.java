@@ -5,6 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
 import seokhoon.trade.application.port.out.OrderStatusHistoryRecord;
 import seokhoon.trade.domain.order.OrderStatus;
+import seokhoon.trade.domain.audit.AuditActor;
 
 import java.time.Instant;
 import java.util.List;
@@ -25,6 +26,8 @@ public class OrderStatusHistoryPersistenceAdapter implements OrderStatusHistoryP
             OrderStatus fromStatus,
             OrderStatus toStatus,
             String reason,
+            AuditActor actor,
+            String requestCorrelationId,
             Instant createdAt
     ) {
         repository.save(new OrderRequestStatusHistoryEntity(
@@ -32,6 +35,8 @@ public class OrderStatusHistoryPersistenceAdapter implements OrderStatusHistoryP
                 fromStatus,
                 toStatus,
                 reason,
+                actor,
+                requestCorrelationId,
                 createdAt
         ));
     }

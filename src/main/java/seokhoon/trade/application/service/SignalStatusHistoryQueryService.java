@@ -40,6 +40,8 @@ public class SignalStatusHistoryQueryService implements LoadSignalStatusHistorie
                 record.fromStatus(),
                 record.toStatus(),
                 record.reason(),
+                record.actor(),
+                record.requestCorrelationId(),
                 record.createdAt()
         );
     }

@@ -7,6 +7,7 @@ import seokhoon.trade.application.port.out.OrderRequestRecord;
 import seokhoon.trade.application.port.out.OrderStatusHistoryPort;
 import seokhoon.trade.application.port.out.OrderStatusHistoryRecord;
 import seokhoon.trade.domain.order.OrderRequest;
+import seokhoon.trade.domain.audit.AuditActor;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.order.OrderType;
@@ -68,6 +69,8 @@ class StuckRetryOrderServiceTest {
                     assertThat(history.fromStatus()).isEqualTo(OrderStatus.RETRY_REQUESTED);
                     assertThat(history.toStatus()).isEqualTo(OrderStatus.BROKER_FAILED);
                     assertThat(history.reason()).startsWith("Retry request stuck recovered:");
+                    assertThat(history.actor()).isEqualTo(AuditActor.SYSTEM);
+                    assertThat(history.requestCorrelationId()).isNotBlank();
                 });
     }
 
@@ -248,6 +251,8 @@ class StuckRetryOrderServiceTest {
                 OrderStatus fromStatus,
                 OrderStatus toStatus,
                 String reason,
+                AuditActor actor,
+                String requestCorrelationId,
                 Instant createdAt
         ) {
             records.add(new OrderStatusHistoryRecord(
@@ -256,6 +261,8 @@ class StuckRetryOrderServiceTest {
                     fromStatus,
                     toStatus,
                     reason,
+                    actor,
+                    requestCorrelationId,
                     createdAt
             ));
         }

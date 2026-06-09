@@ -40,6 +40,8 @@ public class OrderStatusHistoryQueryService implements LoadOrderStatusHistoriesU
                 record.fromStatus(),
                 record.toStatus(),
                 record.reason(),
+                record.actor(),
+                record.requestCorrelationId(),
                 record.createdAt()
         );
     }

@@ -65,6 +65,8 @@ class MicrometerOperationalMetricsAdapterTest {
         assertThat(registry.getMeters())
                 .flatExtracting(meter -> meter.getId().getTags())
                 .extracting(tag -> tag.getKey() + "=" + tag.getValue())
+                .noneMatch(tag -> tag.startsWith("correlationId="))
+                .noneMatch(tag -> tag.startsWith("requestCorrelationId="))
                 .noneMatch(tag -> tag.contains("005930"))
                 .noneMatch(tag -> tag.contains("app-key"))
                 .noneMatch(tag -> tag.contains("app-secret"))

@@ -55,6 +55,31 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "scheduler_execution_histories"
             )).isTrue();
+            assertThat(columnExists(
+                    jdbcTemplate,
+                    "trading_signal_status_histories",
+                    "actor"
+            )).isTrue();
+            assertThat(columnExists(
+                    jdbcTemplate,
+                    "trading_signal_status_histories",
+                    "request_correlation_id"
+            )).isTrue();
+            assertThat(columnExists(
+                    jdbcTemplate,
+                    "order_request_status_histories",
+                    "actor"
+            )).isTrue();
+            assertThat(columnExists(
+                    jdbcTemplate,
+                    "order_request_status_histories",
+                    "request_correlation_id"
+            )).isTrue();
+            assertThat(columnExists(
+                    jdbcTemplate,
+                    "scheduler_execution_histories",
+                    "correlation_id"
+            )).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "failure_reason")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "failed_at")).isTrue();
             assertThat(columnExists(jdbcTemplate, "order_requests", "retryable")).isTrue();

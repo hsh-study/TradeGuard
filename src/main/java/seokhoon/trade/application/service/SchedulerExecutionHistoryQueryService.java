@@ -48,6 +48,7 @@ public class SchedulerExecutionHistoryQueryService
                 record.scannedCount(),
                 record.selectedCount(),
                 record.notificationSent(),
+                record.correlationId(),
                 record.startedAt(),
                 record.finishedAt()
         );

@@ -40,6 +40,8 @@ public class SchedulerExecutionHistoryEntity {
     private Integer selectedCount;
     @Column(name = "notification_sent")
     private Boolean notificationSent;
+    @Column(name = "correlation_id", length = 128)
+    private String correlationId;
     @Column(name = "started_at", nullable = false)
     private Instant startedAt;
     @Column(name = "finished_at")
@@ -63,6 +65,7 @@ public class SchedulerExecutionHistoryEntity {
         scannedCount = history.scannedCount();
         selectedCount = history.selectedCount();
         notificationSent = history.notificationSent();
+        correlationId = history.correlationId();
         startedAt = history.startedAt();
         finishedAt = history.finishedAt();
     }
@@ -81,6 +84,7 @@ public class SchedulerExecutionHistoryEntity {
                 scannedCount,
                 selectedCount,
                 notificationSent,
+                correlationId,
                 startedAt,
                 finishedAt
         );
@@ -97,6 +101,7 @@ public class SchedulerExecutionHistoryEntity {
                 scannedCount,
                 selectedCount,
                 notificationSent,
+                correlationId,
                 startedAt,
                 finishedAt
         );

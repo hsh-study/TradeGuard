@@ -2,7 +2,9 @@ package seokhoon.trade.application.service;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
+import seokhoon.trade.application.port.out.CorrelationIdProvider;
 import seokhoon.trade.application.port.in.ClosingBetCandidateScanResult;
 import seokhoon.trade.application.port.in.ScanClosingBetCandidatesUseCase;
 import seokhoon.trade.application.port.out.SchedulerExecutionHistoryPort;
@@ -30,6 +32,7 @@ class ClosingBetCandidateScanSchedulerTest {
                 date -> true,
                 historyPort,
                 new MicrometerOperationalMetricsAdapter(registry),
+                fixedCorrelationId("scheduler-correlation-14"),
                 Clock.fixed(Instant.parse("2026-06-05T05:00:00Z"), ZoneId.of("Asia/Seoul"))
         );
 
@@ -43,6 +46,8 @@ class ClosingBetCandidateScanSchedulerTest {
         assertThat(historyPort.scannedCount).isEqualTo(12);
         assertThat(historyPort.selectedCount).isEqualTo(2);
         assertThat(historyPort.notificationSent).isTrue();
+        assertThat(historyPort.correlationId).isEqualTo("scheduler-correlation-14");
+        assertThat(useCase.correlationId).isEqualTo("scheduler-correlation-14");
         assertThat(registry.find("tradeguard.scheduler.execution.count")
                 .tag("schedulerName", "CLOSING_BET_PRE_SCAN_14")
                 .tag("status", "SUCCEEDED")
@@ -70,6 +75,7 @@ class ClosingBetCandidateScanSchedulerTest {
         assertThat(useCase.invocationCount).isZero();
         assertThat(historyPort.skippedName).isEqualTo(SchedulerName.CLOSING_BET_PRE_SCAN_14);
         assertThat(historyPort.skipReason).isEqualTo("NON_TRADING_DAY");
+        assertThat(historyPort.correlationId).isNotBlank();
         assertThat(historyPort.startedName).isNull();
     }
 
@@ -104,12 +110,14 @@ class ClosingBetCandidateScanSchedulerTest {
         private LocalDate tradeDate;
         private int limit;
         private int invocationCount;
+        private String correlationId;
 
         @Override
         public ClosingBetCandidateScanResult scan(LocalDate tradeDate, int limit) {
             invocationCount++;
             this.tradeDate = tradeDate;
             this.limit = limit;
+            this.correlationId = MDC.get("correlationId");
             return new ClosingBetCandidateScanResult(
                     tradeDate,
                     12,
@@ -122,6 +130,20 @@ class ClosingBetCandidateScanSchedulerTest {
         }
     }
 
+    private static CorrelationIdProvider fixedCorrelationId(String correlationId) {
+        return new CorrelationIdProvider() {
+            @Override
+            public String currentCorrelationId() {
+                return correlationId;
+            }
+
+            @Override
+            public String newCorrelationId() {
+                return correlationId;
+            }
+        };
+    }
+
     private static class RecordingHistoryPort implements SchedulerExecutionHistoryPort {
         private SchedulerName startedName;
         private SchedulerName skippedName;
@@ -132,14 +154,17 @@ class ClosingBetCandidateScanSchedulerTest {
         private boolean notificationSent;
         private long failedHistoryId;
         private String failureReason;
+        private String correlationId;
 
         @Override
         public long saveStarted(
                 SchedulerName schedulerName,
                 LocalDate tradeDate,
+                String correlationId,
                 Instant startedAt
         ) {
             startedName = schedulerName;
+            this.correlationId = correlationId;
             return 10L;
         }
 
@@ -162,10 +187,12 @@ class ClosingBetCandidateScanSchedulerTest {
                 SchedulerName schedulerName,
                 LocalDate tradeDate,
                 String skipReason,
+                String correlationId,
                 Instant occurredAt
         ) {
             skippedName = schedulerName;
             this.skipReason = skipReason;
+            this.correlationId = correlationId;
         }
 
         @Override

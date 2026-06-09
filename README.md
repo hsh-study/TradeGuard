@@ -290,9 +290,25 @@ curl 'http://localhost:8080/actuator/metrics/tradeguard.scheduler.execution.coun
 curl 'http://localhost:8080/actuator/metrics/tradeguard.order.broker_failure.count'
 ```
 
-HTTP 요청에 `X-Request-Id`가 있으면 정제 후 MDC와 응답 헤더에 사용하고, 없으면 UUID를 생성합니다. scheduler 실행은 별도 correlation ID를 생성합니다. 구조화 로그에는 scheduler 실행 결과, 주문/Broker 재시도 결과, KIS read-only/Discord 결과를 key-value로 기록합니다.
+HTTP 요청에 `X-Request-Id`가 있으면 정제 후 MDC와 응답 헤더에 사용하고, 없으면 UUID를 생성합니다. API에서 발생한 신호/주문 상태 변경 감사 이력에는 동일 값을 `requestCorrelationId`로 저장하고 `actor=API`를 기록합니다. stuck retry 복구 이력은 `actor=SYSTEM`입니다.
+
+Scheduler 실행은 매 실행마다 별도 correlation ID를 생성합니다. 같은 ID가 MDC, 구조화 로그, `scheduler_execution_histories.correlation_id`에 사용되며 조회 API의 `correlationId`로 반환됩니다.
+
+```sh
+curl -i -X POST 'http://localhost:8080/api/signals/21/mock-orders' \
+  -H 'X-Request-Id: operation-20260609-001' \
+  -H 'Content-Type: application/json' \
+  -d '{"quantity":1,"limitPrice":50000}'
+
+curl 'http://localhost:8080/api/signals/21/histories'
+curl 'http://localhost:8080/api/mock-orders/10/histories'
+curl 'http://localhost:8080/api/scheduler-executions?tradeDate=2026-06-09'
+```
+
+운영자는 응답의 `X-Request-Id`, 감사 이력의 `requestCorrelationId`, scheduler 이력의 `correlationId`로 구조화 로그를 검색해 하나의 실행 흐름을 추적할 수 있습니다.
 
 API Key, App Secret, Discord webhook URL, 계좌번호, 종목코드는 metric tag로 사용하지 않습니다. HTTP 로그에는 query string을 남기지 않으며 KIS/Discord 로그에는 URL이나 자격증명을 기록하지 않습니다.
+Correlation ID는 metric tag로 사용하지 않습니다.
 
 ## 안전 원칙
 

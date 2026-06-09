@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.in.MockOrderResult;
 import seokhoon.trade.application.port.in.RequestMockOrderUseCase;
 import seokhoon.trade.application.port.out.BrokerPort;
+import seokhoon.trade.application.port.out.CorrelationIdProvider;
 import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.OrderRequestPort;
@@ -39,6 +40,7 @@ public class OrderService implements RequestMockOrderUseCase {
     private final SignalStatusHistoryPort signalHistoryPort;
     private final OrderStatusHistoryPort orderHistoryPort;
     private final OperationalMetricsPort operationalMetricsPort;
+    private final CorrelationIdProvider correlationIdProvider;
     private final Clock clock;
 
     @Autowired
@@ -49,7 +51,8 @@ public class OrderService implements RequestMockOrderUseCase {
             RiskManager riskManager,
             SignalStatusHistoryPort signalHistoryPort,
             OrderStatusHistoryPort orderHistoryPort,
-            OperationalMetricsPort operationalMetricsPort
+            OperationalMetricsPort operationalMetricsPort,
+            CorrelationIdProvider correlationIdProvider
     ) {
         this(
                 orderRequestPort,
@@ -59,6 +62,7 @@ public class OrderService implements RequestMockOrderUseCase {
                 signalHistoryPort,
                 orderHistoryPort,
                 operationalMetricsPort,
+                correlationIdProvider,
                 Clock.systemUTC()
         );
     }
@@ -77,6 +81,7 @@ public class OrderService implements RequestMockOrderUseCase {
                 SignalStatusHistoryPort.noop(),
                 OrderStatusHistoryPort.noop(),
                 OperationalMetricsPort.noop(),
+                CorrelationIdProvider.generated(),
                 Clock.systemUTC()
         );
     }
@@ -96,6 +101,7 @@ public class OrderService implements RequestMockOrderUseCase {
                 SignalStatusHistoryPort.noop(),
                 OrderStatusHistoryPort.noop(),
                 OperationalMetricsPort.noop(),
+                CorrelationIdProvider.generated(),
                 clock
         );
     }
@@ -117,6 +123,7 @@ public class OrderService implements RequestMockOrderUseCase {
                 signalHistoryPort,
                 orderHistoryPort,
                 OperationalMetricsPort.noop(),
+                CorrelationIdProvider.generated(),
                 clock
         );
     }
@@ -131,6 +138,30 @@ public class OrderService implements RequestMockOrderUseCase {
             OperationalMetricsPort operationalMetricsPort,
             Clock clock
     ) {
+        this(
+                orderRequestPort,
+                tradingSignalPort,
+                brokerPort,
+                riskManager,
+                signalHistoryPort,
+                orderHistoryPort,
+                operationalMetricsPort,
+                CorrelationIdProvider.generated(),
+                clock
+        );
+    }
+
+    OrderService(
+            OrderRequestPort orderRequestPort,
+            TradingSignalPort tradingSignalPort,
+            BrokerPort brokerPort,
+            RiskManager riskManager,
+            SignalStatusHistoryPort signalHistoryPort,
+            OrderStatusHistoryPort orderHistoryPort,
+            OperationalMetricsPort operationalMetricsPort,
+            CorrelationIdProvider correlationIdProvider,
+            Clock clock
+    ) {
         this.orderRequestPort = orderRequestPort;
         this.tradingSignalPort = tradingSignalPort;
         this.brokerPort = brokerPort;
@@ -138,6 +169,7 @@ public class OrderService implements RequestMockOrderUseCase {
         this.signalHistoryPort = signalHistoryPort;
         this.orderHistoryPort = orderHistoryPort;
         this.operationalMetricsPort = operationalMetricsPort;
+        this.correlationIdProvider = correlationIdProvider;
         this.clock = clock;
     }
 
@@ -154,6 +186,7 @@ public class OrderService implements RequestMockOrderUseCase {
             int quantity,
             BigDecimal limitPrice
     ) {
+        String correlationId = correlationIdProvider.currentCorrelationId();
         OrderRequest orderRequest = new OrderRequest(
                 signal.stockCode(),
                 OrderSide.BUY,
@@ -180,7 +213,8 @@ public class OrderService implements RequestMockOrderUseCase {
                     effectiveSignalId,
                     signalFromStatus,
                     signal.status(),
-                    "Risk policy approved"
+                    "Risk policy approved",
+                    correlationId
             );
         }
         if (!decision.approved()) {
@@ -214,7 +248,8 @@ public class OrderService implements RequestMockOrderUseCase {
                     orderId,
                     OrderStatus.CREATED,
                     OrderStatus.BROKER_FAILED,
-                    failureReason
+                    failureReason,
+                    correlationId
             );
             operationalMetricsPort.recordOrderRequest(OrderStatus.BROKER_FAILED.name());
             operationalMetricsPort.recordBrokerFailure(failedOrder.retryable());
@@ -231,7 +266,8 @@ public class OrderService implements RequestMockOrderUseCase {
                 orderId,
                 OrderStatus.CREATED,
                 acceptedOrder.status(),
-                "Broker accepted mock order"
+                "Broker accepted mock order",
+                correlationId
         );
         TradingSignalStatus approvedStatus = signal.status();
         signal.markOrderRequested();
@@ -240,7 +276,8 @@ public class OrderService implements RequestMockOrderUseCase {
                 effectiveSignalId,
                 approvedStatus,
                 signal.status(),
-                "Mock order accepted by broker"
+                "Mock order accepted by broker",
+                correlationId
         );
         operationalMetricsPort.recordOrderRequest(acceptedOrder.status().name());
         log.atInfo()
@@ -256,10 +293,19 @@ public class OrderService implements RequestMockOrderUseCase {
             Long signalId,
             TradingSignalStatus fromStatus,
             TradingSignalStatus toStatus,
-            String reason
+            String reason,
+            String correlationId
     ) {
         if (signalId != null && fromStatus != toStatus) {
-            signalHistoryPort.save(signalId, fromStatus, toStatus, reason, Instant.now(clock));
+            signalHistoryPort.save(
+                    signalId,
+                    fromStatus,
+                    toStatus,
+                    reason,
+                    correlationIdProvider.currentActor(),
+                    correlationId,
+                    Instant.now(clock)
+            );
         }
     }
 
@@ -267,10 +313,19 @@ public class OrderService implements RequestMockOrderUseCase {
             Long orderId,
             OrderStatus fromStatus,
             OrderStatus toStatus,
-            String reason
+            String reason,
+            String correlationId
     ) {
         if (orderId != null && fromStatus != toStatus) {
-            orderHistoryPort.save(orderId, fromStatus, toStatus, reason, Instant.now(clock));
+            orderHistoryPort.save(
+                    orderId,
+                    fromStatus,
+                    toStatus,
+                    reason,
+                    correlationIdProvider.currentActor(),
+                    correlationId,
+                    Instant.now(clock)
+            );
         }
     }
 

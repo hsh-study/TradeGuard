@@ -31,6 +31,7 @@ class SchedulerExecutionControllerTest {
                             12,
                             2,
                             true,
+                            "scheduler-correlation-1",
                             Instant.parse("2026-06-05T05:00:00Z"),
                             Instant.parse("2026-06-05T05:00:03Z")
                     ));
@@ -48,6 +49,7 @@ class SchedulerExecutionControllerTest {
             assertThat(history.scannedCount()).isEqualTo(12);
             assertThat(history.selectedCount()).isEqualTo(2);
             assertThat(history.notificationSent()).isTrue();
+            assertThat(history.correlationId()).isEqualTo("scheduler-correlation-1");
         });
     }
 }

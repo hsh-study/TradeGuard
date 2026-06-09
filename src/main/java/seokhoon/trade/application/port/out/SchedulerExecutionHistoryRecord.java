@@ -16,6 +16,7 @@ public record SchedulerExecutionHistoryRecord(
         Integer scannedCount,
         Integer selectedCount,
         Boolean notificationSent,
+        String correlationId,
         Instant startedAt,
         Instant finishedAt
 ) {

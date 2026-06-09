@@ -32,6 +32,7 @@ class SchedulerExecutionHistoryPersistenceIntegrationTest {
         long id = historyPort.saveStarted(
                 SchedulerName.CLOSING_BET_PRE_SCAN_14,
                 tradeDate,
+                "scheduler-correlation-success",
                 Instant.parse("2026-06-05T05:00:00Z")
         );
 
@@ -54,6 +55,8 @@ class SchedulerExecutionHistoryPersistenceIntegrationTest {
                     assertThat(history.scannedCount()).isEqualTo(12);
                     assertThat(history.selectedCount()).isEqualTo(2);
                     assertThat(history.notificationSent()).isTrue();
+                    assertThat(history.correlationId())
+                            .isEqualTo("scheduler-correlation-success");
                     assertThat(history.finishedAt())
                             .isEqualTo(Instant.parse("2026-06-05T05:00:03Z"));
                 });
@@ -66,11 +69,13 @@ class SchedulerExecutionHistoryPersistenceIntegrationTest {
                 SchedulerName.CLOSING_BET_PRE_SCAN_14,
                 tradeDate,
                 "NON_TRADING_DAY",
+                "scheduler-correlation-skip",
                 Instant.parse("2026-06-06T05:00:00Z")
         );
         long failedId = historyPort.saveStarted(
                 SchedulerName.CLOSING_BET_FINAL_REVIEW_15,
                 tradeDate,
+                "scheduler-correlation-failed",
                 Instant.parse("2026-06-06T06:00:00Z")
         );
         historyPort.markFailed(
@@ -93,6 +98,8 @@ class SchedulerExecutionHistoryPersistenceIntegrationTest {
                 .singleElement()
                 .satisfies(history -> {
                     assertThat(history.skipReason()).isEqualTo("NON_TRADING_DAY");
+                    assertThat(history.correlationId())
+                            .isEqualTo("scheduler-correlation-skip");
                     assertThat(history.finishedAt()).isNotNull();
                 });
     }

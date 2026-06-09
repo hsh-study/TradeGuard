@@ -9,6 +9,7 @@ import seokhoon.trade.application.port.in.OrderStatusHistoryView;
 import seokhoon.trade.application.port.in.SignalStatusHistoryView;
 import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
+import seokhoon.trade.domain.audit.AuditActor;
 
 import java.time.Instant;
 import java.util.List;
@@ -46,6 +47,8 @@ public class StatusHistoryController {
             TradingSignalStatus fromStatus,
             TradingSignalStatus toStatus,
             String reason,
+            AuditActor actor,
+            String requestCorrelationId,
             Instant createdAt
     ) {
         static SignalStatusHistoryResponse from(SignalStatusHistoryView view) {
@@ -55,6 +58,8 @@ public class StatusHistoryController {
                     view.fromStatus(),
                     view.toStatus(),
                     view.reason(),
+                    view.actor(),
+                    view.requestCorrelationId(),
                     view.createdAt()
             );
         }
@@ -66,6 +71,8 @@ public class StatusHistoryController {
             OrderStatus fromStatus,
             OrderStatus toStatus,
             String reason,
+            AuditActor actor,
+            String requestCorrelationId,
             Instant createdAt
     ) {
         static OrderStatusHistoryResponse from(OrderStatusHistoryView view) {
@@ -75,6 +82,8 @@ public class StatusHistoryController {
                     view.fromStatus(),
                     view.toStatus(),
                     view.reason(),
+                    view.actor(),
+                    view.requestCorrelationId(),
                     view.createdAt()
             );
         }

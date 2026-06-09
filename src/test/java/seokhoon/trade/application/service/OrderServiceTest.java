@@ -14,6 +14,7 @@ import seokhoon.trade.application.port.out.SignalStatusHistoryPort;
 import seokhoon.trade.application.port.out.SignalStatusHistoryRecord;
 import seokhoon.trade.application.port.out.TradingSignalPort;
 import seokhoon.trade.domain.order.OrderRequest;
+import seokhoon.trade.domain.audit.AuditActor;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
 import seokhoon.trade.domain.risk.RiskManager;
@@ -101,6 +102,8 @@ class OrderServiceTest {
                     assertThat(history.orderRequestId()).isEqualTo(10L);
                     assertThat(history.fromStatus()).isEqualTo(OrderStatus.CREATED);
                     assertThat(history.toStatus()).isEqualTo(OrderStatus.ACCEPTED);
+                    assertThat(history.actor()).isEqualTo(AuditActor.SYSTEM);
+                    assertThat(history.requestCorrelationId()).isNotBlank();
                 });
     }
 
@@ -175,6 +178,8 @@ class OrderServiceTest {
                     assertThat(history.fromStatus()).isEqualTo(OrderStatus.CREATED);
                     assertThat(history.toStatus()).isEqualTo(OrderStatus.BROKER_FAILED);
                     assertThat(history.reason()).isEqualTo("broker timeout");
+                    assertThat(history.actor()).isEqualTo(AuditActor.SYSTEM);
+                    assertThat(history.requestCorrelationId()).isNotBlank();
                 });
         assertThat(registry.find("tradeguard.order.request.count")
                 .tag("status", "BROKER_FAILED")
@@ -321,6 +326,8 @@ class OrderServiceTest {
                 TradingSignalStatus fromStatus,
                 TradingSignalStatus toStatus,
                 String reason,
+                AuditActor actor,
+                String requestCorrelationId,
                 Instant createdAt
         ) {
             records.add(new SignalStatusHistoryRecord(
@@ -329,6 +336,8 @@ class OrderServiceTest {
                     fromStatus,
                     toStatus,
                     reason,
+                    actor,
+                    requestCorrelationId,
                     createdAt
             ));
         }
@@ -348,6 +357,8 @@ class OrderServiceTest {
                 OrderStatus fromStatus,
                 OrderStatus toStatus,
                 String reason,
+                AuditActor actor,
+                String requestCorrelationId,
                 Instant createdAt
         ) {
             records.add(new OrderStatusHistoryRecord(
@@ -356,6 +367,8 @@ class OrderServiceTest {
                     fromStatus,
                     toStatus,
                     reason,
+                    actor,
+                    requestCorrelationId,
                     createdAt
             ));
         }

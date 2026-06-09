@@ -13,6 +13,7 @@ public class SchedulerExecutionHistory {
     private Integer scannedCount;
     private Integer selectedCount;
     private Boolean notificationSent;
+    private final String correlationId;
     private final Instant startedAt;
     private Instant finishedAt;
 
@@ -20,23 +21,28 @@ public class SchedulerExecutionHistory {
             SchedulerName schedulerName,
             LocalDate tradeDate,
             SchedulerExecutionStatus status,
+            String correlationId,
             Instant startedAt
     ) {
         this.schedulerName = Objects.requireNonNull(schedulerName, "schedulerName");
         this.tradeDate = Objects.requireNonNull(tradeDate, "tradeDate");
         this.status = Objects.requireNonNull(status, "status");
+        this.correlationId = correlationId;
         this.startedAt = Objects.requireNonNull(startedAt, "startedAt");
     }
 
     public static SchedulerExecutionHistory started(
             SchedulerName schedulerName,
             LocalDate tradeDate,
+            String correlationId,
             Instant startedAt
     ) {
+        requireReason(correlationId, "correlationId");
         return new SchedulerExecutionHistory(
                 schedulerName,
                 tradeDate,
                 SchedulerExecutionStatus.STARTED,
+                correlationId,
                 startedAt
         );
     }
@@ -45,12 +51,15 @@ public class SchedulerExecutionHistory {
             SchedulerName schedulerName,
             LocalDate tradeDate,
             String reason,
+            String correlationId,
             Instant occurredAt
     ) {
+        requireReason(correlationId, "correlationId");
         SchedulerExecutionHistory history = new SchedulerExecutionHistory(
                 schedulerName,
                 tradeDate,
                 SchedulerExecutionStatus.SKIPPED,
+                correlationId,
                 occurredAt
         );
         history.skipReason = requireReason(reason, "skip reason");
@@ -67,6 +76,7 @@ public class SchedulerExecutionHistory {
             Integer scannedCount,
             Integer selectedCount,
             Boolean notificationSent,
+            String correlationId,
             Instant startedAt,
             Instant finishedAt
     ) {
@@ -74,6 +84,7 @@ public class SchedulerExecutionHistory {
                 schedulerName,
                 tradeDate,
                 status,
+                correlationId,
                 startedAt
         );
         history.skipReason = skipReason;
@@ -130,6 +141,7 @@ public class SchedulerExecutionHistory {
     public Integer scannedCount() { return scannedCount; }
     public Integer selectedCount() { return selectedCount; }
     public Boolean notificationSent() { return notificationSent; }
+    public String correlationId() { return correlationId; }
     public Instant startedAt() { return startedAt; }
     public Instant finishedAt() { return finishedAt; }
 }
