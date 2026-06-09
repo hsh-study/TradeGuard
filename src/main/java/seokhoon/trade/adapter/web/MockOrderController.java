@@ -5,17 +5,21 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import seokhoon.trade.application.port.in.LoadOrderRequestsUseCase;
+import seokhoon.trade.application.port.in.BrokerOrderRetryResult;
 import seokhoon.trade.application.port.in.MockOrderResult;
 import seokhoon.trade.application.port.in.OrderRequestView;
 import seokhoon.trade.application.port.in.RequestStoredMockOrderUseCase;
+import seokhoon.trade.application.port.in.RetryBrokerFailedOrderUseCase;
 import seokhoon.trade.application.port.in.StoredMockOrderCommand;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
@@ -34,13 +38,26 @@ import java.util.List;
 public class MockOrderController {
     private final RequestStoredMockOrderUseCase requestStoredMockOrderUseCase;
     private final LoadOrderRequestsUseCase loadOrderRequestsUseCase;
+    private final RetryBrokerFailedOrderUseCase retryBrokerFailedOrderUseCase;
 
+    @Autowired
     public MockOrderController(
             RequestStoredMockOrderUseCase requestStoredMockOrderUseCase,
-            LoadOrderRequestsUseCase loadOrderRequestsUseCase
+            LoadOrderRequestsUseCase loadOrderRequestsUseCase,
+            RetryBrokerFailedOrderUseCase retryBrokerFailedOrderUseCase
     ) {
         this.requestStoredMockOrderUseCase = requestStoredMockOrderUseCase;
         this.loadOrderRequestsUseCase = loadOrderRequestsUseCase;
+        this.retryBrokerFailedOrderUseCase = retryBrokerFailedOrderUseCase;
+    }
+
+    MockOrderController(
+            RequestStoredMockOrderUseCase requestStoredMockOrderUseCase,
+            LoadOrderRequestsUseCase loadOrderRequestsUseCase
+    ) {
+        this(requestStoredMockOrderUseCase, loadOrderRequestsUseCase, orderId -> {
+            throw new UnsupportedOperationException();
+        });
     }
 
     @PostMapping
@@ -67,6 +84,11 @@ public class MockOrderController {
         return loadOrderRequestsUseCase.load(stockCode, tradeDate, status, side).stream()
                 .map(OrderResponse::from)
                 .toList();
+    }
+
+    @PostMapping("/{orderId}/retry")
+    RetryMockOrderResponse retry(@PathVariable long orderId) {
+        return RetryMockOrderResponse.from(retryBrokerFailedOrderUseCase.retry(orderId));
     }
 
     public record MockOrderRequest(
@@ -147,6 +169,29 @@ public class MockOrderController {
                     orderRequest.retryable(),
                     orderRequest.strategyName(),
                     orderRequest.tradeDate()
+            );
+        }
+    }
+
+    public record RetryMockOrderResponse(
+            long orderId,
+            OrderStatus status,
+            boolean brokerFailed,
+            String failureReason,
+            Instant failedAt,
+            boolean retryable,
+            String brokerOrderNo
+    ) {
+        static RetryMockOrderResponse from(BrokerOrderRetryResult result) {
+            OrderRequest orderRequest = result.orderRequest();
+            return new RetryMockOrderResponse(
+                    result.orderId(),
+                    orderRequest.status(),
+                    result.brokerFailed(),
+                    orderRequest.failureReason(),
+                    orderRequest.failedAt(),
+                    orderRequest.retryable(),
+                    orderRequest.brokerOrderNo()
             );
         }
     }

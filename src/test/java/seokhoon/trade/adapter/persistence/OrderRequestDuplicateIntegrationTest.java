@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
 import seokhoon.trade.application.port.out.OrderRequestPort;
+import seokhoon.trade.application.port.in.RetryBrokerFailedOrderUseCase;
 import seokhoon.trade.domain.order.OrderRequest;
 import seokhoon.trade.domain.order.OrderSide;
 import seokhoon.trade.domain.order.OrderStatus;
@@ -25,6 +26,9 @@ class OrderRequestDuplicateIntegrationTest {
 
     @Autowired
     private OrderRequestJpaRepository repository;
+
+    @Autowired
+    private RetryBrokerFailedOrderUseCase retryBrokerFailedOrderUseCase;
 
     @BeforeEach
     void clearOrders() {
@@ -103,6 +107,54 @@ class OrderRequestDuplicateIntegrationTest {
                     assertThat(order.failureReason()).isEqualTo("broker timeout");
                     assertThat(order.failedAt()).isEqualTo(failedAt);
                     assertThat(order.retryable()).isTrue();
+                });
+    }
+
+    @Test
+    void claimsRetryByUpdatingExistingRowWithoutCreatingNewOrder() {
+        OrderRequest failed = orderRequest();
+        orderRequestPort.create(failed);
+        failed.markBrokerFailed(
+                "broker timeout",
+                Instant.parse("2026-06-05T06:01:00Z"),
+                true
+        );
+        orderRequestPort.update(failed);
+        long orderId = repository.findAll().getFirst().toRecord().id();
+
+        boolean firstClaim = orderRequestPort.claimRetry(orderId);
+        boolean secondClaim = orderRequestPort.claimRetry(orderId);
+
+        assertThat(firstClaim).isTrue();
+        assertThat(secondClaim).isFalse();
+        assertThat(repository.count()).isEqualTo(1);
+        assertThat(orderRequestPort.findById(orderId))
+                .hasValueSatisfying(order ->
+                        assertThat(order.status()).isEqualTo(OrderStatus.RETRY_REQUESTED));
+    }
+
+    @Test
+    void retriesFailedOrderWithoutCreatingNewRow() {
+        OrderRequest failed = orderRequest();
+        orderRequestPort.create(failed);
+        failed.markBrokerFailed(
+                "broker timeout",
+                Instant.parse("2026-06-05T06:01:00Z"),
+                true
+        );
+        orderRequestPort.update(failed);
+        long orderId = repository.findAll().getFirst().toRecord().id();
+
+        var result = retryBrokerFailedOrderUseCase.retry(orderId);
+
+        assertThat(repository.count()).isEqualTo(1);
+        assertThat(result.orderId()).isEqualTo(orderId);
+        assertThat(result.orderRequest().status()).isEqualTo(OrderStatus.ACCEPTED);
+        assertThat(result.orderRequest().brokerOrderNo()).startsWith("FAKE-");
+        assertThat(orderRequestPort.findById(orderId))
+                .hasValueSatisfying(order -> {
+                    assertThat(order.status()).isEqualTo(OrderStatus.ACCEPTED);
+                    assertThat(order.brokerOrderNo()).startsWith("FAKE-");
                 });
     }
 

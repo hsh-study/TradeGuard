@@ -40,6 +40,34 @@ class OrderRequestTest {
         assertThat(orderRequest.brokerOrderNo()).isEqualTo("FAKE-ORDER");
     }
 
+    @Test
+    void transitionsRetryableBrokerFailureToRetryRequested() {
+        OrderRequest orderRequest = orderRequest();
+        orderRequest.markBrokerFailed(
+                "broker timeout",
+                Instant.parse("2026-06-05T06:01:00Z"),
+                true
+        );
+
+        orderRequest.markRetryRequested();
+
+        assertThat(orderRequest.status()).isEqualTo(OrderStatus.RETRY_REQUESTED);
+    }
+
+    @Test
+    void rejectsRetryWhenBrokerFailureIsNotRetryable() {
+        OrderRequest orderRequest = orderRequest();
+        orderRequest.markBrokerFailed(
+                "invalid broker request",
+                Instant.parse("2026-06-05T06:01:00Z"),
+                false
+        );
+
+        assertThatThrownBy(orderRequest::markRetryRequested)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("order is not retryable");
+    }
+
     private static OrderRequest orderRequest() {
         return new OrderRequest(
                 "005930",

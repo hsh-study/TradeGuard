@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import seokhoon.trade.application.service.TradingSignalNotFoundException;
+import seokhoon.trade.application.service.OrderRequestNotFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -15,6 +16,12 @@ public class GlobalExceptionHandler {
     ResponseEntity<ErrorResponse> handleSignalNotFound(TradingSignalNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("TRADING_SIGNAL_NOT_FOUND", exception.getMessage()));
+    }
+
+    @ExceptionHandler(OrderRequestNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleOrderNotFound(OrderRequestNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("ORDER_REQUEST_NOT_FOUND", exception.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

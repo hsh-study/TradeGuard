@@ -2,6 +2,7 @@ package seokhoon.trade.adapter.web;
 
 import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.MockOrderResult;
+import seokhoon.trade.application.port.in.BrokerOrderRetryResult;
 import seokhoon.trade.application.port.in.OrderRequestView;
 import seokhoon.trade.application.port.in.RequestStoredMockOrderUseCase;
 import seokhoon.trade.domain.order.OrderRequest;
@@ -161,6 +162,71 @@ class MockOrderControllerTest {
                     assertThat(order.failedAt()).isEqualTo(failedAt);
                     assertThat(order.retryable()).isTrue();
                 });
+    }
+
+    @Test
+    void retriesBrokerFailedOrderByOrderId() {
+        OrderRequest accepted = new OrderRequest(
+                "005930",
+                OrderSide.BUY,
+                OrderType.LIMIT,
+                1,
+                BigDecimal.valueOf(50_000),
+                "CLOSING_BET",
+                TRADE_DATE
+        );
+        accepted.accept("FAKE-RETRY");
+        MockOrderController controller = new MockOrderController(
+                command -> {
+                    throw new UnsupportedOperationException();
+                },
+                (stockCode, tradeDate, status, side) -> List.of(),
+                orderId -> {
+                    assertThat(orderId).isEqualTo(10L);
+                    return BrokerOrderRetryResult.accepted(orderId, accepted);
+                }
+        );
+
+        MockOrderController.RetryMockOrderResponse response = controller.retry(10L);
+
+        assertThat(response.orderId()).isEqualTo(10L);
+        assertThat(response.status()).isEqualTo(OrderStatus.ACCEPTED);
+        assertThat(response.brokerFailed()).isFalse();
+        assertThat(response.failureReason()).isNull();
+        assertThat(response.failedAt()).isNull();
+        assertThat(response.retryable()).isFalse();
+        assertThat(response.brokerOrderNo()).isEqualTo("FAKE-RETRY");
+    }
+
+    @Test
+    void returnsFailureDetailsWhenManualRetryFails() {
+        Instant failedAt = Instant.parse("2026-06-05T06:10:00Z");
+        OrderRequest failed = new OrderRequest(
+                "005930",
+                OrderSide.BUY,
+                OrderType.LIMIT,
+                1,
+                BigDecimal.valueOf(50_000),
+                "CLOSING_BET",
+                TRADE_DATE
+        );
+        failed.markBrokerFailed("retry timeout", failedAt, true);
+        MockOrderController controller = new MockOrderController(
+                command -> {
+                    throw new UnsupportedOperationException();
+                },
+                (stockCode, tradeDate, status, side) -> List.of(),
+                orderId -> BrokerOrderRetryResult.brokerFailed(orderId, failed)
+        );
+
+        MockOrderController.RetryMockOrderResponse response = controller.retry(10L);
+
+        assertThat(response.status()).isEqualTo(OrderStatus.BROKER_FAILED);
+        assertThat(response.brokerFailed()).isTrue();
+        assertThat(response.failureReason()).isEqualTo("retry timeout");
+        assertThat(response.failedAt()).isEqualTo(failedAt);
+        assertThat(response.retryable()).isTrue();
+        assertThat(response.brokerOrderNo()).isNull();
     }
 
     private static MockOrderController.MockOrderRequest request() {

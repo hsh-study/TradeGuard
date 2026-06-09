@@ -4,6 +4,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.out.DuplicateOrderRequestException;
 import seokhoon.trade.application.port.out.OrderRequestPort;
 import seokhoon.trade.application.port.out.OrderRequestRecord;
@@ -13,6 +15,7 @@ import seokhoon.trade.domain.order.OrderStatus;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Component
 public class OrderRequestPersistenceAdapter implements OrderRequestPort {
@@ -44,6 +47,31 @@ public class OrderRequestPersistenceAdapter implements OrderRequestPort {
         entity.update(orderRequest);
         repository.save(entity);
         return orderRequest;
+    }
+
+    @Override
+    public OrderRequest updateById(long orderId, OrderRequest orderRequest) {
+        OrderRequestEntity entity = repository.findById(orderId)
+                .orElseThrow(() -> new IllegalStateException("Order request not found: " + orderId));
+        entity.update(orderRequest);
+        repository.saveAndFlush(entity);
+        return orderRequest;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<OrderRequest> findById(long orderId) {
+        return repository.findById(orderId).map(OrderRequestEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean claimRetry(long orderId) {
+        return repository.claimRetry(
+                orderId,
+                OrderStatus.BROKER_FAILED,
+                OrderStatus.RETRY_REQUESTED
+        ) == 1;
     }
 
     @Override

@@ -6,6 +6,7 @@ public enum OrderStatus {
     ACCEPTED,
     REJECTED,
     BROKER_FAILED,
+    RETRY_REQUESTED,
     CANCELED,
     FILLED,
     PARTIALLY_FILLED

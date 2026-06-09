@@ -160,6 +160,21 @@ class OrderServiceTest {
         }
 
         @Override
+        public OrderRequest updateById(long orderId, OrderRequest orderRequest) {
+            return update(orderRequest);
+        }
+
+        @Override
+        public Optional<OrderRequest> findById(long orderId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public boolean claimRetry(long orderId) {
+            return false;
+        }
+
+        @Override
         public boolean exists(
                 String stockCode,
                 String strategyName,

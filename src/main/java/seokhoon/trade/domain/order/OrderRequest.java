@@ -100,11 +100,22 @@ public class OrderRequest {
         this.retryable = false;
     }
     public void reject() { this.status = OrderStatus.REJECTED; }
+    public void markRetryRequested() {
+        if (status != OrderStatus.BROKER_FAILED) {
+            throw new IllegalStateException("only BROKER_FAILED orders can be retried");
+        }
+        if (!retryable) {
+            throw new IllegalStateException("order is not retryable");
+        }
+        this.status = OrderStatus.RETRY_REQUESTED;
+    }
     public void markBrokerFailed(String reason, Instant failedAt, boolean retryable) {
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("failure reason must not be blank");
         }
-        if (status != OrderStatus.CREATED && status != OrderStatus.REQUESTED) {
+        if (status != OrderStatus.CREATED
+                && status != OrderStatus.REQUESTED
+                && status != OrderStatus.RETRY_REQUESTED) {
             throw new IllegalStateException("broker failure can only be recorded before acceptance");
         }
         this.status = OrderStatus.BROKER_FAILED;
