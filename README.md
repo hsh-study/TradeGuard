@@ -217,6 +217,26 @@ curl -X POST 'http://localhost:8080/api/briefings/closing-bet?signalDate=2026-06
 
 저장된 신호가 없으면 `TRADING_SIGNAL_NOT_FOUND`를 반환합니다.
 
+## 운영 Health 확인
+
+Actuator는 `health`, `info` endpoint만 외부에 노출하며 health 상세정보는 기본적으로 반환하지 않습니다.
+
+```sh
+curl 'http://localhost:8080/actuator/health'
+curl 'http://localhost:8080/actuator/health/liveness'
+curl 'http://localhost:8080/actuator/health/readiness'
+curl 'http://localhost:8080/actuator/info'
+```
+
+- `liveness`: Spring 애플리케이션 생존 상태만 확인한다.
+- `readiness`: 애플리케이션 readiness, DB, Flyway, KIS read-only 설정, Discord 설정, 14:00/15:00 scheduler와 시장 calendar bean을 확인한다.
+- DB는 Spring Boot 기본 DataSource health를 사용한다.
+- Flyway pending migration이 있으면 `flywayMigration`이 `DOWN`이다. migration 자체가 실패하면 애플리케이션 시작이 실패하므로 readiness endpoint가 열리지 않는다.
+- KIS provider가 `fake`이면 `UP`, `kis`이면서 자격증명이 없으면 `UNKNOWN`, 자격증명이 구성되면 설정 기준 `UP`이다.
+- Discord webhook 미설정은 `UNKNOWN`, 설정됨은 `UP`이다.
+- KIS/Discord health는 외부 API 호출이나 메시지 전송을 수행하지 않는다.
+- API Key, App Secret, Discord webhook URL은 health 응답에 포함하지 않는다.
+
 ## 안전 원칙
 
 - 실계좌 주문 기능은 구현하지 않습니다.
