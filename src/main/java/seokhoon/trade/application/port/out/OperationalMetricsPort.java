@@ -27,6 +27,8 @@ public interface OperationalMetricsPort {
 
     void recordAfterHoursLookup(String result);
 
+    void recordEarlyMarketPerformanceCapture(String result);
+
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
             @Override
@@ -76,6 +78,10 @@ public interface OperationalMetricsPort {
 
             @Override
             public void recordAfterHoursLookup(String result) {
+            }
+
+            @Override
+            public void recordEarlyMarketPerformanceCapture(String result) {
             }
         };
     }

@@ -31,6 +31,7 @@ class MicrometerOperationalMetricsAdapterTest {
         metrics.recordDiscordNotification("disabled");
         metrics.recordKisReadOnly("currentPrice", "failure");
         metrics.recordAfterHoursLookup("found");
+        metrics.recordEarlyMarketPerformanceCapture("captured");
 
         assertThat(counter(
                 registry,
@@ -67,6 +68,12 @@ class MicrometerOperationalMetricsAdapterTest {
                 "tradeguard.after_hours.lookup.count",
                 "result",
                 "found"
+        )).isEqualTo(1.0);
+        assertThat(counter(
+                registry,
+                "tradeguard.early_market.performance.capture.count",
+                "result",
+                "captured"
         )).isEqualTo(1.0);
 
         assertThat(registry.getMeters())

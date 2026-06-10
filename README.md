@@ -126,6 +126,21 @@ curl -X POST 'http://localhost:8080/api/scans/early-market/opening?tradeDate=202
 
 장초반 최종 후보는 기존 signalId 기반 지정가 모의 주문 API에서 사용할 수 있습니다. `EARLY_MARKET_PRE_SCAN`은 관찰 후보이므로 주문 요청이 거절됩니다. 08:30/09:05 스캔과 scheduler는 실제 주문을 생성하지 않습니다.
 
+09:30 이후 장초반 후보 성과 수동 캡처:
+
+```sh
+curl -X POST 'http://localhost:8080/api/scans/early-market/performances?tradeDate=2026-06-10'
+```
+
+성과 조회:
+
+```sh
+curl 'http://localhost:8080/api/scans/early-market/performances?tradeDate=2026-06-10'
+curl 'http://localhost:8080/api/scans/early-market/performances/21'
+```
+
+성과는 `EARLY_MARKET_PRE_SCAN`과 `EARLY_MARKET_ENTRY_CANDIDATE`를 signalId별로 구분해 저장하며 응답에 원 신호 점수인 `signalScore`를 포함합니다. 현재 `MarketSnapshotPort`는 구간 분봉을 제공하지 않으므로 `priceAt0930`은 09:30 이후 수동 호출 시점의 current price proxy입니다. `entryReferencePrice`, `highUntil0930`, `lowUntil0930`, `maxReturnRateUntil0930`, `maxDrawdownRateUntil0930`는 정확한 데이터가 없어 `null`로 저장합니다. `vwapBroken`은 캡처 시점 현재가가 VWAP 아래인지 나타냅니다. 자동 09:30 scheduler와 1분봉/5분봉 기반 정교화는 후속 TODO입니다.
+
 거래 신호 조회:
 
 ```sh
@@ -309,6 +324,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.notification.discord.count`: `result`
 - `tradeguard.kis.read_only.count`: `operation`, `result`
 - `tradeguard.after_hours.lookup.count`: `result=found|not_found|failure`
+- `tradeguard.early_market.performance.capture.count`: `result=captured|snapshot_unavailable|failed`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
 
@@ -349,6 +365,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - 실계좌 주문 기능은 구현하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
 - 08:30/09:05 장초반 후보 생성은 자동 주문을 실행하지 않습니다.
+- 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.
 - 시간외 데이터 연동은 fake/no-op adapter만 제공하며 KIS 실제 시간외 endpoint는 호출하지 않습니다.
 - API Key, App Secret, 계좌번호는 코드에 하드코딩하지 않습니다.
 - Discord Webhook URL은 환경변수로만 주입하며 코드에 하드코딩하지 않습니다.
