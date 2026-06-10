@@ -26,6 +26,16 @@ KIS 모의투자 일봉 조회에는 `KIS_APP_KEY`, `KIS_APP_SECRET`이 필요�
 
 14:00 시장 순위와 15:00 현재가 snapshot은 기본적으로 fake adapter를 사용합니다. KIS 읽기 전용 조회로 전환하려면 `MARKET_DATA_REALTIME_PROVIDER=kis`와 `KIS_APP_KEY`, `KIS_APP_SECRET`을 설정합니다. 이 전환은 순위/현재가 조회만 활성화하며 주문 endpoint는 호출하지 않습니다.
 
+장초반 분봉은 기본적으로 `FakeIntradayBarAdapter`를 사용합니다. KIS 읽기 전용 당일 분봉으로 전환하려면 다음과 같이 설정합니다.
+
+```sh
+MARKET_DATA_INTRADAY_PROVIDER=kis
+KIS_APP_KEY=...
+KIS_APP_SECRET=...
+```
+
+KIS 분봉 adapter는 공식 `주식당일분봉조회[v1_국내주식-022]`의 `/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice`, TR ID `FHKST03010200`만 사용합니다. 당일 데이터만 제공되는 endpoint이므로 과거 거래일 요청은 빈 결과를 반환하여 기존 snapshot fallback이 적용됩니다. 주문, 계좌, 잔고, 정정/취소 endpoint는 호출하지 않습니다.
+
 ## 테스트
 
 ```sh
@@ -47,6 +57,18 @@ KIS_SMOKE_TEST_ENABLED=true ./gradlew test \
 ```
 
 `KIS_SMOKE_TEST_ENABLED`가 `true`가 아니면 smoke test는 실행되지 않습니다. 활성화했더라도 `KIS_APP_KEY` 또는 `KIS_APP_SECRET`이 비어 있으면 skip됩니다. smoke test는 일봉, 시장 순위, 현재가 snapshot 조회 endpoint만 호출하며 주문 endpoint는 호출하지 않습니다.
+
+KIS 당일 분봉 전용 smoke test:
+
+```sh
+set -a
+source .env
+set +a
+KIS_INTRADAY_BAR_SMOKE_TEST_ENABLED=true ./gradlew test \
+  --tests '*KisIntradayBarSmokeTest'
+```
+
+기본 조회 종목은 삼성전자 `005930`이며 `KIS_INTRADAY_BAR_SMOKE_TEST_STOCK_CODE`로 변경할 수 있습니다. 장 시작 전에는 skip되고, 앱키나 앱시크릿이 없을 때도 skip됩니다. 이 테스트는 분봉 시세 endpoint만 호출하며 주문 API를 호출하지 않습니다.
 
 한국 시장 휴장일은 쉼표로 구분한 ISO 날짜로 설정합니다.
 
@@ -143,7 +165,9 @@ curl 'http://localhost:8080/api/scans/early-market/performances/21'
 
 `maxReturnRateUntil0930`은 `(구간 최고가 - 기준가) / 기준가 * 100`, `maxDrawdownRateUntil0930`은 `(구간 최저가 - 기준가) / 기준가 * 100`으로 계산하므로 하락 시 음수입니다. `vwapBroken`은 구간 중 하나 이상의 bar가 `close < vwap`이면 `true`입니다. 분봉이 없거나 조회가 실패하면 기존 `MarketSnapshotPort` current price proxy로 fallback하며, 이 경우 구간 기반 필드는 `null`, `priceAt0930`과 `vwapBroken`만 snapshot으로 채웁니다. snapshot도 없으면 nullable 필드는 그대로 `null`입니다.
 
-현재 분봉 데이터는 상승/하락/횡보 고정 시나리오를 가진 `FakeIntradayBarAdapter`만 제공합니다. KIS 실제 1분봉/5분봉 endpoint adapter는 후속 TODO이며, 실제 주문이나 시장가 주문은 수행하지 않습니다.
+분봉 provider 기본값은 `fake`이며 상승/하락/횡보 고정 시나리오를 제공합니다. `MARKET_DATA_INTRADAY_PROVIDER=kis`이면 KIS 당일 1분봉을 최대 30건씩 역방향 조회해 요청 구간을 구성합니다. KIS 응답의 `cntg_vol`을 분당 거래량으로, `acml_tr_pbmn`의 직전 분 대비 차이를 분당 거래대금으로 사용하며, 분당 VWAP은 `분당 거래대금 / 분당 거래량`으로 계산합니다. 무체결로 VWAP을 계산할 수 없는 row는 bar에서 제외하므로 `IntradayBar.vwap`은 non-null 정책을 유지합니다.
+
+`FIVE_MINUTES` 요청은 1분봉을 5분 버킷으로 집계합니다. open은 첫 bar, high/low는 구간 최댓값/최솟값, close는 마지막 bar, volume/tradingValue는 합계, VWAP은 `합산 거래대금 / 합산 거래량`입니다. 실제 주문이나 시장가 주문은 수행하지 않습니다.
 
 장초반 성과는 평일 Asia/Seoul 기준 09:31에 `EARLY_MARKET_PERFORMANCE_CAPTURE_930` scheduler가 자동 캡처합니다. 09:30 bar가 완료된 뒤 실행하기 위해 09:31을 사용하며, `MarketCalendarPort`가 비거래일로 판단하면 `NON_TRADING_DAY` 사유로 건너뜁니다. 거래일에는 수동 API와 동일한 `CaptureEarlyMarketPerformancesUseCase`를 호출하므로 저장 및 fallback 정책이 동일합니다.
 

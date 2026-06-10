@@ -8,45 +8,63 @@ import seokhoon.trade.adapter.marketdata.kis.KisProperties;
 
 @Component("kisReadOnly")
 public class KisReadOnlyHealthIndicator implements HealthIndicator {
-    private final String provider;
+    private final String realtimeProvider;
+    private final String intradayProvider;
     private final KisProperties properties;
 
     public KisReadOnlyHealthIndicator(
-            @Value("${tradeguard.market-data.realtime-provider:fake}") String provider,
+            @Value("${tradeguard.market-data.realtime-provider:fake}")
+            String realtimeProvider,
+            @Value("${tradeguard.market-data.intraday-provider:fake}")
+            String intradayProvider,
             KisProperties properties
     ) {
-        this.provider = provider;
+        this.realtimeProvider = realtimeProvider;
+        this.intradayProvider = intradayProvider;
         this.properties = properties;
     }
 
     @Override
     public Health health() {
-        if ("fake".equalsIgnoreCase(provider)) {
-            return Health.up()
-                    .withDetail("provider", "fake")
-                    .withDetail("readOnly", true)
+        if (!supported(realtimeProvider) || !supported(intradayProvider)) {
+            return base(Health.unknown())
+                    .withDetail("provider", "unsupported")
                     .build();
         }
-        if (!"kis".equalsIgnoreCase(provider)) {
-            return Health.unknown()
-                    .withDetail("provider", "unsupported")
+        boolean kisEnabled = "kis".equalsIgnoreCase(realtimeProvider)
+                || "kis".equalsIgnoreCase(intradayProvider);
+        if (!kisEnabled) {
+            return Health.up()
+                    .withDetail("provider", "fake")
+                    .withDetail("realtimeProvider", realtimeProvider)
+                    .withDetail("intradayProvider", intradayProvider)
                     .withDetail("readOnly", true)
                     .build();
         }
         boolean credentialsConfigured = hasText(properties.getAppKey())
                 && hasText(properties.getAppSecret());
         if (!credentialsConfigured) {
-            return Health.unknown()
+            return base(Health.unknown())
                     .withDetail("provider", "kis")
                     .withDetail("credentialsConfigured", false)
-                    .withDetail("readOnly", true)
                     .build();
         }
-        return Health.up()
+        return base(Health.up())
                 .withDetail("provider", "kis")
                 .withDetail("credentialsConfigured", true)
-                .withDetail("readOnly", true)
                 .build();
+    }
+
+    private Health.Builder base(Health.Builder builder) {
+        return builder
+                .withDetail("realtimeProvider", realtimeProvider)
+                .withDetail("intradayProvider", intradayProvider)
+                .withDetail("readOnly", true);
+    }
+
+    private static boolean supported(String provider) {
+        return "fake".equalsIgnoreCase(provider)
+                || "kis".equalsIgnoreCase(provider);
     }
 
     private static boolean hasText(String value) {

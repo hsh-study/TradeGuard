@@ -1,5 +1,6 @@
 package seokhoon.trade.adapter.marketdata;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.IntradayBarPort;
 import seokhoon.trade.domain.market.BarInterval;
@@ -13,6 +14,11 @@ import java.util.List;
 import java.util.Objects;
 
 @Component
+@ConditionalOnProperty(
+        name = "tradeguard.market-data.intraday-provider",
+        havingValue = "fake",
+        matchIfMissing = true
+)
 public class FakeIntradayBarAdapter implements IntradayBarPort {
     private static final LocalDate DEFAULT_TRADE_DATE = LocalDate.of(2026, 6, 10);
     private static final List<IntradayBar> DEFAULT_BARS = List.of(

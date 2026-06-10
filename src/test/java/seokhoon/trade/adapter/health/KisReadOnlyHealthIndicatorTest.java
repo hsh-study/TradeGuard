@@ -11,13 +11,15 @@ class KisReadOnlyHealthIndicatorTest {
     void reportsUpForFakeProviderWithoutCredentials() {
         KisProperties properties = new KisProperties();
         KisReadOnlyHealthIndicator indicator =
-                new KisReadOnlyHealthIndicator("fake", properties);
+                new KisReadOnlyHealthIndicator("fake", "fake", properties);
 
         var health = indicator.health();
 
         assertThat(health.getStatus()).isEqualTo(Status.UP);
         assertThat(health.getDetails())
                 .containsEntry("provider", "fake")
+                .containsEntry("realtimeProvider", "fake")
+                .containsEntry("intradayProvider", "fake")
                 .containsEntry("readOnly", true)
                 .doesNotContainKeys("appKey", "appSecret");
     }
@@ -26,15 +28,32 @@ class KisReadOnlyHealthIndicatorTest {
     void reportsUnknownForKisProviderWithoutCredentials() {
         KisProperties properties = new KisProperties();
         KisReadOnlyHealthIndicator indicator =
-                new KisReadOnlyHealthIndicator("kis", properties);
+                new KisReadOnlyHealthIndicator("kis", "fake", properties);
 
         var health = indicator.health();
 
         assertThat(health.getStatus()).isEqualTo(Status.UNKNOWN);
         assertThat(health.getDetails())
                 .containsEntry("provider", "kis")
+                .containsEntry("realtimeProvider", "kis")
+                .containsEntry("intradayProvider", "fake")
                 .containsEntry("credentialsConfigured", false)
                 .containsEntry("readOnly", true);
+    }
+
+    @Test
+    void reportsUnknownForKisIntradayProviderWithoutCredentials() {
+        KisReadOnlyHealthIndicator indicator = new KisReadOnlyHealthIndicator(
+                "fake",
+                "kis",
+                new KisProperties()
+        );
+
+        assertThat(indicator.health().getStatus()).isEqualTo(Status.UNKNOWN);
+        assertThat(indicator.health().getDetails())
+                .containsEntry("realtimeProvider", "fake")
+                .containsEntry("intradayProvider", "kis")
+                .containsEntry("credentialsConfigured", false);
     }
 
     @Test
@@ -43,7 +62,7 @@ class KisReadOnlyHealthIndicatorTest {
         properties.setAppKey("sensitive-app-key");
         properties.setAppSecret("sensitive-app-secret");
         KisReadOnlyHealthIndicator indicator =
-                new KisReadOnlyHealthIndicator("kis", properties);
+                new KisReadOnlyHealthIndicator("kis", "kis", properties);
 
         String details = indicator.health().getDetails().toString();
 
