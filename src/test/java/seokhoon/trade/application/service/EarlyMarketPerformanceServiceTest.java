@@ -4,12 +4,14 @@ import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.EarlyMarketPerformanceCaptureResult;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.EarlyMarketPerformancePort;
+import seokhoon.trade.application.port.out.IntradayBarPort;
 import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
 import seokhoon.trade.application.port.out.MarketSnapshotPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.TradingSignalQueryPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.market.EarlyMarketCandidatePerformance;
+import seokhoon.trade.domain.market.IntradayBar;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
@@ -17,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -43,7 +46,7 @@ class EarlyMarketPerformanceServiceTest {
         PerformanceStore performances = new PerformanceStore();
 
         EarlyMarketPerformanceCaptureResult result =
-                service(signals, snapshots, performances).capture(TRADE_DATE);
+                service(signals, noBars(), snapshots, performances).capture(TRADE_DATE);
 
         assertThat(result.signalCount()).isEqualTo(2);
         assertThat(result.capturedCount()).isEqualTo(2);
@@ -69,7 +72,66 @@ class EarlyMarketPerformanceServiceTest {
     }
 
     @Test
-    void storesNullableFieldsWhenSnapshotIsUnavailable() {
+    void calculatesMaxReturnFromOpeningPriceAndHighestBarPrice() {
+        EarlyMarketPerformanceCaptureResult result = service(
+                singleSignal(),
+                bars(
+                        bar("09:00", "100", "103", "99", "102", "101"),
+                        bar("09:30", "102", "112", "101", "110", "106")
+                ),
+                stockCode -> Optional.empty(),
+                new PerformanceStore()
+        ).capture(TRADE_DATE);
+
+        assertThat(result.performances()).singleElement().satisfies(performance -> {
+            assertThat(performance.entryReferencePrice()).isEqualByComparingTo("100");
+            assertThat(performance.highUntil0930()).isEqualByComparingTo("112");
+            assertThat(performance.priceAt0930()).isEqualByComparingTo("110");
+            assertThat(performance.maxReturnRateUntil0930())
+                    .isEqualByComparingTo("12.0000");
+        });
+    }
+
+    @Test
+    void calculatesMaxDrawdownFromOpeningPriceAndLowestBarPrice() {
+        EarlyMarketPerformanceCaptureResult result = service(
+                singleSignal(),
+                bars(
+                        bar("09:00", "100", "101", "96", "97", "99"),
+                        bar("09:30", "97", "98", "88", "90", "94")
+                ),
+                stockCode -> Optional.empty(),
+                new PerformanceStore()
+        ).capture(TRADE_DATE);
+
+        assertThat(result.performances()).singleElement().satisfies(performance -> {
+            assertThat(performance.lowUntil0930()).isEqualByComparingTo("88");
+            assertThat(performance.maxDrawdownRateUntil0930())
+                    .isEqualByComparingTo("-12.0000");
+        });
+    }
+
+    @Test
+    void marksVwapBrokenWhenAnyBarClosesBelowItsVwap() {
+        EarlyMarketPerformanceCaptureResult result = service(
+                singleSignal(),
+                bars(
+                        bar("09:00", "100", "103", "99", "102", "101"),
+                        bar("09:05", "102", "103", "98", "99", "100"),
+                        bar("09:30", "99", "104", "99", "103", "102")
+                ),
+                stockCode -> Optional.empty(),
+                new PerformanceStore()
+        ).capture(TRADE_DATE);
+
+        assertThat(result.performances())
+                .singleElement()
+                .extracting(performance -> performance.vwapBroken())
+                .isEqualTo(true);
+    }
+
+    @Test
+    void fallsBackToCurrentSnapshotProxyWhenBarsAreUnavailable() {
         SignalQuery signals = new SignalQuery(List.of(
                 signal(1L, SignalType.EARLY_MARKET_PRE_SCAN, 80, "005930")
         ));
@@ -77,7 +139,8 @@ class EarlyMarketPerformanceServiceTest {
 
         EarlyMarketPerformanceCaptureResult result = service(
                 signals,
-                stockCode -> Optional.empty(),
+                noBars(),
+                stockCode -> Optional.of(snapshot("005930", "76000", "75000")),
                 performances
         ).capture(TRADE_DATE);
 
@@ -86,9 +149,25 @@ class EarlyMarketPerformanceServiceTest {
             assertThat(performance.entryReferencePrice()).isNull();
             assertThat(performance.highUntil0930()).isNull();
             assertThat(performance.lowUntil0930()).isNull();
-            assertThat(performance.priceAt0930()).isNull();
+            assertThat(performance.priceAt0930()).isEqualByComparingTo("76000");
             assertThat(performance.maxReturnRateUntil0930()).isNull();
             assertThat(performance.maxDrawdownRateUntil0930()).isNull();
+            assertThat(performance.vwapBroken()).isFalse();
+        });
+    }
+
+    @Test
+    void storesNullableFieldsWhenBarsAndSnapshotAreUnavailable() {
+        EarlyMarketPerformanceCaptureResult result = service(
+                singleSignal(),
+                noBars(),
+                stockCode -> Optional.empty(),
+                new PerformanceStore()
+        ).capture(TRADE_DATE);
+
+        assertThat(result.performances()).singleElement().satisfies(performance -> {
+            assertThat(performance.entryReferencePrice()).isNull();
+            assertThat(performance.priceAt0930()).isNull();
             assertThat(performance.vwapBroken()).isNull();
         });
     }
@@ -114,7 +193,12 @@ class EarlyMarketPerformanceServiceTest {
                 CAPTURED_AT
         ));
         EarlyMarketPerformanceService service =
-                service(signals, stockCode -> Optional.empty(), performances);
+                service(
+                        signals,
+                        noBars(),
+                        stockCode -> Optional.empty(),
+                        performances
+                );
 
         assertThat(service.findByTradeDate(TRADE_DATE))
                 .singleElement()
@@ -128,15 +212,54 @@ class EarlyMarketPerformanceServiceTest {
 
     private static EarlyMarketPerformanceService service(
             TradingSignalQueryPort signals,
+            IntradayBarPort bars,
             MarketSnapshotPort snapshots,
             EarlyMarketPerformancePort performances
     ) {
         return new EarlyMarketPerformanceService(
                 signals,
+                bars,
                 snapshots,
                 performances,
                 OperationalMetricsPort.noop(),
                 Clock.fixed(CAPTURED_AT, ZoneOffset.UTC)
+        );
+    }
+
+    private static SignalQuery singleSignal() {
+        return new SignalQuery(List.of(
+                signal(1L, SignalType.EARLY_MARKET_ENTRY_CANDIDATE, 90, "005930")
+        ));
+    }
+
+    private static IntradayBarPort noBars() {
+        return bars();
+    }
+
+    private static IntradayBarPort bars(IntradayBar... values) {
+        List<IntradayBar> bars = List.of(values);
+        return (stockCode, tradeDate, from, to, interval) -> bars;
+    }
+
+    private static IntradayBar bar(
+            String barTime,
+            String openPrice,
+            String highPrice,
+            String lowPrice,
+            String closePrice,
+            String vwap
+    ) {
+        return new IntradayBar(
+                "005930",
+                TRADE_DATE,
+                LocalTime.parse(barTime),
+                new BigDecimal(openPrice),
+                new BigDecimal(highPrice),
+                new BigDecimal(lowPrice),
+                new BigDecimal(closePrice),
+                1_000,
+                new BigDecimal(closePrice).multiply(BigDecimal.valueOf(1_000)),
+                new BigDecimal(vwap)
         );
     }
 

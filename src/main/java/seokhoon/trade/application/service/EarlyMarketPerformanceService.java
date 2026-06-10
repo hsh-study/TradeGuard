@@ -10,17 +10,22 @@ import seokhoon.trade.application.port.in.EarlyMarketPerformanceView;
 import seokhoon.trade.application.port.in.LoadEarlyMarketPerformancesUseCase;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.EarlyMarketPerformancePort;
+import seokhoon.trade.application.port.out.IntradayBarPort;
 import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
 import seokhoon.trade.application.port.out.MarketSnapshotPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.TradingSignalQueryPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
+import seokhoon.trade.domain.market.BarInterval;
 import seokhoon.trade.domain.market.EarlyMarketCandidatePerformance;
+import seokhoon.trade.domain.market.IntradayBar;
 import seokhoon.trade.domain.strategy.SignalType;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -35,8 +40,12 @@ public class EarlyMarketPerformanceService
         implements CaptureEarlyMarketPerformancesUseCase, LoadEarlyMarketPerformancesUseCase {
     private static final Logger log =
             LoggerFactory.getLogger(EarlyMarketPerformanceService.class);
+    private static final LocalTime PERFORMANCE_FROM = LocalTime.of(9, 0);
+    private static final LocalTime PERFORMANCE_TO = LocalTime.of(9, 30);
+    private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
 
     private final TradingSignalQueryPort tradingSignalQueryPort;
+    private final IntradayBarPort intradayBarPort;
     private final MarketSnapshotPort marketSnapshotPort;
     private final EarlyMarketPerformancePort performancePort;
     private final OperationalMetricsPort metricsPort;
@@ -45,12 +54,14 @@ public class EarlyMarketPerformanceService
     @Autowired
     public EarlyMarketPerformanceService(
             TradingSignalQueryPort tradingSignalQueryPort,
+            IntradayBarPort intradayBarPort,
             MarketSnapshotPort marketSnapshotPort,
             EarlyMarketPerformancePort performancePort,
             OperationalMetricsPort metricsPort
     ) {
         this(
                 tradingSignalQueryPort,
+                intradayBarPort,
                 marketSnapshotPort,
                 performancePort,
                 metricsPort,
@@ -60,12 +71,14 @@ public class EarlyMarketPerformanceService
 
     EarlyMarketPerformanceService(
             TradingSignalQueryPort tradingSignalQueryPort,
+            IntradayBarPort intradayBarPort,
             MarketSnapshotPort marketSnapshotPort,
             EarlyMarketPerformancePort performancePort,
             OperationalMetricsPort metricsPort,
             Clock clock
     ) {
         this.tradingSignalQueryPort = tradingSignalQueryPort;
+        this.intradayBarPort = intradayBarPort;
         this.marketSnapshotPort = marketSnapshotPort;
         this.performancePort = performancePort;
         this.metricsPort = metricsPort;
@@ -134,13 +147,25 @@ public class EarlyMarketPerformanceService
             return Optional.empty();
         }
 
-        Optional<IntradayMarketSnapshot> snapshot = loadSnapshot(signal.stockCode());
-        EarlyMarketCandidatePerformance performance = toPerformance(signal, snapshot);
+        List<IntradayBar> bars = loadBars(signal);
+        boolean barsUsed = !bars.isEmpty();
+        Optional<IntradayMarketSnapshot> snapshot = barsUsed
+                ? Optional.empty()
+                : loadSnapshot(signal.stockCode());
+        EarlyMarketCandidatePerformance performance = barsUsed
+                ? toPerformance(signal, bars)
+                : toPerformance(signal, snapshot);
         try {
             EarlyMarketCandidatePerformance saved = performancePort.save(performance);
             metricsPort.recordEarlyMarketPerformanceCapture(
-                    snapshot.isPresent() ? "captured" : "snapshot_unavailable"
+                    barsUsed ? "bars_used" : "snapshot_proxy"
             );
+            log.atInfo()
+                    .addKeyValue("signalId", signal.id())
+                    .addKeyValue("stockCode", signal.stockCode())
+                    .addKeyValue("result", barsUsed ? "bars_used" : "snapshot_proxy")
+                    .addKeyValue("barCount", bars.size())
+                    .log("Early market candidate performance captured");
             return Optional.of(toView(saved, signal.score()));
         } catch (RuntimeException exception) {
             metricsPort.recordEarlyMarketPerformanceCapture("failed");
@@ -151,6 +176,33 @@ public class EarlyMarketPerformanceService
                     .addKeyValue("errorType", exception.getClass().getSimpleName())
                     .log("Early market candidate performance persistence failed");
             return Optional.empty();
+        }
+    }
+
+    private List<IntradayBar> loadBars(TradingSignalRecord signal) {
+        try {
+            List<IntradayBar> bars = intradayBarPort.findBars(
+                    signal.stockCode(),
+                    signal.signalDate(),
+                    PERFORMANCE_FROM,
+                    PERFORMANCE_TO,
+                    BarInterval.ONE_MINUTE
+            ).stream()
+                    .sorted(Comparator.comparing(IntradayBar::barTime))
+                    .toList();
+            metricsPort.recordIntradayBarLookup(
+                    bars.isEmpty() ? "not_found" : "found"
+            );
+            return bars;
+        } catch (RuntimeException exception) {
+            metricsPort.recordIntradayBarLookup("failure");
+            log.atWarn()
+                    .addKeyValue("signalId", signal.id())
+                    .addKeyValue("stockCode", signal.stockCode())
+                    .addKeyValue("result", "failure")
+                    .addKeyValue("errorType", exception.getClass().getSimpleName())
+                    .log("Early market intraday bar lookup failed");
+            return List.of();
         }
     }
 
@@ -165,6 +217,39 @@ public class EarlyMarketPerformanceService
                     .log("Early market performance snapshot lookup failed");
             return Optional.empty();
         }
+    }
+
+    private EarlyMarketCandidatePerformance toPerformance(
+            TradingSignalRecord signal,
+            List<IntradayBar> bars
+    ) {
+        IntradayBar firstBar = bars.getFirst();
+        IntradayBar lastBar = bars.getLast();
+        BigDecimal entryReferencePrice = firstBar.openPrice();
+        BigDecimal highUntil0930 = bars.stream()
+                .map(IntradayBar::highPrice)
+                .max(BigDecimal::compareTo)
+                .orElseThrow();
+        BigDecimal lowUntil0930 = bars.stream()
+                .map(IntradayBar::lowPrice)
+                .min(BigDecimal::compareTo)
+                .orElseThrow();
+        boolean vwapBroken = bars.stream()
+                .anyMatch(EarlyMarketPerformanceService::isVwapBroken);
+        return new EarlyMarketCandidatePerformance(
+                signal.id(),
+                signal.stockCode(),
+                signal.signalDate(),
+                signal.signalType(),
+                entryReferencePrice,
+                highUntil0930,
+                lowUntil0930,
+                lastBar.closePrice(),
+                rateFrom(entryReferencePrice, highUntil0930),
+                rateFrom(entryReferencePrice, lowUntil0930),
+                vwapBroken,
+                clock.instant()
+        );
     }
 
     private EarlyMarketCandidatePerformance toPerformance(
@@ -191,6 +276,16 @@ public class EarlyMarketPerformanceService
                 vwapBroken,
                 clock.instant()
         );
+    }
+
+    private static BigDecimal rateFrom(BigDecimal referencePrice, BigDecimal price) {
+        return price.subtract(referencePrice)
+                .multiply(ONE_HUNDRED)
+                .divide(referencePrice, 4, RoundingMode.HALF_UP);
+    }
+
+    private static boolean isVwapBroken(IntradayBar bar) {
+        return bar.closePrice().compareTo(bar.vwap()) < 0;
     }
 
     private static Boolean isVwapBroken(IntradayMarketSnapshot snapshot) {

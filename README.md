@@ -139,7 +139,11 @@ curl 'http://localhost:8080/api/scans/early-market/performances?tradeDate=2026-0
 curl 'http://localhost:8080/api/scans/early-market/performances/21'
 ```
 
-성과는 `EARLY_MARKET_PRE_SCAN`과 `EARLY_MARKET_ENTRY_CANDIDATE`를 signalId별로 구분해 저장하며 응답에 원 신호 점수인 `signalScore`를 포함합니다. 현재 `MarketSnapshotPort`는 구간 분봉을 제공하지 않으므로 `priceAt0930`은 09:30 이후 수동 호출 시점의 current price proxy입니다. `entryReferencePrice`, `highUntil0930`, `lowUntil0930`, `maxReturnRateUntil0930`, `maxDrawdownRateUntil0930`는 정확한 데이터가 없어 `null`로 저장합니다. `vwapBroken`은 캡처 시점 현재가가 VWAP 아래인지 나타냅니다. 자동 09:30 scheduler와 1분봉/5분봉 기반 정교화는 후속 TODO입니다.
+성과는 `EARLY_MARKET_PRE_SCAN`과 `EARLY_MARKET_ENTRY_CANDIDATE`를 signalId별로 구분해 저장하며 응답에 원 신호 점수인 `signalScore`를 포함합니다. `IntradayBarPort`에서 09:00~09:30 양 끝을 포함한 1분봉을 조회하고, 첫 bar의 open을 `entryReferencePrice`로 사용합니다. 구간 high/low의 최댓값과 최솟값을 저장하고, 마지막 bar close를 `priceAt0930`으로 사용합니다. 정확히 09:30 bar가 없으면 조회 구간 안에서 가장 늦은 bar close가 사용됩니다.
+
+`maxReturnRateUntil0930`은 `(구간 최고가 - 기준가) / 기준가 * 100`, `maxDrawdownRateUntil0930`은 `(구간 최저가 - 기준가) / 기준가 * 100`으로 계산하므로 하락 시 음수입니다. `vwapBroken`은 구간 중 하나 이상의 bar가 `close < vwap`이면 `true`입니다. 분봉이 없거나 조회가 실패하면 기존 `MarketSnapshotPort` current price proxy로 fallback하며, 이 경우 구간 기반 필드는 `null`, `priceAt0930`과 `vwapBroken`만 snapshot으로 채웁니다. snapshot도 없으면 nullable 필드는 그대로 `null`입니다.
+
+현재 분봉 데이터는 상승/하락/횡보 고정 시나리오를 가진 `FakeIntradayBarAdapter`만 제공합니다. KIS 실제 1분봉/5분봉 endpoint adapter와 자동 09:30 성과 캡처 scheduler는 후속 TODO이며, 실제 주문이나 시장가 주문은 수행하지 않습니다.
 
 거래 신호 조회:
 
@@ -324,7 +328,8 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.notification.discord.count`: `result`
 - `tradeguard.kis.read_only.count`: `operation`, `result`
 - `tradeguard.after_hours.lookup.count`: `result=found|not_found|failure`
-- `tradeguard.early_market.performance.capture.count`: `result=captured|snapshot_unavailable|failed`
+- `tradeguard.intraday_bar.lookup.count`: `result=found|not_found|failure`
+- `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
 

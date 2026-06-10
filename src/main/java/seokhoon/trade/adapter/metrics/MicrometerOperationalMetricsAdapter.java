@@ -103,6 +103,14 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordIntradayBarLookup(String result) {
+        meterRegistry.counter(
+                "tradeguard.intraday_bar.lookup.count",
+                "result", result
+        ).increment();
+    }
+
+    @Override
     public void recordEarlyMarketPerformanceCapture(String result) {
         meterRegistry.counter(
                 "tradeguard.early_market.performance.capture.count",
