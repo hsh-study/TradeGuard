@@ -249,6 +249,51 @@ curl 'http://localhost:8080/api/reports/early-market/period?from=2026-06-01&to=2
 
 기간 리포트는 저장 데이터 조회와 전략 검증 전용입니다. follow-up, 성과 캡처, 모의 주문 또는 자동 주문을 실행하지 않으며 실계좌 주문과 시장가 주문을 지원하지 않습니다.
 
+### 장초반 전략 파라미터
+
+장초반 전략 설정 prefix는 `tradeguard.early-market.strategy`입니다. 기본값은 기존 08:30, 09:05, 09:20 정책과 동일합니다.
+
+| 그룹 | 설정 | 기본값 |
+| --- | --- | ---: |
+| `pre-open` | `after-hours-rise-threshold` | `3.0` |
+| `pre-open` | `after-hours-rise-score` | `15` |
+| `pre-open` | `after-hours-trading-value-threshold` | `30000000000` (300억 원) |
+| `pre-open` | `after-hours-trading-value-score` | `15` |
+| `pre-open` | `after-hours-overheat-threshold` | `7.0` |
+| `pre-open` | `after-hours-overheat-penalty` | `-10` |
+| `pre-open` | `after-hours-fall-threshold` | `-3.0` |
+| `pre-open` | `after-hours-fall-penalty` | `-10` |
+| `opening` | `vwap-above-score` | `25` |
+| `opening` | `near-high-score` | `20` |
+| `opening` | `trading-value-score` | `20` |
+| `opening` | `vwap-broken-penalty` | `-30` |
+| `opening` | `high-drawdown-penalty` | `-20` |
+| `opening` | `entry-threshold` | `70` |
+| `opening` | `max-candidates` | `3` |
+| `follow-up` | `exclude-drawdown-from-high` | `-2.0` |
+| `follow-up` | `caution-drawdown-from-high` | `-1.0` |
+| `follow-up` | `exclude-when-last-below-vwap` | `true` |
+| `follow-up` | `exclude-when-last-below-opening-price` | `true` |
+| `follow-up` | `caution-when-previous-high-not-broken` | `true` |
+| `follow-up` | `caution-when-previous-high-re-lost` | `true` |
+| `price-action` | `previous-high-breakout-score` | `15` |
+| `price-action` | `previous-high-not-broken-penalty` | `-10` |
+| `price-action` | `opening-price-held-score` | `10` |
+| `price-action` | `opening-price-lost-penalty` | `-15` |
+
+설정 예시:
+
+```properties
+tradeguard.early-market.strategy.opening.entry-threshold=80
+tradeguard.early-market.strategy.opening.max-candidates=2
+tradeguard.early-market.strategy.follow-up.exclude-drawdown-from-high=-2.5
+tradeguard.early-market.strategy.follow-up.caution-when-previous-high-not-broken=false
+```
+
+가산 점수와 상승·거래대금 임계값은 0 이상, 패널티와 하락·낙폭 임계값은 0 이하만 허용합니다. `entry-threshold`는 0~100, `max-candidates`는 1 이상이어야 합니다. 시간외 과열 기준은 상승 기준 이상이어야 하며 follow-up 제외 낙폭은 주의 낙폭 이하, 즉 더 큰 하락이어야 합니다. 위반하면 애플리케이션 시작이 실패합니다.
+
+이 설정은 분석 후보 점수와 follow-up 분류만 조정합니다. 설정 변경으로 자동 주문, 실계좌 주문 또는 시장가 주문이 활성화되지 않습니다.
+
 거래 신호 조회:
 
 ```sh

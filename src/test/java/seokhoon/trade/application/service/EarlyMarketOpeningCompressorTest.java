@@ -13,6 +13,7 @@ import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
+import seokhoon.trade.config.EarlyMarketStrategyProperties;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -153,6 +154,33 @@ class EarlyMarketOpeningCompressorTest {
     }
 
     @Test
+    void changingEntryThresholdChangesCandidatePersistence() {
+        SignalStore store = new SignalStore();
+        store.preScans.add(preScan(1L, "005930"));
+        SnapshotPort snapshots = new SnapshotPort();
+        snapshots.add(snapshot("005930", "100", "95", "102", "40000000000"));
+        EarlyMarketStrategyProperties properties = new EarlyMarketStrategyProperties();
+        properties.getOpening().setEntryThreshold(106);
+        EarlyMarketOpeningCompressor compressor = new EarlyMarketOpeningCompressor(
+                store,
+                store,
+                snapshots,
+                (stockCode, tradeDate, to) -> insufficientFeatures(
+                        stockCode,
+                        tradeDate
+                ),
+                message -> NotificationDeliveryResult.success(),
+                properties,
+                Clock.fixed(Instant.parse("2026-06-10T00:05:00Z"), ZoneOffset.UTC)
+        );
+
+        EarlyMarketScanResult result = compressor.compress(TRADE_DATE, 3);
+
+        assertThat(result.selectedCount()).isZero();
+        assertThat(store.saved).isEmpty();
+    }
+
+    @Test
     void limitsCompressedCandidatesToThreeAndSupportsNoOpBriefing() {
         SignalStore store = new SignalStore();
         SnapshotPort snapshots = new SnapshotPort();
@@ -248,6 +276,25 @@ class EarlyMarketOpeningCompressorTest {
                                 ? "OPENING_PRICE_HELD"
                                 : "OPENING_PRICE_LOST"
                 )
+        );
+    }
+
+    private static EarlyMarketPriceActionFeatures insufficientFeatures(
+            String stockCode,
+            LocalDate tradeDate
+    ) {
+        return new EarlyMarketPriceActionFeatures(
+                stockCode,
+                tradeDate,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                List.of("PRICE_ACTION_FEATURE_UNAVAILABLE")
         );
     }
 

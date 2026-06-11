@@ -25,6 +25,7 @@ import seokhoon.trade.domain.market.IntradayBar;
 import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
 import seokhoon.trade.domain.market.EarlyMarketFollowUpRecord;
 import seokhoon.trade.domain.strategy.SignalType;
+import seokhoon.trade.config.EarlyMarketStrategyProperties;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -42,8 +43,6 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
     private static final Logger log = LoggerFactory.getLogger(EarlyMarketFollowUpService.class);
     private static final LocalTime FOLLOW_UP_FROM = LocalTime.of(9, 5);
     private static final LocalTime FOLLOW_UP_TO = LocalTime.of(9, 20);
-    private static final BigDecimal CAUTION_DRAWDOWN = new BigDecimal("-1.0000");
-    private static final BigDecimal EXCLUDE_DRAWDOWN = new BigDecimal("-2.0000");
     private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
 
     private final TradingSignalQueryPort tradingSignalQueryPort;
@@ -53,6 +52,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
     private final EarlyMarketFollowUpResultPort followUpResultPort;
     private final NotificationPort notificationPort;
     private final OperationalMetricsPort metricsPort;
+    private final EarlyMarketStrategyProperties strategyProperties;
     private final Clock clock;
 
     @Autowired
@@ -63,7 +63,8 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
             LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
             EarlyMarketFollowUpResultPort followUpResultPort,
             NotificationPort notificationPort,
-            OperationalMetricsPort metricsPort
+            OperationalMetricsPort metricsPort,
+            EarlyMarketStrategyProperties strategyProperties
     ) {
         this(
                 tradingSignalQueryPort,
@@ -73,6 +74,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
                 followUpResultPort,
                 notificationPort,
                 metricsPort,
+                strategyProperties,
                 Clock.systemUTC()
         );
     }
@@ -93,6 +95,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
                 EarlyMarketFollowUpResultPort.noop(),
                 notificationPort,
                 metricsPort,
+                new EarlyMarketStrategyProperties(),
                 clock
         );
     }
@@ -114,6 +117,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
                 EarlyMarketFollowUpResultPort.noop(),
                 notificationPort,
                 metricsPort,
+                new EarlyMarketStrategyProperties(),
                 clock
         );
     }
@@ -128,6 +132,30 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
             OperationalMetricsPort metricsPort,
             Clock clock
     ) {
+        this(
+                tradingSignalQueryPort,
+                intradayBarPort,
+                marketSnapshotPort,
+                priceActionFeaturesUseCase,
+                followUpResultPort,
+                notificationPort,
+                metricsPort,
+                new EarlyMarketStrategyProperties(),
+                clock
+        );
+    }
+
+    EarlyMarketFollowUpService(
+            TradingSignalQueryPort tradingSignalQueryPort,
+            IntradayBarPort intradayBarPort,
+            MarketSnapshotPort marketSnapshotPort,
+            LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
+            EarlyMarketFollowUpResultPort followUpResultPort,
+            NotificationPort notificationPort,
+            OperationalMetricsPort metricsPort,
+            EarlyMarketStrategyProperties strategyProperties,
+            Clock clock
+    ) {
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.intradayBarPort = intradayBarPort;
         this.marketSnapshotPort = marketSnapshotPort;
@@ -135,6 +163,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
         this.followUpResultPort = followUpResultPort;
         this.notificationPort = notificationPort;
         this.metricsPort = metricsPort;
+        this.strategyProperties = strategyProperties;
         this.clock = clock;
     }
 
@@ -304,7 +333,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
         }
     }
 
-    private static EarlyMarketFollowUpCandidate evaluateBars(
+    private EarlyMarketFollowUpCandidate evaluateBars(
             TradingSignalRecord signal,
             List<IntradayBar> bars
     ) {
@@ -329,7 +358,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
         );
     }
 
-    private static EarlyMarketFollowUpCandidate evaluateSnapshot(
+    private EarlyMarketFollowUpCandidate evaluateSnapshot(
             TradingSignalRecord signal,
             Optional<IntradayMarketSnapshot> snapshot
     ) {
@@ -363,7 +392,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
         );
     }
 
-    private static EarlyMarketFollowUpCandidate candidate(
+    private EarlyMarketFollowUpCandidate candidate(
             TradingSignalRecord signal,
             BigDecimal lastPrice,
             BigDecimal high,
@@ -374,17 +403,21 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
     ) {
         List<String> reasons = new ArrayList<>();
         reasons.add(dataReason);
+        EarlyMarketStrategyProperties.FollowUp properties =
+                strategyProperties.getFollowUp();
         EarlyMarketFollowUpDecision decision;
-        if (lastBelowVwap) {
+        if (lastBelowVwap && properties.isExcludeWhenLastBelowVwap()) {
             decision = EarlyMarketFollowUpDecision.EXCLUDE;
             reasons.add("LAST_PRICE_BELOW_VWAP");
-        } else if (drawdown.compareTo(EXCLUDE_DRAWDOWN) <= 0) {
+        } else if (drawdown.compareTo(
+                properties.getExcludeDrawdownFromHigh()) <= 0) {
             decision = EarlyMarketFollowUpDecision.EXCLUDE;
             reasons.add("DRAWDOWN_FROM_HIGH_AT_LEAST_2_PERCENT");
         } else if (vwapBroken) {
             decision = EarlyMarketFollowUpDecision.CAUTION;
             reasons.add("VWAP_BROKEN_DURING_WINDOW");
-        } else if (drawdown.compareTo(CAUTION_DRAWDOWN) <= 0) {
+        } else if (drawdown.compareTo(
+                properties.getCautionDrawdownFromHigh()) <= 0) {
             decision = EarlyMarketFollowUpDecision.CAUTION;
             reasons.add("DRAWDOWN_FROM_HIGH_1_TO_2_PERCENT");
         } else {
@@ -405,19 +438,22 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
         );
     }
 
-    private static EarlyMarketFollowUpCandidate applyPriceAction(
+    private EarlyMarketFollowUpCandidate applyPriceAction(
             EarlyMarketFollowUpCandidate candidate,
             EarlyMarketPriceActionFeatures features
     ) {
         List<String> reasons = new ArrayList<>(candidate.reasons());
         EarlyMarketFollowUpDecision decision = candidate.decision();
+        EarlyMarketStrategyProperties.FollowUp properties =
+                strategyProperties.getFollowUp();
         if (!features.dataSufficient()) {
             reasons.add("PRICE_ACTION_DATA_INSUFFICIENT");
             reasons.addAll(features.reasons());
             if (decision == EarlyMarketFollowUpDecision.KEEP) {
                 decision = EarlyMarketFollowUpDecision.CAUTION;
             }
-        } else if (Boolean.FALSE.equals(features.heldOpeningPrice())) {
+        } else if (Boolean.FALSE.equals(features.heldOpeningPrice())
+                && properties.isExcludeWhenLastBelowOpeningPrice()) {
             decision = EarlyMarketFollowUpDecision.EXCLUDE;
             reasons.add("OPENING_SUPPORT_FAILED");
             reasons.addAll(features.reasons());
@@ -430,12 +466,14 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
                 reasons.add("PREVIOUS_HIGH_HELD");
             } else if (Boolean.TRUE.equals(features.brokePreviousHigh())) {
                 reasons.add("PREVIOUS_HIGH_REENTRY_FAILED");
-                if (decision == EarlyMarketFollowUpDecision.KEEP) {
+                if (decision == EarlyMarketFollowUpDecision.KEEP
+                        && properties.isCautionWhenPreviousHighReLost()) {
                     decision = EarlyMarketFollowUpDecision.CAUTION;
                 }
             } else {
                 reasons.add("PREVIOUS_HIGH_NOT_BROKEN");
-                if (decision == EarlyMarketFollowUpDecision.KEEP) {
+                if (decision == EarlyMarketFollowUpDecision.KEEP
+                        && properties.isCautionWhenPreviousHighNotBroken()) {
                     decision = EarlyMarketFollowUpDecision.CAUTION;
                 }
             }

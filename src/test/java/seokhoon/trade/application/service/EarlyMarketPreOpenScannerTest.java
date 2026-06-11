@@ -21,6 +21,7 @@ import seokhoon.trade.domain.market.AfterHoursQuote;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
+import seokhoon.trade.config.EarlyMarketStrategyProperties;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -140,6 +141,36 @@ class EarlyMarketPreOpenScannerTest {
     }
 
     @Test
+    void changingAfterHoursRiseThresholdChangesScore() {
+        SignalStore store = new SignalStore();
+        MarketRankingStock stock = stock("005930", "5.0", "60000000000");
+        AfterHoursQuote quote = afterHoursQuote("3.5", "30000000000");
+        AfterHoursMarketDataPort afterHoursPort = afterHoursPort(Optional.of(quote));
+        EarlyMarketStrategyProperties properties = new EarlyMarketStrategyProperties();
+        properties.getPreOpen().setAfterHoursRiseThreshold(new BigDecimal("4.0"));
+        EarlyMarketPreOpenScanner scanner = new EarlyMarketPreOpenScanner(
+                new RankingPort(List.of(stock), List.of(stock), List.of(stock)),
+                indicatorPort(),
+                afterHoursPort,
+                date -> true,
+                store,
+                store,
+                message -> NotificationDeliveryResult.success(),
+                OperationalMetricsPort.noop(),
+                properties,
+                Clock.fixed(Instant.parse("2026-06-09T23:30:00Z"), ZoneOffset.UTC)
+        );
+
+        scanner.scan(TRADE_DATE, 10);
+
+        assertThat(store.saved).singleElement().satisfies(signal -> {
+            assertThat(signal.score()).isEqualTo(95);
+            assertThat(signal.reasons())
+                    .doesNotContain("AFTER_HOURS_CHANGE_RATE_OVER_3PCT");
+        });
+    }
+
+    @Test
     void recordsReasonWithoutPenaltyWhenAfterHoursDataIsUnavailable() {
         TradingSignal signal = scanWithAfterHours(Optional.empty());
 
@@ -249,7 +280,26 @@ class EarlyMarketPreOpenScannerTest {
     private static TradingSignal scanWithAfterHours(Optional<AfterHoursQuote> quote) {
         SignalStore store = new SignalStore();
         MarketRankingStock stock = stock("005930", "5.0", "60000000000");
-        AfterHoursMarketDataPort afterHoursPort = new AfterHoursMarketDataPort() {
+        AfterHoursMarketDataPort afterHoursPort = afterHoursPort(quote);
+        EarlyMarketPreOpenScanner scanner = new EarlyMarketPreOpenScanner(
+                new RankingPort(List.of(stock), List.of(stock), List.of(stock)),
+                indicatorPort(),
+                afterHoursPort,
+                store,
+                store,
+                message -> NotificationDeliveryResult.success(),
+                OperationalMetricsPort.noop(),
+                Clock.fixed(Instant.parse("2026-06-09T23:30:00Z"), ZoneOffset.UTC)
+        );
+
+        scanner.scan(TRADE_DATE, 10);
+        return store.saved.getFirst();
+    }
+
+    private static AfterHoursMarketDataPort afterHoursPort(
+            Optional<AfterHoursQuote> quote
+    ) {
+        return new AfterHoursMarketDataPort() {
             @Override
             public List<AfterHoursQuote> findTopAfterHoursMovers(
                     LocalDate tradeDate,
@@ -266,19 +316,6 @@ class EarlyMarketPreOpenScannerTest {
                 return quote;
             }
         };
-        EarlyMarketPreOpenScanner scanner = new EarlyMarketPreOpenScanner(
-                new RankingPort(List.of(stock), List.of(stock), List.of(stock)),
-                indicatorPort(),
-                afterHoursPort,
-                store,
-                store,
-                message -> NotificationDeliveryResult.success(),
-                OperationalMetricsPort.noop(),
-                Clock.fixed(Instant.parse("2026-06-09T23:30:00Z"), ZoneOffset.UTC)
-        );
-
-        scanner.scan(TRADE_DATE, 10);
-        return store.saved.getFirst();
     }
 
     private static AfterHoursQuote afterHoursQuote(

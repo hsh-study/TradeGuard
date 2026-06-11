@@ -26,6 +26,7 @@ import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
+import seokhoon.trade.config.EarlyMarketStrategyProperties;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -47,11 +48,6 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
     private static final Logger log = LoggerFactory.getLogger(EarlyMarketPreOpenScanner.class);
 
     private static final BigDecimal MAX_NORMAL_CHANGE_RATE = BigDecimal.valueOf(15);
-    private static final BigDecimal AFTER_HOURS_STRENGTH_RATE = BigDecimal.valueOf(3);
-    private static final BigDecimal AFTER_HOURS_OVERHEAT_RATE = BigDecimal.valueOf(7);
-    private static final BigDecimal AFTER_HOURS_WEAKNESS_RATE = BigDecimal.valueOf(-3);
-    private static final BigDecimal MIN_AFTER_HOURS_TRADING_VALUE =
-            BigDecimal.valueOf(30_000_000_000L);
     private static final List<Market> SCAN_MARKETS = List.of(Market.KOSPI, Market.KOSDAQ);
 
     private final MarketRankingPort marketRankingPort;
@@ -62,6 +58,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final NotificationPort notificationPort;
     private final OperationalMetricsPort operationalMetricsPort;
+    private final EarlyMarketStrategyProperties strategyProperties;
     private final Clock clock;
 
     @Autowired
@@ -73,7 +70,8 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
             TradingSignalPort tradingSignalPort,
             TradingSignalQueryPort tradingSignalQueryPort,
             NotificationPort notificationPort,
-            OperationalMetricsPort operationalMetricsPort
+            OperationalMetricsPort operationalMetricsPort,
+            EarlyMarketStrategyProperties strategyProperties
     ) {
         this(
                 marketRankingPort,
@@ -84,6 +82,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 tradingSignalQueryPort,
                 notificationPort,
                 operationalMetricsPort,
+                strategyProperties,
                 Clock.systemUTC()
         );
     }
@@ -105,6 +104,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 tradingSignalQueryPort,
                 notificationPort,
                 OperationalMetricsPort.noop(),
+                new EarlyMarketStrategyProperties(),
                 clock
         );
     }
@@ -128,6 +128,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 tradingSignalQueryPort,
                 notificationPort,
                 operationalMetricsPort,
+                new EarlyMarketStrategyProperties(),
                 clock
         );
     }
@@ -143,6 +144,32 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
             OperationalMetricsPort operationalMetricsPort,
             Clock clock
     ) {
+        this(
+                marketRankingPort,
+                indicatorSnapshotPort,
+                afterHoursMarketDataPort,
+                marketCalendarPort,
+                tradingSignalPort,
+                tradingSignalQueryPort,
+                notificationPort,
+                operationalMetricsPort,
+                new EarlyMarketStrategyProperties(),
+                clock
+        );
+    }
+
+    EarlyMarketPreOpenScanner(
+            MarketRankingPort marketRankingPort,
+            IndicatorSnapshotPort indicatorSnapshotPort,
+            AfterHoursMarketDataPort afterHoursMarketDataPort,
+            MarketCalendarPort marketCalendarPort,
+            TradingSignalPort tradingSignalPort,
+            TradingSignalQueryPort tradingSignalQueryPort,
+            NotificationPort notificationPort,
+            OperationalMetricsPort operationalMetricsPort,
+            EarlyMarketStrategyProperties strategyProperties,
+            Clock clock
+    ) {
         this.marketRankingPort = marketRankingPort;
         this.indicatorSnapshotPort = indicatorSnapshotPort;
         this.afterHoursMarketDataPort = afterHoursMarketDataPort;
@@ -151,6 +178,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.notificationPort = notificationPort;
         this.operationalMetricsPort = operationalMetricsPort;
+        this.strategyProperties = strategyProperties;
         this.clock = clock;
     }
 
@@ -294,24 +322,31 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         return scoreAfterHoursQuote(quote.orElseThrow());
     }
 
-    private static AfterHoursScore scoreAfterHoursQuote(AfterHoursQuote quote) {
+    private AfterHoursScore scoreAfterHoursQuote(AfterHoursQuote quote) {
+        EarlyMarketStrategyProperties.PreOpen properties =
+                strategyProperties.getPreOpen();
         int score = 0;
         List<String> reasons = new ArrayList<>();
         BigDecimal changeRate = quote.afterHoursChangeRate();
-        if (changeRate.compareTo(AFTER_HOURS_STRENGTH_RATE) >= 0) {
-            score += 15;
-            reasons.add("AFTER_HOURS_CHANGE_RATE_OVER_3PCT");
+        if (changeRate.compareTo(properties.getAfterHoursRiseThreshold()) >= 0) {
+            score += properties.getAfterHoursRiseScore();
+            reasons.add("AFTER_HOURS_CHANGE_RATE_OVER_"
+                    + properties.getAfterHoursRiseThreshold()
+                    .stripTrailingZeros()
+                    .toPlainString()
+                    + "PCT");
         }
-        if (quote.afterHoursTradingValue().compareTo(MIN_AFTER_HOURS_TRADING_VALUE) >= 0) {
-            score += 15;
+        if (quote.afterHoursTradingValue().compareTo(
+                properties.getAfterHoursTradingValueThreshold()) >= 0) {
+            score += properties.getAfterHoursTradingValueScore();
             reasons.add("AFTER_HOURS_TRADING_VALUE_SUFFICIENT");
         }
-        if (changeRate.compareTo(AFTER_HOURS_OVERHEAT_RATE) >= 0) {
-            score -= 10;
+        if (changeRate.compareTo(properties.getAfterHoursOverheatThreshold()) >= 0) {
+            score += properties.getAfterHoursOverheatPenalty();
             reasons.add("AFTER_HOURS_OVERHEATED");
         }
-        if (changeRate.compareTo(AFTER_HOURS_WEAKNESS_RATE) <= 0) {
-            score -= 10;
+        if (changeRate.compareTo(properties.getAfterHoursFallThreshold()) <= 0) {
+            score += properties.getAfterHoursFallPenalty();
             reasons.add("AFTER_HOURS_DECLINE");
         }
         reasons.add("AFTER_HOURS_SUMMARY_CHANGE_RATE_"

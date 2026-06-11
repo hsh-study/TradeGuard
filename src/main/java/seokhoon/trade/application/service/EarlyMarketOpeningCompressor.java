@@ -19,6 +19,7 @@ import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
+import seokhoon.trade.config.EarlyMarketStrategyProperties;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -35,7 +36,6 @@ import java.util.Set;
 @Service
 public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningUseCase {
     private static final int BASE_SCORE = 40;
-    private static final int MIN_ENTRY_SCORE = 70;
     private static final BigDecimal HIGH_ZONE_RATIO = BigDecimal.valueOf(0.95);
     private static final BigDecimal LARGE_PULLBACK_RATIO = BigDecimal.valueOf(0.90);
     private static final BigDecimal MIN_TRADING_VALUE = BigDecimal.valueOf(30_000_000_000L);
@@ -45,6 +45,7 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
     private final MarketSnapshotPort marketSnapshotPort;
     private final LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase;
     private final NotificationPort notificationPort;
+    private final EarlyMarketStrategyProperties strategyProperties;
     private final Clock clock;
 
     @Autowired
@@ -53,7 +54,8 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
             TradingSignalPort tradingSignalPort,
             MarketSnapshotPort marketSnapshotPort,
             LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
-            NotificationPort notificationPort
+            NotificationPort notificationPort,
+            EarlyMarketStrategyProperties strategyProperties
     ) {
         this(
                 tradingSignalQueryPort,
@@ -61,6 +63,7 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
                 marketSnapshotPort,
                 priceActionFeaturesUseCase,
                 notificationPort,
+                strategyProperties,
                 Clock.systemUTC()
         );
     }
@@ -78,6 +81,7 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
                 marketSnapshotPort,
                 EarlyMarketOpeningCompressor::insufficientFeatures,
                 notificationPort,
+                new EarlyMarketStrategyProperties(),
                 clock
         );
     }
@@ -90,11 +94,32 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
             NotificationPort notificationPort,
             Clock clock
     ) {
+        this(
+                tradingSignalQueryPort,
+                tradingSignalPort,
+                marketSnapshotPort,
+                priceActionFeaturesUseCase,
+                notificationPort,
+                new EarlyMarketStrategyProperties(),
+                clock
+        );
+    }
+
+    EarlyMarketOpeningCompressor(
+            TradingSignalQueryPort tradingSignalQueryPort,
+            TradingSignalPort tradingSignalPort,
+            MarketSnapshotPort marketSnapshotPort,
+            LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
+            NotificationPort notificationPort,
+            EarlyMarketStrategyProperties strategyProperties,
+            Clock clock
+    ) {
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.tradingSignalPort = tradingSignalPort;
         this.marketSnapshotPort = marketSnapshotPort;
         this.priceActionFeaturesUseCase = priceActionFeaturesUseCase;
         this.notificationPort = notificationPort;
+        this.strategyProperties = strategyProperties;
         this.clock = clock;
     }
 
@@ -119,10 +144,14 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
                 .filter(signal -> signal.riskReasons().isEmpty())
                 .map(this::withSnapshot)
                 .flatMap(java.util.Optional::stream)
-                .filter(selection -> selection.score() >= MIN_ENTRY_SCORE)
+                .filter(selection -> selection.score()
+                        >= strategyProperties.getOpening().getEntryThreshold())
                 .sorted(Comparator.comparingInt(Selection::score).reversed()
                         .thenComparing(selection -> selection.preScan().stockCode()))
-                .limit(limit)
+                .limit(Math.min(
+                        limit,
+                        strategyProperties.getOpening().getMaxCandidates()
+                ))
                 .toList();
 
         selections.forEach(selection -> tradingSignalPort.save(new TradingSignal(
@@ -177,11 +206,15 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
         }
     }
 
-    private static Selection score(
+    private Selection score(
             TradingSignalRecord preScan,
             IntradayMarketSnapshot snapshot,
-            EarlyMarketPriceActionFeatures features
+        EarlyMarketPriceActionFeatures features
     ) {
+        EarlyMarketStrategyProperties.Opening opening =
+                strategyProperties.getOpening();
+        EarlyMarketStrategyProperties.PriceAction priceAction =
+                strategyProperties.getPriceAction();
         int score = BASE_SCORE;
         List<String> reasons = new ArrayList<>();
         reasons.add("EARLY_MARKET_OPENING_09_05");
@@ -190,24 +223,24 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
         if (snapshot.vwap() == null) {
             reasons.add("VWAP_UNAVAILABLE");
         } else if (snapshot.currentPrice().compareTo(snapshot.vwap()) >= 0) {
-            score += 25;
+            score += opening.getVwapAboveScore();
             reasons.add("ABOVE_VWAP");
         } else {
-            score -= 30;
+            score += opening.getVwapBrokenPenalty();
             reasons.add("BELOW_VWAP");
         }
 
         BigDecimal highRatio = highRatio(snapshot);
         if (highRatio.compareTo(HIGH_ZONE_RATIO) >= 0) {
-            score += 20;
+            score += opening.getNearHighScore();
             reasons.add("NEAR_INTRADAY_HIGH");
         } else if (highRatio.compareTo(LARGE_PULLBACK_RATIO) <= 0) {
-            score -= 20;
+            score += opening.getHighDrawdownPenalty();
             reasons.add("PULLED_BACK_FROM_INTRADAY_HIGH");
         }
 
         if (snapshot.accumulatedTradingValue().compareTo(MIN_TRADING_VALUE) >= 0) {
-            score += 20;
+            score += opening.getTradingValueScore();
             reasons.add("ACCUMULATED_TRADING_VALUE_SUFFICIENT");
         } else {
             reasons.add("ACCUMULATED_TRADING_VALUE_INSUFFICIENT");
@@ -217,14 +250,14 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
             reasons.addAll(features.reasons());
         } else {
             if (Boolean.TRUE.equals(features.brokePreviousHigh())) {
-                score += 15;
+                score += priceAction.getPreviousHighBreakoutScore();
             } else {
-                score -= 10;
+                score += priceAction.getPreviousHighNotBrokenPenalty();
             }
             if (Boolean.TRUE.equals(features.heldOpeningPrice())) {
-                score += 10;
+                score += priceAction.getOpeningPriceHeldScore();
             } else {
-                score -= 15;
+                score += priceAction.getOpeningPriceLostPenalty();
             }
             reasons.addAll(features.reasons());
         }
@@ -276,7 +309,7 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
                                 EarlyMarketPreOpenScanner.STRATEGY_NAME,
                                 SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
                                 null,
-                                MIN_ENTRY_SCORE
+                                strategyProperties.getOpening().getEntryThreshold()
                         )
                 )
                 .stream()

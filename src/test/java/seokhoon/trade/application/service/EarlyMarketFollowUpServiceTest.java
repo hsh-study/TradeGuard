@@ -15,6 +15,7 @@ import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
 import seokhoon.trade.domain.market.EarlyMarketFollowUpRecord;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
+import seokhoon.trade.config.EarlyMarketStrategyProperties;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -111,6 +112,39 @@ class EarlyMarketFollowUpServiceTest {
             );
             assertThat(candidate.drawdownFromHigh()).isEqualByComparingTo("-1.0000");
         });
+    }
+
+    @Test
+    void changingDrawdownThresholdChangesFollowUpDecision() {
+        EarlyMarketStrategyProperties properties = new EarlyMarketStrategyProperties();
+        properties.getFollowUp().setCautionDrawdownFromHigh(
+                new BigDecimal("-1.5")
+        );
+        List<IntradayBar> bars = List.of(
+                bar("005930", "09:05", "100", "100", "98", "98.8", "98")
+        );
+        EarlyMarketFollowUpService service = new EarlyMarketFollowUpService(
+                criteria -> List.of(signal(1L, "005930", 90)),
+                (stockCode, tradeDate, from, to, interval) -> bars,
+                stockCode -> Optional.empty(),
+                (stockCode, tradeDate, to) -> features(
+                        true,
+                        true,
+                        false,
+                        "90",
+                        "98.8"
+                ),
+                EarlyMarketFollowUpResultPort.noop(),
+                message -> NotificationDeliveryResult.skipped("disabled"),
+                OperationalMetricsPort.noop(),
+                properties,
+                CLOCK
+        );
+
+        var candidate = service.followUp(TRADE_DATE).candidates().getFirst();
+
+        assertThat(candidate.drawdownFromHigh()).isEqualByComparingTo("-1.2000");
+        assertThat(candidate.decision()).isEqualTo(EarlyMarketFollowUpDecision.KEEP);
     }
 
     @Test
