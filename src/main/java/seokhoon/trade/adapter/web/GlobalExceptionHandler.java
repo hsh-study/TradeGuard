@@ -11,6 +11,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import seokhoon.trade.application.service.TradingSignalNotFoundException;
 import seokhoon.trade.application.service.OrderRequestNotFoundException;
 import seokhoon.trade.application.service.EarlyMarketPerformanceNotFoundException;
+import seokhoon.trade.application.service.EarlyMarketFollowUpResultNotFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -33,6 +34,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse(
                         "EARLY_MARKET_PERFORMANCE_NOT_FOUND",
+                        exception.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(EarlyMarketFollowUpResultNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleEarlyMarketFollowUpResultNotFound(
+            EarlyMarketFollowUpResultNotFoundException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse(
+                        "EARLY_MARKET_FOLLOW_UP_RESULT_NOT_FOUND",
                         exception.getMessage()
                 ));
     }

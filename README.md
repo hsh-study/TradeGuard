@@ -189,6 +189,17 @@ curl -X POST 'http://localhost:8080/api/scans/early-market/follow-up?tradeDate=2
 
 평일 Asia/Seoul 기준 09:20에는 `EARLY_MARKET_FOLLOW_UP_920` scheduler가 같은 use case를 자동 실행합니다. 비거래일에는 `NON_TRADING_DAY`로 건너뛰고, 거래일에는 후보 수와 KEEP/CAUTION/EXCLUDE 수를 구조화 로그에 기록합니다. Discord에는 분류 수, 점수 기준 상위 KEEP 3개, EXCLUDE 후보와 사유를 전송합니다. webhook 미설정은 no-op이며 follow-up은 신호나 주문을 새로 생성하지 않습니다.
 
+수동 API와 scheduler는 동일한 follow-up use case에서 결과를 `signalId`별로 저장합니다. 같은 signalId를 다시 평가하면 기존 row의 decision, 가격, VWAP 이탈, reasons와 캡처 시각을 update합니다. 후보 하나라도 저장에 실패하면 follow-up 실행을 실패로 전파하고 Discord는 전송하지 않으며, scheduler 실행 이력은 `FAILED`가 됩니다.
+
+저장된 follow-up 결과 조회:
+
+```sh
+curl 'http://localhost:8080/api/scans/early-market/follow-up-results?tradeDate=2026-06-10'
+curl 'http://localhost:8080/api/scans/early-market/follow-up-results/21'
+```
+
+응답에는 `signalId`, `decision`, 신호 점수, 마지막 가격, 09:05 이후 고가, 고점 대비 낙폭, VWAP 이탈 여부, reasons와 `capturedAt`이 포함됩니다. 결과 저장과 조회는 분석 용도이며 자동 주문을 생성하지 않습니다.
+
 09:30 이후 장초반 후보 성과 수동 캡처:
 
 ```sh
@@ -222,9 +233,9 @@ curl 'http://localhost:8080/api/reports/early-market/daily?tradeDate=2026-06-10'
 
 리포트는 해당 거래일의 `EARLY_MARKET_PRE_SCAN`, `EARLY_MARKET_ENTRY_CANDIDATE` 신호와 저장된 `EarlyMarketCandidatePerformance`를 signalId로 결합합니다. 후보 수, 성과 캡처 수, 평균 최대수익률, 평균 최대낙폭, 최고/최저 후보와 전체 후보 상세를 반환합니다. `bestCandidate`는 `maxReturnRateUntil0930`이 가장 큰 후보, `worstCandidate`는 가장 작은 후보입니다.
 
-그룹은 signal type, 점수 구간 `70-79`/`80-89`/`90+`, `vwapBroken`, 전일 고가 돌파, 시초가 지지별로 후보 수와 성과 수, 평균 최대수익률/최대낙폭을 제공합니다. price action 그룹은 신호 reason의 `PREVIOUS_HIGH_BROKEN`, `PREVIOUS_HIGH_NOT_BROKEN`, `OPENING_PRICE_HELD`, `OPENING_PRICE_LOST`를 사용하며 reason이 없으면 `UNKNOWN`입니다.
+그룹은 signal type, 점수 구간 `70-79`/`80-89`/`90+`, `vwapBroken`, 전일 고가 돌파, 시초가 지지, follow-up decision별로 후보 수와 성과 수, 평균 최대수익률/최대낙폭을 제공합니다. price action 그룹은 신호 reason의 `PREVIOUS_HIGH_BROKEN`, `PREVIOUS_HIGH_NOT_BROKEN`, `OPENING_PRICE_HELD`, `OPENING_PRICE_LOST`를 사용하며 reason이 없으면 `UNKNOWN`입니다. `byFollowUpDecision`은 저장된 `KEEP`, `CAUTION`, `EXCLUDE`를 사용하고 결과가 없으면 `UNKNOWN`입니다.
 
-성과 레코드가 없는 후보는 `excludedFromPerformanceCount`에 포함됩니다. 성과가 저장됐더라도 수익률 또는 낙폭이 `null`이면 해당 평균 표본에서 제외하며 `dataCompleteness`의 표본 수로 확인할 수 있습니다. 현재 09:20 follow-up 결과는 별도 저장하지 않으므로 리포트가 follow-up을 재실행하거나 Discord를 전송하지 않습니다. follow-up 기간 분석은 결과 영속화 이후 확장 TODO입니다. 이 조회 API는 주문을 생성하지 않습니다.
+성과 레코드가 없는 후보는 `excludedFromPerformanceCount`에 포함됩니다. 성과가 저장됐더라도 수익률 또는 낙폭이 `null`이면 해당 평균 표본에서 제외하며 `dataCompleteness`의 표본 수로 확인할 수 있습니다. 리포트는 저장된 follow-up 결과만 결합하며 follow-up을 재실행하거나 Discord를 전송하지 않습니다. 이 조회 API는 주문을 생성하지 않습니다.
 
 거래 신호 조회:
 
@@ -411,6 +422,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.after_hours.lookup.count`: `result=found|not_found|failure`
 - `tradeguard.intraday_bar.lookup.count`: `result=found|not_found|failure`
 - `tradeguard.early_market.follow_up.count`: `decision=keep|caution|exclude`
+- `tradeguard.early_market.follow_up.persist.count`: `result=saved|failed`
 - `tradeguard.early_market.price_action.count`: `result=sufficient|insufficient`
 - `tradeguard.early_market.report.count`: `result=success|no_data|failure`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
@@ -456,6 +468,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - 실계좌 주문 기능은 구현하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
 - 08:30/09:05 장초반 후보 생성, 전일 고가/시초가 지지 feature, 09:20 follow-up과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
+- 09:20 follow-up 결과 저장과 조회는 분석 데이터만 다루며 자동 주문을 실행하지 않습니다.
 - 장초반 전략 성과 리포트는 조회와 집계만 수행하며 신호 또는 주문을 생성하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.
 - 시간외 데이터 연동은 fake/disabled 또는 설정 기반 KIS read-only 일별 시간외 시세 adapter만 사용합니다.

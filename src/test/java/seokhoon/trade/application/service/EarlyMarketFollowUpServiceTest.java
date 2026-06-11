@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.EarlyMarketFollowUpDecision;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
+import seokhoon.trade.application.port.out.EarlyMarketFollowUpResultPort;
 import seokhoon.trade.application.port.out.NotificationDeliveryResult;
 import seokhoon.trade.application.port.out.NotificationMessage;
 import seokhoon.trade.application.port.out.NotificationPort;
@@ -11,6 +12,7 @@ import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.market.IntradayBar;
 import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
+import seokhoon.trade.domain.market.EarlyMarketFollowUpRecord;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
@@ -25,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class EarlyMarketFollowUpServiceTest {
     private static final LocalDate TRADE_DATE = LocalDate.of(2026, 6, 10);
@@ -177,6 +180,45 @@ class EarlyMarketFollowUpServiceTest {
         });
     }
 
+    @Test
+    void persistsManualFollowUpResultBeforeSendingBriefing() {
+        RecordingFollowUpPort resultPort = new RecordingFollowUpPort();
+        RecordingNotification notification = new RecordingNotification(true);
+        EarlyMarketFollowUpService service = serviceWithResultPort(
+                resultPort,
+                notification
+        );
+
+        service.followUp(TRADE_DATE);
+
+        assertThat(resultPort.saved).singleElement().satisfies(record -> {
+            assertThat(record.signalId()).isEqualTo(1L);
+            assertThat(record.tradeDate()).isEqualTo(TRADE_DATE);
+            assertThat(record.decision()).isEqualTo(EarlyMarketFollowUpDecision.KEEP);
+            assertThat(record.capturedAt()).isEqualTo(CLOCK.instant());
+        });
+        assertThat(notification.message).isNotNull();
+    }
+
+    @Test
+    void propagatesPersistenceFailureAndDoesNotSendBriefing() {
+        RecordingNotification notification = new RecordingNotification(true);
+        EarlyMarketFollowUpResultPort failingPort = new RecordingFollowUpPort() {
+            @Override
+            public EarlyMarketFollowUpRecord save(EarlyMarketFollowUpRecord result) {
+                throw new IllegalStateException("follow-up persistence failed");
+            }
+        };
+
+        assertThatThrownBy(() -> serviceWithResultPort(
+                failingPort,
+                notification
+        ).followUp(TRADE_DATE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("follow-up persistence failed");
+        assertThat(notification.message).isNull();
+    }
+
     private static EarlyMarketFollowUpService service(
             List<TradingSignalRecord> signals,
             Map<String, List<IntradayBar>> bars,
@@ -211,6 +253,31 @@ class EarlyMarketFollowUpServiceTest {
                 stockCode -> Optional.empty(),
                 (stockCode, tradeDate, to) -> features,
                 message -> NotificationDeliveryResult.skipped("disabled"),
+                OperationalMetricsPort.noop(),
+                CLOCK
+        );
+    }
+
+    private static EarlyMarketFollowUpService serviceWithResultPort(
+            EarlyMarketFollowUpResultPort resultPort,
+            NotificationPort notification
+    ) {
+        List<IntradayBar> bars = List.of(
+                bar("005930", "09:05", "100", "101", "99", "100.5", "99")
+        );
+        return new EarlyMarketFollowUpService(
+                criteria -> List.of(signal(1L, "005930", 90)),
+                (stockCode, tradeDate, from, to, interval) -> bars,
+                stockCode -> Optional.empty(),
+                (stockCode, tradeDate, to) -> features(
+                        true,
+                        true,
+                        false,
+                        "100",
+                        "100.5"
+                ),
+                resultPort,
+                notification,
                 OperationalMetricsPort.noop(),
                 CLOCK
         );
@@ -352,6 +419,32 @@ class EarlyMarketFollowUpServiceTest {
             return sent
                     ? NotificationDeliveryResult.success()
                     : NotificationDeliveryResult.skipped("disabled");
+        }
+    }
+
+    private static class RecordingFollowUpPort
+            implements EarlyMarketFollowUpResultPort {
+        private final java.util.ArrayList<EarlyMarketFollowUpRecord> saved =
+                new java.util.ArrayList<>();
+
+        @Override
+        public EarlyMarketFollowUpRecord save(EarlyMarketFollowUpRecord result) {
+            saved.add(result);
+            return result;
+        }
+
+        @Override
+        public List<EarlyMarketFollowUpRecord> findByTradeDate(LocalDate tradeDate) {
+            return saved.stream()
+                    .filter(result -> result.tradeDate().equals(tradeDate))
+                    .toList();
+        }
+
+        @Override
+        public Optional<EarlyMarketFollowUpRecord> findBySignalId(long signalId) {
+            return saved.stream()
+                    .filter(result -> result.signalId() == signalId)
+                    .findFirst();
         }
     }
 }

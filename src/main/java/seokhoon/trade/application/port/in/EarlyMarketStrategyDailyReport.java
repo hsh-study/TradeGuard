@@ -20,6 +20,7 @@ public record EarlyMarketStrategyDailyReport(
         Map<String, EarlyMarketStrategyGroupReport> byVwapBroken,
         Map<String, EarlyMarketStrategyGroupReport> byPreviousHighBreakout,
         Map<String, EarlyMarketStrategyGroupReport> byOpeningPriceHeld,
+        Map<String, EarlyMarketStrategyGroupReport> byFollowUpDecision,
         EarlyMarketReportDataCompleteness dataCompleteness,
         List<EarlyMarketStrategyCandidateReport> candidates
 ) {

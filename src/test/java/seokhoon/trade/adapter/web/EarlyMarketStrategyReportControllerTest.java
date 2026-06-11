@@ -2,6 +2,7 @@ package seokhoon.trade.adapter.web;
 
 import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.EarlyMarketReportDataCompleteness;
+import seokhoon.trade.application.port.in.EarlyMarketFollowUpDecision;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyCandidateReport;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyDailyReport;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyGroupReport;
@@ -43,6 +44,7 @@ class EarlyMarketStrategyReportControllerTest {
                         "005930",
                         SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
                         95,
+                        EarlyMarketFollowUpDecision.KEEP,
                         new BigDecimal("6.5"),
                         new BigDecimal("-2.5"),
                         false,
@@ -71,6 +73,7 @@ class EarlyMarketStrategyReportControllerTest {
                 Map.of("FALSE", group),
                 Map.of("TRUE", group),
                 Map.of("TRUE", group),
+                Map.of("KEEP", group),
                 new EarlyMarketReportDataCompleteness(2, 2, 0, 2, 2),
                 List.of(candidate)
         );

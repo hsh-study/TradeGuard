@@ -51,6 +51,7 @@ public class EarlyMarketStrategyReportController {
             Map<String, EarlyMarketStrategyGroupReport> byVwapBroken,
             Map<String, EarlyMarketStrategyGroupReport> byPreviousHighBreakout,
             Map<String, EarlyMarketStrategyGroupReport> byOpeningPriceHeld,
+            Map<String, EarlyMarketStrategyGroupReport> byFollowUpDecision,
             EarlyMarketReportDataCompleteness dataCompleteness,
             List<EarlyMarketStrategyCandidateReport> candidates
     ) {
@@ -70,6 +71,7 @@ public class EarlyMarketStrategyReportController {
                     report.byVwapBroken(),
                     report.byPreviousHighBreakout(),
                     report.byOpeningPriceHeld(),
+                    report.byFollowUpDecision(),
                     report.dataCompleteness(),
                     report.candidates()
             );

@@ -4,9 +4,12 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
+import seokhoon.trade.application.port.in.EarlyMarketFollowUpDecision;
+import seokhoon.trade.application.port.out.EarlyMarketFollowUpResultPort;
 import seokhoon.trade.application.port.out.EarlyMarketPerformancePort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.market.EarlyMarketCandidatePerformance;
+import seokhoon.trade.domain.market.EarlyMarketFollowUpRecord;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
@@ -50,6 +53,10 @@ class EarlyMarketStrategyReportServiceTest {
                                 "-4",
                                 true
                         )
+                ),
+                List.of(
+                        followUp(2L, EarlyMarketFollowUpDecision.CAUTION),
+                        followUp(3L, EarlyMarketFollowUpDecision.KEEP)
                 )
         );
 
@@ -74,6 +81,16 @@ class EarlyMarketStrategyReportServiceTest {
                 .isEqualTo(1);
         assertThat(report.byOpeningPriceHeld().get("FALSE").candidateCount())
                 .isEqualTo(1);
+        assertThat(report.byFollowUpDecision().get("KEEP").candidateCount())
+                .isEqualTo(1);
+        assertThat(report.byFollowUpDecision().get("KEEP").averageMaxReturnRate())
+                .isEqualByComparingTo("10.0000");
+        assertThat(report.byFollowUpDecision().get("CAUTION").candidateCount())
+                .isEqualTo(1);
+        assertThat(report.byFollowUpDecision().get("UNKNOWN").candidateCount())
+                .isEqualTo(1);
+        assertThat(report.candidates().get(2).followUpDecision())
+                .isEqualTo(EarlyMarketFollowUpDecision.KEEP);
         assertThat(report.dataCompleteness().maxReturnSampleCount()).isEqualTo(2);
         assertThat(report.candidates()).hasSize(3);
     }
@@ -93,7 +110,8 @@ class EarlyMarketStrategyReportServiceTest {
                         null,
                         null,
                         null
-                ))
+                )),
+                List.of()
         );
 
         var report = service.loadDailyReport(TRADE_DATE);
@@ -138,15 +156,42 @@ class EarlyMarketStrategyReportServiceTest {
 
     private static EarlyMarketStrategyReportService service(
             List<TradingSignalRecord> signals,
-            List<EarlyMarketCandidatePerformance> performances
+            List<EarlyMarketCandidatePerformance> performances,
+            List<EarlyMarketFollowUpRecord> followUps
     ) {
         return new EarlyMarketStrategyReportService(
                 (TradingSignalSearchCriteria criteria) -> signals.stream()
                         .filter(signal -> signal.signalType() == criteria.signalType())
                         .toList(),
                 performancePort(performances),
+                followUpPort(followUps),
                 seokhoon.trade.application.port.out.OperationalMetricsPort.noop()
         );
+    }
+
+    private static EarlyMarketFollowUpResultPort followUpPort(
+            List<EarlyMarketFollowUpRecord> followUps
+    ) {
+        return new EarlyMarketFollowUpResultPort() {
+            @Override
+            public EarlyMarketFollowUpRecord save(EarlyMarketFollowUpRecord result) {
+                return result;
+            }
+
+            @Override
+            public List<EarlyMarketFollowUpRecord> findByTradeDate(
+                    LocalDate tradeDate
+            ) {
+                return followUps;
+            }
+
+            @Override
+            public Optional<EarlyMarketFollowUpRecord> findBySignalId(long signalId) {
+                return followUps.stream()
+                        .filter(result -> result.signalId() == signalId)
+                        .findFirst();
+            }
+        };
     }
 
     private static EarlyMarketPerformancePort performancePort(
@@ -217,6 +262,25 @@ class EarlyMarketStrategyReportServiceTest {
                 maxDrawdown == null ? null : new BigDecimal(maxDrawdown),
                 vwapBroken,
                 Instant.parse("2026-06-10T00:31:00Z")
+        );
+    }
+
+    private static EarlyMarketFollowUpRecord followUp(
+            long signalId,
+            EarlyMarketFollowUpDecision decision
+    ) {
+        return new EarlyMarketFollowUpRecord(
+                signalId,
+                TRADE_DATE,
+                "STOCK" + signalId,
+                decision,
+                90,
+                BigDecimal.valueOf(100),
+                BigDecimal.valueOf(105),
+                new BigDecimal("-1.0"),
+                false,
+                List.of(decision.name()),
+                Instant.parse("2026-06-10T00:20:00Z")
         );
     }
 }

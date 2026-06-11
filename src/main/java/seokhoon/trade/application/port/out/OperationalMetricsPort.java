@@ -37,6 +37,8 @@ public interface OperationalMetricsPort {
 
     void recordEarlyMarketReport(String result);
 
+    void recordEarlyMarketFollowUpPersist(String result);
+
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
             @Override
@@ -106,6 +108,10 @@ public interface OperationalMetricsPort {
 
             @Override
             public void recordEarlyMarketReport(String result) {
+            }
+
+            @Override
+            public void recordEarlyMarketFollowUpPersist(String result) {
             }
         };
     }

@@ -11,6 +11,7 @@ import seokhoon.trade.application.port.in.FollowUpEarlyMarketCandidatesUseCase;
 import seokhoon.trade.application.port.in.LoadEarlyMarketPriceActionFeaturesUseCase;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.IntradayBarPort;
+import seokhoon.trade.application.port.out.EarlyMarketFollowUpResultPort;
 import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
 import seokhoon.trade.application.port.out.MarketSnapshotPort;
 import seokhoon.trade.application.port.out.NotificationDeliveryResult;
@@ -22,6 +23,7 @@ import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.market.BarInterval;
 import seokhoon.trade.domain.market.IntradayBar;
 import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
+import seokhoon.trade.domain.market.EarlyMarketFollowUpRecord;
 import seokhoon.trade.domain.strategy.SignalType;
 
 import java.math.BigDecimal;
@@ -48,6 +50,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
     private final IntradayBarPort intradayBarPort;
     private final MarketSnapshotPort marketSnapshotPort;
     private final LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase;
+    private final EarlyMarketFollowUpResultPort followUpResultPort;
     private final NotificationPort notificationPort;
     private final OperationalMetricsPort metricsPort;
     private final Clock clock;
@@ -58,6 +61,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
             IntradayBarPort intradayBarPort,
             MarketSnapshotPort marketSnapshotPort,
             LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
+            EarlyMarketFollowUpResultPort followUpResultPort,
             NotificationPort notificationPort,
             OperationalMetricsPort metricsPort
     ) {
@@ -66,6 +70,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
                 intradayBarPort,
                 marketSnapshotPort,
                 priceActionFeaturesUseCase,
+                followUpResultPort,
                 notificationPort,
                 metricsPort,
                 Clock.systemUTC()
@@ -85,6 +90,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
                 intradayBarPort,
                 marketSnapshotPort,
                 EarlyMarketFollowUpService::insufficientFeatures,
+                EarlyMarketFollowUpResultPort.noop(),
                 notificationPort,
                 metricsPort,
                 clock
@@ -100,10 +106,33 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
             OperationalMetricsPort metricsPort,
             Clock clock
     ) {
+        this(
+                tradingSignalQueryPort,
+                intradayBarPort,
+                marketSnapshotPort,
+                priceActionFeaturesUseCase,
+                EarlyMarketFollowUpResultPort.noop(),
+                notificationPort,
+                metricsPort,
+                clock
+        );
+    }
+
+    EarlyMarketFollowUpService(
+            TradingSignalQueryPort tradingSignalQueryPort,
+            IntradayBarPort intradayBarPort,
+            MarketSnapshotPort marketSnapshotPort,
+            LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
+            EarlyMarketFollowUpResultPort followUpResultPort,
+            NotificationPort notificationPort,
+            OperationalMetricsPort metricsPort,
+            Clock clock
+    ) {
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.intradayBarPort = intradayBarPort;
         this.marketSnapshotPort = marketSnapshotPort;
         this.priceActionFeaturesUseCase = priceActionFeaturesUseCase;
+        this.followUpResultPort = followUpResultPort;
         this.notificationPort = notificationPort;
         this.metricsPort = metricsPort;
         this.clock = clock;
@@ -132,6 +161,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
         candidates.forEach(candidate ->
                 metricsPort.recordEarlyMarketFollowUp(candidate.decision().name().toLowerCase())
         );
+        candidates.forEach(candidate -> persist(tradeDate, candidate));
 
         int keepCount = count(candidates, EarlyMarketFollowUpDecision.KEEP);
         int cautionCount = count(candidates, EarlyMarketFollowUpDecision.CAUTION);
@@ -164,6 +194,50 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
                 .addKeyValue("briefingSent", delivery.sent())
                 .log("Early market candidates followed up");
         return deliveredResult;
+    }
+
+    private void persist(
+            LocalDate tradeDate,
+            EarlyMarketFollowUpCandidate candidate
+    ) {
+        if (candidate.signalId() == null) {
+            metricsPort.recordEarlyMarketFollowUpPersist("failed");
+            throw new IllegalStateException(
+                    "Follow-up candidate signalId must not be null"
+            );
+        }
+        try {
+            followUpResultPort.save(new EarlyMarketFollowUpRecord(
+                    candidate.signalId(),
+                    tradeDate,
+                    candidate.stockCode(),
+                    candidate.decision(),
+                    candidate.signalScore(),
+                    candidate.lastPrice(),
+                    candidate.highSince0905(),
+                    candidate.drawdownFromHigh(),
+                    candidate.vwapBroken(),
+                    candidate.reasons(),
+                    clock.instant()
+            ));
+            metricsPort.recordEarlyMarketFollowUpPersist("saved");
+            log.atInfo()
+                    .addKeyValue("tradeDate", tradeDate)
+                    .addKeyValue("signalId", candidate.signalId())
+                    .addKeyValue("decision", candidate.decision())
+                    .addKeyValue("saved", true)
+                    .log("Early market follow-up result persisted");
+        } catch (RuntimeException exception) {
+            metricsPort.recordEarlyMarketFollowUpPersist("failed");
+            log.atError()
+                    .addKeyValue("tradeDate", tradeDate)
+                    .addKeyValue("signalId", candidate.signalId())
+                    .addKeyValue("decision", candidate.decision())
+                    .addKeyValue("saved", false)
+                    .setCause(exception)
+                    .log("Early market follow-up result persistence failed");
+            throw exception;
+        }
     }
 
     private EarlyMarketFollowUpCandidate evaluate(TradingSignalRecord signal) {

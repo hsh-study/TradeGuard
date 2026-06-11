@@ -2,6 +2,7 @@ package seokhoon.trade.application.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import seokhoon.trade.application.port.in.EarlyMarketReportDataCompleteness;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyCandidateReport;
@@ -10,10 +11,12 @@ import seokhoon.trade.application.port.in.EarlyMarketStrategyGroupReport;
 import seokhoon.trade.application.port.in.LoadEarlyMarketStrategyReportUseCase;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.EarlyMarketPerformancePort;
+import seokhoon.trade.application.port.out.EarlyMarketFollowUpResultPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.TradingSignalQueryPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.market.EarlyMarketCandidatePerformance;
+import seokhoon.trade.domain.market.EarlyMarketFollowUpRecord;
 import seokhoon.trade.domain.strategy.SignalType;
 
 import java.math.BigDecimal;
@@ -40,16 +43,33 @@ public class EarlyMarketStrategyReportService
 
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final EarlyMarketPerformancePort performancePort;
+    private final EarlyMarketFollowUpResultPort followUpResultPort;
     private final OperationalMetricsPort metricsPort;
 
+    @Autowired
     public EarlyMarketStrategyReportService(
             TradingSignalQueryPort tradingSignalQueryPort,
             EarlyMarketPerformancePort performancePort,
+            EarlyMarketFollowUpResultPort followUpResultPort,
             OperationalMetricsPort metricsPort
     ) {
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.performancePort = performancePort;
+        this.followUpResultPort = followUpResultPort;
         this.metricsPort = metricsPort;
+    }
+
+    EarlyMarketStrategyReportService(
+            TradingSignalQueryPort tradingSignalQueryPort,
+            EarlyMarketPerformancePort performancePort,
+            OperationalMetricsPort metricsPort
+    ) {
+        this(
+                tradingSignalQueryPort,
+                performancePort,
+                EarlyMarketFollowUpResultPort.noop(),
+                metricsPort
+        );
     }
 
     @Override
@@ -64,11 +84,19 @@ public class EarlyMarketStrategyReportService
                                     Function.identity(),
                                     (left, right) -> left
                             ));
+            Map<Long, EarlyMarketFollowUpRecord> followUpBySignalId =
+                    followUpResultPort.findByTradeDate(tradeDate).stream()
+                            .collect(Collectors.toMap(
+                                    EarlyMarketFollowUpRecord::signalId,
+                                    Function.identity(),
+                                    (left, right) -> left
+                            ));
             List<CandidateData> candidateData = signals.stream()
                     .filter(signal -> signal.id() != null)
                     .map(signal -> new CandidateData(
                             signal,
-                            performanceBySignalId.get(signal.id())
+                            performanceBySignalId.get(signal.id()),
+                            followUpBySignalId.get(signal.id())
                     ))
                     .toList();
             EarlyMarketStrategyDailyReport report = buildReport(tradeDate, candidateData);
@@ -178,6 +206,11 @@ public class EarlyMarketStrategyReportService
                         EarlyMarketStrategyReportService::openingPriceGroup,
                         List.of("TRUE", "FALSE", "UNKNOWN")
                 ),
+                group(
+                        candidates,
+                        EarlyMarketStrategyReportService::followUpDecisionGroup,
+                        List.of("KEEP", "CAUTION", "EXCLUDE", "UNKNOWN")
+                ),
                 new EarlyMarketReportDataCompleteness(
                         candidates.size(),
                         capturedCount,
@@ -281,6 +314,12 @@ public class EarlyMarketStrategyReportService
         return "UNKNOWN";
     }
 
+    private static String followUpDecisionGroup(CandidateData candidate) {
+        return candidate.followUp() == null
+                ? "UNKNOWN"
+                : candidate.followUp().decision().name();
+    }
+
     private static BigDecimal maxReturn(CandidateData candidate) {
         return candidate.performance() == null
                 ? null
@@ -300,6 +339,9 @@ public class EarlyMarketStrategyReportService
                 candidate.signal().stockCode(),
                 candidate.signal().signalType(),
                 candidate.signal().score(),
+                candidate.followUp() == null
+                        ? null
+                        : candidate.followUp().decision(),
                 performance == null ? null : performance.maxReturnRateUntil0930(),
                 performance == null ? null : performance.maxDrawdownRateUntil0930(),
                 performance == null ? null : performance.vwapBroken(),
@@ -330,7 +372,8 @@ public class EarlyMarketStrategyReportService
 
     private record CandidateData(
             TradingSignalRecord signal,
-            EarlyMarketCandidatePerformance performance
+            EarlyMarketCandidatePerformance performance,
+            EarlyMarketFollowUpRecord followUp
     ) {
     }
 }

@@ -10,6 +10,7 @@ public record EarlyMarketStrategyCandidateReport(
         String stockCode,
         SignalType signalType,
         int signalScore,
+        EarlyMarketFollowUpDecision followUpDecision,
         BigDecimal maxReturnRateUntil0930,
         BigDecimal maxDrawdownRateUntil0930,
         Boolean vwapBroken,
