@@ -1,6 +1,5 @@
 package seokhoon.trade.adapter.marketdata;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.AfterHoursMarketDataPort;
 import seokhoon.trade.domain.market.AfterHoursQuote;
@@ -10,10 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Component
-@ConditionalOnProperty(
-        name = "tradeguard.market-data.after-hours-enabled",
-        havingValue = "false"
-)
+@ConditionalOnAfterHoursProvider("disabled")
 public class DisabledAfterHoursMarketDataAdapter implements AfterHoursMarketDataPort {
     @Override
     public List<AfterHoursQuote> findTopAfterHoursMovers(LocalDate tradeDate, int limit) {

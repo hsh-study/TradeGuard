@@ -11,7 +11,13 @@ class KisReadOnlyHealthIndicatorTest {
     void reportsUpForFakeProviderWithoutCredentials() {
         KisProperties properties = new KisProperties();
         KisReadOnlyHealthIndicator indicator =
-                new KisReadOnlyHealthIndicator("fake", "fake", properties);
+                new KisReadOnlyHealthIndicator(
+                        "fake",
+                        "fake",
+                        "fake",
+                        true,
+                        properties
+                );
 
         var health = indicator.health();
 
@@ -20,6 +26,7 @@ class KisReadOnlyHealthIndicatorTest {
                 .containsEntry("provider", "fake")
                 .containsEntry("realtimeProvider", "fake")
                 .containsEntry("intradayProvider", "fake")
+                .containsEntry("afterHoursProvider", "fake")
                 .containsEntry("readOnly", true)
                 .doesNotContainKeys("appKey", "appSecret");
     }
@@ -28,7 +35,13 @@ class KisReadOnlyHealthIndicatorTest {
     void reportsUnknownForKisProviderWithoutCredentials() {
         KisProperties properties = new KisProperties();
         KisReadOnlyHealthIndicator indicator =
-                new KisReadOnlyHealthIndicator("kis", "fake", properties);
+                new KisReadOnlyHealthIndicator(
+                        "kis",
+                        "fake",
+                        "fake",
+                        true,
+                        properties
+                );
 
         var health = indicator.health();
 
@@ -46,6 +59,8 @@ class KisReadOnlyHealthIndicatorTest {
         KisReadOnlyHealthIndicator indicator = new KisReadOnlyHealthIndicator(
                 "fake",
                 "kis",
+                "fake",
+                true,
                 new KisProperties()
         );
 
@@ -57,12 +72,49 @@ class KisReadOnlyHealthIndicatorTest {
     }
 
     @Test
+    void reportsUnknownForKisAfterHoursProviderWithoutCredentials() {
+        KisReadOnlyHealthIndicator indicator = new KisReadOnlyHealthIndicator(
+                "fake",
+                "fake",
+                "kis",
+                true,
+                new KisProperties()
+        );
+
+        assertThat(indicator.health().getStatus()).isEqualTo(Status.UNKNOWN);
+        assertThat(indicator.health().getDetails())
+                .containsEntry("afterHoursProvider", "kis")
+                .containsEntry("credentialsConfigured", false);
+    }
+
+    @Test
+    void reportsDisabledForLegacyAfterHoursFlag() {
+        KisReadOnlyHealthIndicator indicator = new KisReadOnlyHealthIndicator(
+                "fake",
+                "fake",
+                "",
+                false,
+                new KisProperties()
+        );
+
+        assertThat(indicator.health().getStatus()).isEqualTo(Status.UP);
+        assertThat(indicator.health().getDetails())
+                .containsEntry("afterHoursProvider", "disabled");
+    }
+
+    @Test
     void neverExposesConfiguredCredentials() {
         KisProperties properties = new KisProperties();
         properties.setAppKey("sensitive-app-key");
         properties.setAppSecret("sensitive-app-secret");
         KisReadOnlyHealthIndicator indicator =
-                new KisReadOnlyHealthIndicator("kis", "kis", properties);
+                new KisReadOnlyHealthIndicator(
+                        "kis",
+                        "kis",
+                        "kis",
+                        true,
+                        properties
+                );
 
         String details = indicator.health().getDetails().toString();
 

@@ -1,6 +1,8 @@
 package seokhoon.trade.application.service;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
 import seokhoon.trade.application.port.in.EarlyMarketScanResult;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.AfterHoursMarketDataPort;
@@ -141,6 +143,52 @@ class EarlyMarketPreOpenScannerTest {
 
         assertThat(signal.score()).isEqualTo(80);
         assertThat(signal.reasons()).contains("AFTER_HOURS_DATA_UNAVAILABLE");
+    }
+
+    @Test
+    void recordsFailureMetricWhenAfterHoursLookupThrows() {
+        SignalStore store = new SignalStore();
+        MarketRankingStock stock = stock("005930", "5.0", "60000000000");
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AfterHoursMarketDataPort failingPort = new AfterHoursMarketDataPort() {
+            @Override
+            public List<AfterHoursQuote> findTopAfterHoursMovers(
+                    LocalDate tradeDate,
+                    int limit
+            ) {
+                return List.of();
+            }
+
+            @Override
+            public Optional<AfterHoursQuote> findByStockCode(
+                    String stockCode,
+                    LocalDate tradeDate
+            ) {
+                throw new IllegalStateException("KIS unavailable");
+            }
+        };
+        EarlyMarketPreOpenScanner scanner = new EarlyMarketPreOpenScanner(
+                new RankingPort(List.of(stock), List.of(stock), List.of(stock)),
+                indicatorPort(),
+                failingPort,
+                store,
+                store,
+                message -> NotificationDeliveryResult.success(),
+                new MicrometerOperationalMetricsAdapter(registry),
+                Clock.fixed(
+                        Instant.parse("2026-06-09T23:30:00Z"),
+                        ZoneOffset.UTC
+                )
+        );
+
+        scanner.scan(TRADE_DATE, 10);
+
+        assertThat(registry.find("tradeguard.after_hours.lookup.count")
+                .tag("result", "failure")
+                .counter().count()).isEqualTo(1.0);
+        assertThat(registry.getMeters())
+                .flatExtracting(meter -> meter.getId().getTags())
+                .noneMatch(tag -> tag.getValue().contains("005930"));
     }
 
     private static TradingSignal scanWithAfterHours(Optional<AfterHoursQuote> quote) {

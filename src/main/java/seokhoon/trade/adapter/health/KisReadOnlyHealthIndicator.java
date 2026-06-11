@@ -10,6 +10,7 @@ import seokhoon.trade.adapter.marketdata.kis.KisProperties;
 public class KisReadOnlyHealthIndicator implements HealthIndicator {
     private final String realtimeProvider;
     private final String intradayProvider;
+    private final String afterHoursProvider;
     private final KisProperties properties;
 
     public KisReadOnlyHealthIndicator(
@@ -17,27 +18,39 @@ public class KisReadOnlyHealthIndicator implements HealthIndicator {
             String realtimeProvider,
             @Value("${tradeguard.market-data.intraday-provider:fake}")
             String intradayProvider,
+            @Value("${tradeguard.market-data.after-hours-provider:fake}")
+            String afterHoursProvider,
+            @Value("${tradeguard.market-data.after-hours-enabled:true}")
+            boolean legacyAfterHoursEnabled,
             KisProperties properties
     ) {
         this.realtimeProvider = realtimeProvider;
         this.intradayProvider = intradayProvider;
+        this.afterHoursProvider = normalizedAfterHoursProvider(
+                afterHoursProvider,
+                legacyAfterHoursEnabled
+        );
         this.properties = properties;
     }
 
     @Override
     public Health health() {
-        if (!supported(realtimeProvider) || !supported(intradayProvider)) {
+        if (!supported(realtimeProvider)
+                || !supported(intradayProvider)
+                || !supportedAfterHours(afterHoursProvider)) {
             return base(Health.unknown())
                     .withDetail("provider", "unsupported")
                     .build();
         }
         boolean kisEnabled = "kis".equalsIgnoreCase(realtimeProvider)
-                || "kis".equalsIgnoreCase(intradayProvider);
+                || "kis".equalsIgnoreCase(intradayProvider)
+                || "kis".equalsIgnoreCase(afterHoursProvider);
         if (!kisEnabled) {
             return Health.up()
                     .withDetail("provider", "fake")
                     .withDetail("realtimeProvider", realtimeProvider)
                     .withDetail("intradayProvider", intradayProvider)
+                    .withDetail("afterHoursProvider", afterHoursProvider)
                     .withDetail("readOnly", true)
                     .build();
         }
@@ -59,12 +72,26 @@ public class KisReadOnlyHealthIndicator implements HealthIndicator {
         return builder
                 .withDetail("realtimeProvider", realtimeProvider)
                 .withDetail("intradayProvider", intradayProvider)
+                .withDetail("afterHoursProvider", afterHoursProvider)
                 .withDetail("readOnly", true);
     }
 
     private static boolean supported(String provider) {
         return "fake".equalsIgnoreCase(provider)
                 || "kis".equalsIgnoreCase(provider);
+    }
+
+    private static boolean supportedAfterHours(String provider) {
+        return supported(provider) || "disabled".equalsIgnoreCase(provider);
+    }
+
+    private static String normalizedAfterHoursProvider(
+            String provider,
+            boolean legacyEnabled
+    ) {
+        return provider == null || provider.isBlank()
+                ? legacyEnabled ? "fake" : "disabled"
+                : provider;
     }
 
     private static boolean hasText(String value) {

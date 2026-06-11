@@ -70,6 +70,18 @@ KIS_INTRADAY_BAR_SMOKE_TEST_ENABLED=true ./gradlew test \
 
 기본 조회 종목은 삼성전자 `005930`이며 `KIS_INTRADAY_BAR_SMOKE_TEST_STOCK_CODE`로 변경할 수 있습니다. 장 시작 전에는 skip되고, 앱키나 앱시크릿이 없을 때도 skip됩니다. 이 테스트는 분봉 시세 endpoint만 호출하며 주문 API를 호출하지 않습니다.
 
+KIS 시간외 일별 데이터 smoke test:
+
+```sh
+set -a
+source .env
+set +a
+KIS_AFTER_HOURS_SMOKE_TEST_ENABLED=true ./gradlew test \
+  --tests '*KisAfterHoursSmokeTest'
+```
+
+기본 종목은 삼성전자 `005930`이며 `KIS_AFTER_HOURS_SMOKE_TEST_STOCK_CODE`로 변경할 수 있습니다. 앱키나 앱시크릿이 없으면 skip됩니다. 조회일은 현재 직전 평일이며 공휴일 직후에는 데이터가 없어 실패할 수 있습니다. 시간외 시세 endpoint만 호출하며 주문, 계좌, 잔고, 정정/취소 API는 호출하지 않습니다.
+
 한국 시장 휴장일은 쉼표로 구분한 ISO 날짜로 설정합니다.
 
 ```sh
@@ -130,13 +142,18 @@ curl -X POST 'http://localhost:8080/api/scans/early-market/pre-open?tradeDate=20
 
 거래대금 상위 `+20`, 양호한 등락률 `+15`, 거래량 상위 `+15`를 적용합니다. 저장된 지표가 있고 현재가가 MA5와 MA20 위이면 `+15`이며, 과열 또는 지표 부족은 reason에 기록합니다. 전일 시간외 데이터가 있으면 상승률 3% 이상 `+15`, 거래대금 300억 원 이상 `+15`, 상승률 7% 이상 과열 `-10`, 하락률 -3% 이하 `-10`을 추가 적용합니다. 시간외 데이터가 없으면 감점하지 않고 `AFTER_HOURS_DATA_UNAVAILABLE` reason을 남깁니다. 결과는 `strategyName=EARLY_MARKET_BREAKOUT`, `signalType=EARLY_MARKET_PRE_SCAN`으로 저장합니다.
 
-시간외 데이터는 현재 `FakeAfterHoursMarketDataAdapter`만 제공합니다. 로컬 기본값은 활성화이며 아래 환경변수로 no-op adapter로 전환할 수 있습니다.
+시간외 데이터 provider는 `fake`, `kis`, `disabled`를 지원하며 기본값은 `fake`입니다.
 
 ```sh
-AFTER_HOURS_DATA_ENABLED=false ./gradlew bootRun
+AFTER_HOURS_DATA_PROVIDER=kis ./gradlew bootRun
+AFTER_HOURS_DATA_PROVIDER=disabled ./gradlew bootRun
 ```
 
-Fake adapter는 고정 데이터를 반환해 장초반 점수와 브리핑을 재현 가능하게 합니다. 조회일은 직전 평일이며 공휴일을 포함한 정확한 직전 거래일 계산은 KRX calendar 연동과 함께 보강할 TODO입니다. 실제 KIS 시간외 조회 endpoint adapter는 구현하지 않았으며 후속 TODO입니다.
+새 `AFTER_HOURS_DATA_PROVIDER`가 설정되면 이를 우선합니다. 기존 `AFTER_HOURS_DATA_ENABLED=false` 설정도 provider가 비어 있을 때 `disabled`로 해석되므로 하위 호환됩니다. 기존 true 또는 미설정은 `fake`입니다.
+
+Fake adapter는 고정 데이터를 반환해 장초반 점수와 브리핑을 재현 가능하게 합니다. KIS provider는 공식 `주식현재가 시간외일자별주가[v1_국내주식-026]` endpoint `/uapi/domestic-stock/v1/quotations/inquire-daily-overtimeprice`, TR ID `FHPST02320000`을 사용합니다. 최근 일별 시간외 단일가 데이터에서 요청 거래일을 찾아 가격, 전일 대비율, 거래량, 거래대금을 매핑합니다. 종목명이 응답에 보장되지 않아 `stockName`은 종목코드로 대체합니다.
+
+08:30 스캔의 조회 기준일은 현재 직전 평일입니다. 공휴일을 포함한 정확한 직전 거래일 계산은 KRX calendar 연동 TODO입니다. 요청일이 KIS 최근 데이터에 없으면 빈 결과를 반환하고 `AFTER_HOURS_DATA_UNAVAILABLE` reason을 남깁니다. KIS endpoint는 종목별 조회이므로 `findTopAfterHoursMovers`의 시장 전체 순위 조회는 지원하지 않고 빈 결과를 반환합니다.
 
 09:05 장초반 압축 후보 수동 스캔:
 
@@ -400,7 +417,8 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
 - 08:30/09:05 장초반 후보 생성과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.
-- 시간외 데이터 연동은 fake/no-op adapter만 제공하며 KIS 실제 시간외 endpoint는 호출하지 않습니다.
+- 시간외 데이터 연동은 fake/disabled 또는 설정 기반 KIS read-only 일별 시간외 시세 adapter만 사용합니다.
+- KIS 주문, 계좌, 잔고, 정정/취소 endpoint는 호출하지 않습니다.
 - API Key, App Secret, 계좌번호는 코드에 하드코딩하지 않습니다.
 - Discord Webhook URL은 환경변수로만 주입하며 코드에 하드코딩하지 않습니다.
 - `KisBrokerAdapter`는 스켈레톤만 제공하며 실제 주문 API를 호출하지 않습니다.

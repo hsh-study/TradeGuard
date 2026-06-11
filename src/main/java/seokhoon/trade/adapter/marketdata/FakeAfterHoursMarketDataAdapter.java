@@ -1,6 +1,5 @@
 package seokhoon.trade.adapter.marketdata;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.AfterHoursMarketDataPort;
 import seokhoon.trade.domain.market.AfterHoursQuote;
@@ -13,11 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Component
-@ConditionalOnProperty(
-        name = "tradeguard.market-data.after-hours-enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
+@ConditionalOnAfterHoursProvider("fake")
 public class FakeAfterHoursMarketDataAdapter implements AfterHoursMarketDataPort {
     private static final Instant DEFAULT_CAPTURED_AT =
             Instant.parse("2026-06-09T09:30:00Z");
