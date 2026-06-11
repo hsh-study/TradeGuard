@@ -5,6 +5,8 @@ public record EarlyMarketReportDataCompleteness(
         int performanceCapturedCount,
         int excludedFromPerformanceCount,
         int maxReturnSampleCount,
-        int maxDrawdownSampleCount
+        int maxDrawdownSampleCount,
+        int winSampleCount,
+        int winCount
 ) {
 }

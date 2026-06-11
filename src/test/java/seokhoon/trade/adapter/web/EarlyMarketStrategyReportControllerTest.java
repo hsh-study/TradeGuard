@@ -1,11 +1,14 @@
 package seokhoon.trade.adapter.web;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import seokhoon.trade.application.port.in.EarlyMarketReportDataCompleteness;
 import seokhoon.trade.application.port.in.EarlyMarketFollowUpDecision;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyCandidateReport;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyDailyReport;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyGroupReport;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyPeriodReport;
 import seokhoon.trade.domain.strategy.SignalType;
 
 import java.math.BigDecimal;
@@ -14,6 +17,9 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class EarlyMarketStrategyReportControllerTest {
     private static final LocalDate TRADE_DATE = LocalDate.of(2026, 6, 10);
@@ -22,7 +28,8 @@ class EarlyMarketStrategyReportControllerTest {
     void loadsDailyEarlyMarketStrategyReport() {
         EarlyMarketStrategyReportController controller =
                 new EarlyMarketStrategyReportController(
-                        tradeDate -> report()
+                        tradeDate -> report(),
+                        (from, to) -> periodReport(from, to)
                 );
 
         var response = controller.daily(TRADE_DATE);
@@ -37,10 +44,67 @@ class EarlyMarketStrategyReportControllerTest {
                 .isZero();
     }
 
+    @Test
+    void loadsPeriodEarlyMarketStrategyReport() {
+        EarlyMarketStrategyReportController controller =
+                new EarlyMarketStrategyReportController(
+                        tradeDate -> report(),
+                        EarlyMarketStrategyReportControllerTest::periodReport
+                );
+
+        var response = controller.period(
+                TRADE_DATE.minusDays(1),
+                TRADE_DATE
+        );
+
+        assertThat(response.from()).isEqualTo(TRADE_DATE.minusDays(1));
+        assertThat(response.to()).isEqualTo(TRADE_DATE);
+        assertThat(response.tradingDayCount()).isEqualTo(1);
+        assertThat(response.winRate()).isEqualByComparingTo("100.0000");
+        assertThat(response.byFollowUpDecision()).containsKey("KEEP");
+    }
+
+    @Test
+    void servesPeriodReportApiAndValidatesRequiredRange() throws Exception {
+        EarlyMarketStrategyReportController controller =
+                new EarlyMarketStrategyReportController(
+                        tradeDate -> report(),
+                        (from, to) -> {
+                            if (from.isAfter(to)) {
+                                throw new IllegalArgumentException(
+                                        "from must be on or before to"
+                                );
+                            }
+                            return periodReport(from, to);
+                        }
+                );
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        mockMvc.perform(get("/api/reports/early-market/period")
+                        .param("from", "2026-06-09")
+                        .param("to", "2026-06-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tradingDayCount").value(1))
+                .andExpect(jsonPath("$.winRate").value(100.0000));
+
+        mockMvc.perform(get("/api/reports/early-market/period")
+                        .param("to", "2026-06-10"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/reports/early-market/period")
+                        .param("from", "2026-06-10")
+                        .param("to", "2026-06-09"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
     private static EarlyMarketStrategyDailyReport report() {
         EarlyMarketStrategyCandidateReport candidate =
                 new EarlyMarketStrategyCandidateReport(
                         2L,
+                        TRADE_DATE,
                         "005930",
                         SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
                         95,
@@ -74,8 +138,36 @@ class EarlyMarketStrategyReportControllerTest {
                 Map.of("TRUE", group),
                 Map.of("TRUE", group),
                 Map.of("KEEP", group),
-                new EarlyMarketReportDataCompleteness(2, 2, 0, 2, 2),
+                new EarlyMarketReportDataCompleteness(2, 2, 0, 2, 2, 2, 2),
                 List.of(candidate)
+        );
+    }
+
+    private static EarlyMarketStrategyPeriodReport periodReport(
+            LocalDate from,
+            LocalDate to
+    ) {
+        var daily = report();
+        return new EarlyMarketStrategyPeriodReport(
+                from,
+                to,
+                1,
+                2,
+                2,
+                0,
+                daily.averageMaxReturnRate(),
+                daily.averageMaxDrawdownRate(),
+                new BigDecimal("100.0000"),
+                daily.bestCandidate(),
+                daily.worstCandidate(),
+                Map.of(),
+                daily.bySignalType(),
+                daily.byScoreBucket(),
+                daily.byVwapBroken(),
+                daily.byPreviousHighBreakout(),
+                daily.byOpeningPriceHeld(),
+                daily.byFollowUpDecision(),
+                daily.dataCompleteness()
         );
     }
 }

@@ -7,7 +7,10 @@ import org.springframework.stereotype.Service;
 import seokhoon.trade.application.port.in.EarlyMarketReportDataCompleteness;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyCandidateReport;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyDailyReport;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyDailySummary;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyGroupReport;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyPeriodReport;
+import seokhoon.trade.application.port.in.LoadEarlyMarketStrategyPeriodReportUseCase;
 import seokhoon.trade.application.port.in.LoadEarlyMarketStrategyReportUseCase;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.EarlyMarketPerformancePort;
@@ -22,7 +25,9 @@ import seokhoon.trade.domain.strategy.SignalType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,13 +38,15 @@ import java.util.stream.Collectors;
 
 @Service
 public class EarlyMarketStrategyReportService
-        implements LoadEarlyMarketStrategyReportUseCase {
+        implements LoadEarlyMarketStrategyReportUseCase,
+        LoadEarlyMarketStrategyPeriodReportUseCase {
     private static final Logger log =
             LoggerFactory.getLogger(EarlyMarketStrategyReportService.class);
     private static final String PREVIOUS_HIGH_BROKEN = "PREVIOUS_HIGH_BROKEN";
     private static final String PREVIOUS_HIGH_NOT_BROKEN = "PREVIOUS_HIGH_NOT_BROKEN";
     private static final String OPENING_PRICE_HELD = "OPENING_PRICE_HELD";
     private static final String OPENING_PRICE_LOST = "OPENING_PRICE_LOST";
+    private static final int MAX_PERIOD_DAYS = 90;
 
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final EarlyMarketPerformancePort performancePort;
@@ -76,29 +83,7 @@ public class EarlyMarketStrategyReportService
     public EarlyMarketStrategyDailyReport loadDailyReport(LocalDate tradeDate) {
         Objects.requireNonNull(tradeDate, "tradeDate");
         try {
-            List<TradingSignalRecord> signals = loadSignals(tradeDate);
-            Map<Long, EarlyMarketCandidatePerformance> performanceBySignalId =
-                    performancePort.findByTradeDate(tradeDate).stream()
-                            .collect(Collectors.toMap(
-                                    EarlyMarketCandidatePerformance::signalId,
-                                    Function.identity(),
-                                    (left, right) -> left
-                            ));
-            Map<Long, EarlyMarketFollowUpRecord> followUpBySignalId =
-                    followUpResultPort.findByTradeDate(tradeDate).stream()
-                            .collect(Collectors.toMap(
-                                    EarlyMarketFollowUpRecord::signalId,
-                                    Function.identity(),
-                                    (left, right) -> left
-                            ));
-            List<CandidateData> candidateData = signals.stream()
-                    .filter(signal -> signal.id() != null)
-                    .map(signal -> new CandidateData(
-                            signal,
-                            performanceBySignalId.get(signal.id()),
-                            followUpBySignalId.get(signal.id())
-                    ))
-                    .toList();
+            List<CandidateData> candidateData = loadCandidateData(tradeDate);
             EarlyMarketStrategyDailyReport report = buildReport(tradeDate, candidateData);
             String metricResult = candidateData.isEmpty() ? "no_data" : "success";
             metricsPort.recordEarlyMarketReport(metricResult);
@@ -113,6 +98,85 @@ public class EarlyMarketStrategyReportService
                     .log("Early market strategy daily report failed");
             throw exception;
         }
+    }
+
+    @Override
+    public EarlyMarketStrategyPeriodReport loadPeriodReport(
+            LocalDate from,
+            LocalDate to
+    ) {
+        validatePeriod(from, to);
+        try {
+            Map<LocalDate, List<CandidateData>> candidatesByTradeDate =
+                    new LinkedHashMap<>();
+            from.datesUntil(to.plusDays(1)).forEach(tradeDate -> {
+                List<CandidateData> candidates = loadCandidateData(tradeDate);
+                if (!candidates.isEmpty()) {
+                    candidatesByTradeDate.put(tradeDate, candidates);
+                }
+            });
+            List<CandidateData> allCandidates = candidatesByTradeDate.values()
+                    .stream()
+                    .flatMap(List::stream)
+                    .toList();
+            EarlyMarketStrategyPeriodReport report = buildPeriodReport(
+                    from,
+                    to,
+                    candidatesByTradeDate,
+                    allCandidates
+            );
+            String metricResult = allCandidates.isEmpty() ? "no_data" : "success";
+            metricsPort.recordEarlyMarketPeriodReport(metricResult);
+            logPeriodReport(report, metricResult);
+            return report;
+        } catch (RuntimeException exception) {
+            metricsPort.recordEarlyMarketPeriodReport("failure");
+            log.atError()
+                    .addKeyValue("from", from)
+                    .addKeyValue("to", to)
+                    .addKeyValue("result", "failure")
+                    .setCause(exception)
+                    .log("Early market strategy period report failed");
+            throw exception;
+        }
+    }
+
+    private static void validatePeriod(LocalDate from, LocalDate to) {
+        Objects.requireNonNull(from, "from");
+        Objects.requireNonNull(to, "to");
+        if (from.isAfter(to)) {
+            throw new IllegalArgumentException("from must be on or before to");
+        }
+        long periodDays = ChronoUnit.DAYS.between(from, to) + 1;
+        if (periodDays > MAX_PERIOD_DAYS) {
+            throw new IllegalArgumentException("period must not exceed 90 days");
+        }
+    }
+
+    private List<CandidateData> loadCandidateData(LocalDate tradeDate) {
+        List<TradingSignalRecord> signals = loadSignals(tradeDate);
+        Map<Long, EarlyMarketCandidatePerformance> performanceBySignalId =
+                performancePort.findByTradeDate(tradeDate).stream()
+                        .collect(Collectors.toMap(
+                                EarlyMarketCandidatePerformance::signalId,
+                                Function.identity(),
+                                (left, right) -> left
+                        ));
+        Map<Long, EarlyMarketFollowUpRecord> followUpBySignalId =
+                followUpResultPort.findByTradeDate(tradeDate).stream()
+                        .collect(Collectors.toMap(
+                                EarlyMarketFollowUpRecord::signalId,
+                                Function.identity(),
+                                (left, right) -> left
+                        ));
+        return signals.stream()
+                .filter(signal -> signal.id() != null)
+                .map(signal -> new CandidateData(
+                        signal,
+                        performanceBySignalId.get(signal.id()),
+                        followUpBySignalId.get(signal.id())
+                ))
+                .toList();
     }
 
     private List<TradingSignalRecord> loadSignals(LocalDate tradeDate) {
@@ -157,6 +221,7 @@ public class EarlyMarketStrategyReportService
         int drawdownSampleCount = (int) candidates.stream()
                 .filter(candidate -> maxDrawdown(candidate) != null)
                 .count();
+        int winCount = winCount(candidates);
         EarlyMarketStrategyCandidateReport bestCandidate = candidates.stream()
                 .filter(candidate -> maxReturn(candidate) != null)
                 .max(Comparator.comparing(EarlyMarketStrategyReportService::maxReturn))
@@ -216,10 +281,166 @@ public class EarlyMarketStrategyReportService
                         capturedCount,
                         candidates.size() - capturedCount,
                         returnSampleCount,
-                        drawdownSampleCount
+                        drawdownSampleCount,
+                        returnSampleCount,
+                        winCount
                 ),
                 items
         );
+    }
+
+    private static EarlyMarketStrategyPeriodReport buildPeriodReport(
+            LocalDate from,
+            LocalDate to,
+            Map<LocalDate, List<CandidateData>> candidatesByTradeDate,
+            List<CandidateData> candidates
+    ) {
+        int capturedCount = capturedCount(candidates);
+        int returnSampleCount = returnSampleCount(candidates);
+        int drawdownSampleCount = drawdownSampleCount(candidates);
+        int winCount = winCount(candidates);
+        Map<LocalDate, EarlyMarketStrategyDailySummary> byTradeDate =
+                new LinkedHashMap<>();
+        candidatesByTradeDate.forEach((tradeDate, dailyCandidates) ->
+                byTradeDate.put(tradeDate, dailySummary(dailyCandidates)));
+
+        return new EarlyMarketStrategyPeriodReport(
+                from,
+                to,
+                candidatesByTradeDate.size(),
+                candidates.size(),
+                capturedCount,
+                candidates.size() - capturedCount,
+                average(candidates, EarlyMarketStrategyReportService::maxReturn),
+                average(candidates, EarlyMarketStrategyReportService::maxDrawdown),
+                winRate(winCount, returnSampleCount),
+                bestCandidate(candidates),
+                worstCandidate(candidates),
+                Collections.unmodifiableMap(byTradeDate),
+                group(
+                        candidates,
+                        candidate -> candidate.signal().signalType().name(),
+                        List.of(
+                                SignalType.EARLY_MARKET_PRE_SCAN.name(),
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE.name()
+                        )
+                ),
+                group(
+                        candidates,
+                        candidate -> scoreBucket(candidate.signal().score()),
+                        List.of("70-79", "80-89", "90+")
+                ),
+                group(
+                        candidates,
+                        EarlyMarketStrategyReportService::vwapGroup,
+                        List.of("TRUE", "FALSE", "UNKNOWN")
+                ),
+                group(
+                        candidates,
+                        EarlyMarketStrategyReportService::previousHighGroup,
+                        List.of("TRUE", "FALSE", "UNKNOWN")
+                ),
+                group(
+                        candidates,
+                        EarlyMarketStrategyReportService::openingPriceGroup,
+                        List.of("TRUE", "FALSE", "UNKNOWN")
+                ),
+                group(
+                        candidates,
+                        EarlyMarketStrategyReportService::followUpDecisionGroup,
+                        List.of("KEEP", "CAUTION", "EXCLUDE", "UNKNOWN")
+                ),
+                new EarlyMarketReportDataCompleteness(
+                        candidates.size(),
+                        capturedCount,
+                        candidates.size() - capturedCount,
+                        returnSampleCount,
+                        drawdownSampleCount,
+                        returnSampleCount,
+                        winCount
+                )
+        );
+    }
+
+    private static EarlyMarketStrategyDailySummary dailySummary(
+            List<CandidateData> candidates
+    ) {
+        int capturedCount = capturedCount(candidates);
+        int returnSampleCount = returnSampleCount(candidates);
+        int drawdownSampleCount = drawdownSampleCount(candidates);
+        int winCount = winCount(candidates);
+        return new EarlyMarketStrategyDailySummary(
+                candidates.size(),
+                capturedCount,
+                candidates.size() - capturedCount,
+                average(candidates, EarlyMarketStrategyReportService::maxReturn),
+                average(candidates, EarlyMarketStrategyReportService::maxDrawdown),
+                winRate(winCount, returnSampleCount),
+                new EarlyMarketReportDataCompleteness(
+                        candidates.size(),
+                        capturedCount,
+                        candidates.size() - capturedCount,
+                        returnSampleCount,
+                        drawdownSampleCount,
+                        returnSampleCount,
+                        winCount
+                )
+        );
+    }
+
+    private static int capturedCount(List<CandidateData> candidates) {
+        return (int) candidates.stream()
+                .filter(candidate -> candidate.performance() != null)
+                .count();
+    }
+
+    private static int returnSampleCount(List<CandidateData> candidates) {
+        return (int) candidates.stream()
+                .filter(candidate -> maxReturn(candidate) != null)
+                .count();
+    }
+
+    private static int drawdownSampleCount(List<CandidateData> candidates) {
+        return (int) candidates.stream()
+                .filter(candidate -> maxDrawdown(candidate) != null)
+                .count();
+    }
+
+    private static int winCount(List<CandidateData> candidates) {
+        return (int) candidates.stream()
+                .map(EarlyMarketStrategyReportService::maxReturn)
+                .filter(Objects::nonNull)
+                .filter(rate -> rate.compareTo(BigDecimal.ZERO) > 0)
+                .count();
+    }
+
+    private static BigDecimal winRate(int winCount, int sampleCount) {
+        if (sampleCount == 0) {
+            return null;
+        }
+        return BigDecimal.valueOf(winCount)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(sampleCount), 4, RoundingMode.HALF_UP);
+    }
+
+    private static EarlyMarketStrategyCandidateReport bestCandidate(
+            List<CandidateData> candidates
+    ) {
+        return candidates.stream()
+                .filter(candidate -> maxReturn(candidate) != null)
+                .max(Comparator.comparing(EarlyMarketStrategyReportService::maxReturn))
+                .map(EarlyMarketStrategyReportService::toItem)
+                .orElse(null);
+    }
+
+    private static EarlyMarketStrategyCandidateReport worstCandidate(
+            List<CandidateData> candidates
+    ) {
+        return candidates.stream()
+                .filter(candidate -> maxReturn(candidate) != null)
+                .min(Comparator.comparing(EarlyMarketStrategyReportService::maxReturn))
+                .map(EarlyMarketStrategyReportService::toItem)
+                .orElse(null);
     }
 
     private static Map<String, EarlyMarketStrategyGroupReport> group(
@@ -336,6 +557,7 @@ public class EarlyMarketStrategyReportService
         EarlyMarketCandidatePerformance performance = candidate.performance();
         return new EarlyMarketStrategyCandidateReport(
                 candidate.signal().id(),
+                candidate.signal().signalDate(),
                 candidate.signal().stockCode(),
                 candidate.signal().signalType(),
                 candidate.signal().score(),
@@ -348,6 +570,23 @@ public class EarlyMarketStrategyReportService
                 List.copyOf(candidate.signal().reasons()),
                 List.copyOf(candidate.signal().riskReasons())
         );
+    }
+
+    private static void logPeriodReport(
+            EarlyMarketStrategyPeriodReport report,
+            String result
+    ) {
+        log.atInfo()
+                .addKeyValue("from", report.from())
+                .addKeyValue("to", report.to())
+                .addKeyValue("tradingDayCount", report.tradingDayCount())
+                .addKeyValue("candidateCount", report.candidateCount())
+                .addKeyValue(
+                        "performanceCapturedCount",
+                        report.performanceCapturedCount()
+                )
+                .addKeyValue("result", result)
+                .log("Early market strategy period report loaded");
     }
 
     private static void logReport(

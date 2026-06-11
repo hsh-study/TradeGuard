@@ -154,6 +154,201 @@ class EarlyMarketStrategyReportServiceTest {
                 .counter().count()).isEqualTo(1.0);
     }
 
+    @Test
+    void aggregatesWeightedAveragesAndWinRateAcrossTradingDays() {
+        LocalDate previousTradeDate = TRADE_DATE.minusDays(1);
+        EarlyMarketStrategyReportService service = service(
+                List.of(
+                        signal(
+                                1L,
+                                previousTradeDate,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                80,
+                                List.of()
+                        ),
+                        signal(
+                                2L,
+                                TRADE_DATE,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                90,
+                                List.of()
+                        ),
+                        signal(
+                                3L,
+                                TRADE_DATE,
+                                SignalType.EARLY_MARKET_PRE_SCAN,
+                                75,
+                                List.of()
+                        )
+                ),
+                List.of(
+                        performance(
+                                1L,
+                                previousTradeDate,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                "10",
+                                "-2",
+                                false
+                        ),
+                        performance(
+                                2L,
+                                TRADE_DATE,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                "-4",
+                                "-6",
+                                true
+                        ),
+                        performance(
+                                3L,
+                                TRADE_DATE,
+                                SignalType.EARLY_MARKET_PRE_SCAN,
+                                null,
+                                "-1",
+                                false
+                        )
+                ),
+                List.of()
+        );
+
+        var report = service.loadPeriodReport(previousTradeDate, TRADE_DATE);
+
+        assertThat(report.tradingDayCount()).isEqualTo(2);
+        assertThat(report.candidateCount()).isEqualTo(3);
+        assertThat(report.averageMaxReturnRate()).isEqualByComparingTo("3.0000");
+        assertThat(report.averageMaxDrawdownRate()).isEqualByComparingTo("-3.0000");
+        assertThat(report.winRate()).isEqualByComparingTo("50.0000");
+        assertThat(report.dataCompleteness().winSampleCount()).isEqualTo(2);
+        assertThat(report.dataCompleteness().winCount()).isEqualTo(1);
+        assertThat(report.bestCandidate().tradeDate()).isEqualTo(previousTradeDate);
+        assertThat(report.worstCandidate().tradeDate()).isEqualTo(TRADE_DATE);
+        assertThat(report.byTradeDate()).containsOnlyKeys(
+                previousTradeDate,
+                TRADE_DATE
+        );
+    }
+
+    @Test
+    void aggregatesFollowUpDecisionsAcrossTradingDays() {
+        LocalDate previousTradeDate = TRADE_DATE.minusDays(1);
+        EarlyMarketStrategyReportService service = service(
+                List.of(
+                        signal(
+                                1L,
+                                previousTradeDate,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                80,
+                                List.of()
+                        ),
+                        signal(
+                                2L,
+                                TRADE_DATE,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                90,
+                                List.of()
+                        ),
+                        signal(
+                                3L,
+                                TRADE_DATE,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                95,
+                                List.of()
+                        )
+                ),
+                List.of(
+                        performance(
+                                1L,
+                                previousTradeDate,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                "2",
+                                "-1",
+                                false
+                        ),
+                        performance(
+                                2L,
+                                TRADE_DATE,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                "4",
+                                "-2",
+                                false
+                        )
+                ),
+                List.of(
+                        followUp(
+                                1L,
+                                previousTradeDate,
+                                EarlyMarketFollowUpDecision.KEEP
+                        ),
+                        followUp(
+                                2L,
+                                TRADE_DATE,
+                                EarlyMarketFollowUpDecision.KEEP
+                        ),
+                        followUp(
+                                3L,
+                                TRADE_DATE,
+                                EarlyMarketFollowUpDecision.EXCLUDE
+                        )
+                )
+        );
+
+        var report = service.loadPeriodReport(previousTradeDate, TRADE_DATE);
+
+        assertThat(report.byFollowUpDecision().get("KEEP").candidateCount())
+                .isEqualTo(2);
+        assertThat(report.byFollowUpDecision().get("KEEP").averageMaxReturnRate())
+                .isEqualByComparingTo("3.0000");
+        assertThat(report.byFollowUpDecision().get("EXCLUDE").candidateCount())
+                .isEqualTo(1);
+        assertThat(report.byFollowUpDecision().get("CAUTION").candidateCount())
+                .isZero();
+    }
+
+    @Test
+    void rejectsInvalidPeriodRanges() {
+        EarlyMarketStrategyReportService service = service(
+                List.of(),
+                List.of(),
+                List.of()
+        );
+
+        assertThatThrownBy(() -> service.loadPeriodReport(
+                TRADE_DATE,
+                TRADE_DATE.minusDays(1)
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("from must be on or before to");
+        assertThatThrownBy(() -> service.loadPeriodReport(
+                TRADE_DATE.minusDays(90),
+                TRADE_DATE
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("period must not exceed 90 days");
+    }
+
+    @Test
+    void returnsEmptyPeriodReportAndRecordsNoDataMetric() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        EarlyMarketStrategyReportService service =
+                new EarlyMarketStrategyReportService(
+                        criteria -> List.of(),
+                        performancePort(List.of()),
+                        new MicrometerOperationalMetricsAdapter(registry)
+                );
+
+        var report = service.loadPeriodReport(
+                TRADE_DATE.minusDays(2),
+                TRADE_DATE
+        );
+
+        assertThat(report.tradingDayCount()).isZero();
+        assertThat(report.candidateCount()).isZero();
+        assertThat(report.winRate()).isNull();
+        assertThat(report.byTradeDate()).isEmpty();
+        assertThat(registry.find("tradeguard.early_market.period_report.count")
+                .tag("result", "no_data")
+                .counter().count()).isEqualTo(1.0);
+    }
+
     private static EarlyMarketStrategyReportService service(
             List<TradingSignalRecord> signals,
             List<EarlyMarketCandidatePerformance> performances,
@@ -161,6 +356,8 @@ class EarlyMarketStrategyReportServiceTest {
     ) {
         return new EarlyMarketStrategyReportService(
                 (TradingSignalSearchCriteria criteria) -> signals.stream()
+                        .filter(signal -> signal.signalDate()
+                                .equals(criteria.signalDate()))
                         .filter(signal -> signal.signalType() == criteria.signalType())
                         .toList(),
                 performancePort(performances),
@@ -182,7 +379,9 @@ class EarlyMarketStrategyReportServiceTest {
             public List<EarlyMarketFollowUpRecord> findByTradeDate(
                     LocalDate tradeDate
             ) {
-                return followUps;
+                return followUps.stream()
+                        .filter(result -> result.tradeDate().equals(tradeDate))
+                        .toList();
             }
 
             @Override
@@ -209,7 +408,9 @@ class EarlyMarketStrategyReportServiceTest {
             public List<EarlyMarketCandidatePerformance> findByTradeDate(
                     LocalDate tradeDate
             ) {
-                return performances;
+                return performances.stream()
+                        .filter(performance -> performance.tradeDate().equals(tradeDate))
+                        .toList();
             }
 
             @Override
@@ -229,11 +430,21 @@ class EarlyMarketStrategyReportServiceTest {
             int score,
             List<String> reasons
     ) {
+        return signal(id, TRADE_DATE, signalType, score, reasons);
+    }
+
+    private static TradingSignalRecord signal(
+            long id,
+            LocalDate tradeDate,
+            SignalType signalType,
+            int score,
+            List<String> reasons
+    ) {
         return new TradingSignalRecord(
                 id,
                 EarlyMarketPreOpenScanner.STRATEGY_NAME,
                 "STOCK" + id,
-                TRADE_DATE,
+                tradeDate,
                 signalType,
                 score,
                 reasons,
@@ -249,10 +460,28 @@ class EarlyMarketStrategyReportServiceTest {
             String maxDrawdown,
             Boolean vwapBroken
     ) {
+        return performance(
+                signalId,
+                TRADE_DATE,
+                signalType,
+                maxReturn,
+                maxDrawdown,
+                vwapBroken
+        );
+    }
+
+    private static EarlyMarketCandidatePerformance performance(
+            long signalId,
+            LocalDate tradeDate,
+            SignalType signalType,
+            String maxReturn,
+            String maxDrawdown,
+            Boolean vwapBroken
+    ) {
         return new EarlyMarketCandidatePerformance(
                 signalId,
                 "STOCK" + signalId,
-                TRADE_DATE,
+                tradeDate,
                 signalType,
                 null,
                 null,
@@ -269,9 +498,17 @@ class EarlyMarketStrategyReportServiceTest {
             long signalId,
             EarlyMarketFollowUpDecision decision
     ) {
+        return followUp(signalId, TRADE_DATE, decision);
+    }
+
+    private static EarlyMarketFollowUpRecord followUp(
+            long signalId,
+            LocalDate tradeDate,
+            EarlyMarketFollowUpDecision decision
+    ) {
         return new EarlyMarketFollowUpRecord(
                 signalId,
-                TRADE_DATE,
+                tradeDate,
                 "STOCK" + signalId,
                 decision,
                 90,

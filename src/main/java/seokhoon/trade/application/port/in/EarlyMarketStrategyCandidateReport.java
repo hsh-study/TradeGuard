@@ -3,10 +3,12 @@ package seokhoon.trade.application.port.in;
 import seokhoon.trade.domain.strategy.SignalType;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 public record EarlyMarketStrategyCandidateReport(
         long signalId,
+        LocalDate tradeDate,
         String stockCode,
         SignalType signalType,
         int signalScore,

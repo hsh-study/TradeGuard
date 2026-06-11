@@ -9,6 +9,8 @@ import seokhoon.trade.application.port.in.EarlyMarketReportDataCompleteness;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyCandidateReport;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyDailyReport;
 import seokhoon.trade.application.port.in.EarlyMarketStrategyGroupReport;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyPeriodReport;
+import seokhoon.trade.application.port.in.LoadEarlyMarketStrategyPeriodReportUseCase;
 import seokhoon.trade.application.port.in.LoadEarlyMarketStrategyReportUseCase;
 
 import java.math.BigDecimal;
@@ -20,11 +22,14 @@ import java.util.Map;
 @RequestMapping("/api/reports/early-market")
 public class EarlyMarketStrategyReportController {
     private final LoadEarlyMarketStrategyReportUseCase reportUseCase;
+    private final LoadEarlyMarketStrategyPeriodReportUseCase periodReportUseCase;
 
     public EarlyMarketStrategyReportController(
-            LoadEarlyMarketStrategyReportUseCase reportUseCase
+            LoadEarlyMarketStrategyReportUseCase reportUseCase,
+            LoadEarlyMarketStrategyPeriodReportUseCase periodReportUseCase
     ) {
         this.reportUseCase = reportUseCase;
+        this.periodReportUseCase = periodReportUseCase;
     }
 
     @GetMapping("/daily")
@@ -34,6 +39,18 @@ public class EarlyMarketStrategyReportController {
             LocalDate tradeDate
     ) {
         return DailyReportResponse.from(reportUseCase.loadDailyReport(tradeDate));
+    }
+
+    @GetMapping("/period")
+    EarlyMarketStrategyPeriodReport period(
+            @RequestParam
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate from,
+            @RequestParam
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate to
+    ) {
+        return periodReportUseCase.loadPeriodReport(from, to);
     }
 
     public record DailyReportResponse(

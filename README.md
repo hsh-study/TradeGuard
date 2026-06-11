@@ -237,6 +237,18 @@ curl 'http://localhost:8080/api/reports/early-market/daily?tradeDate=2026-06-10'
 
 성과 레코드가 없는 후보는 `excludedFromPerformanceCount`에 포함됩니다. 성과가 저장됐더라도 수익률 또는 낙폭이 `null`이면 해당 평균 표본에서 제외하며 `dataCompleteness`의 표본 수로 확인할 수 있습니다. 리포트는 저장된 follow-up 결과만 결합하며 follow-up을 재실행하거나 Discord를 전송하지 않습니다. 이 조회 API는 주문을 생성하지 않습니다.
 
+장초반 전략 기간 성과 리포트:
+
+```sh
+curl 'http://localhost:8080/api/reports/early-market/period?from=2026-06-01&to=2026-06-10'
+```
+
+`from`, `to`는 필수이며 양 끝 날짜를 포함합니다. `from`이 `to`보다 늦거나 포함 기간이 90일을 초과하면 `400 INVALID_REQUEST`를 반환합니다. `tradingDayCount`와 `byTradeDate`에는 장초반 후보 신호가 존재한 날짜만 포함하고, 응답 크기를 제한하기 위해 날짜별 후보 상세는 반환하지 않습니다.
+
+기간 평균과 signal type, 점수 구간, VWAP 이탈, 전일 고가 돌파, 시초가 지지, follow-up decision 그룹은 기간의 전체 후보를 다시 합산해 계산합니다. 따라서 일별 평균의 단순 평균이 아니라 수익률 값이 존재하는 후보 단위 평균입니다. `winRate`는 `maxReturnRateUntil0930 > 0`인 후보 수를 수익률 값이 존재하는 후보 수로 나눈 백분율이며 소수점 넷째 자리까지 반환합니다. 수익률이 `null`인 후보는 승률 표본에서 제외되고 `dataCompleteness.winSampleCount`, `winCount`로 표본을 확인할 수 있습니다.
+
+기간 리포트는 저장 데이터 조회와 전략 검증 전용입니다. follow-up, 성과 캡처, 모의 주문 또는 자동 주문을 실행하지 않으며 실계좌 주문과 시장가 주문을 지원하지 않습니다.
+
 거래 신호 조회:
 
 ```sh
@@ -425,6 +437,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.early_market.follow_up.persist.count`: `result=saved|failed`
 - `tradeguard.early_market.price_action.count`: `result=sufficient|insufficient`
 - `tradeguard.early_market.report.count`: `result=success|no_data|failure`
+- `tradeguard.early_market.period_report.count`: `result=success|no_data|failure`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
