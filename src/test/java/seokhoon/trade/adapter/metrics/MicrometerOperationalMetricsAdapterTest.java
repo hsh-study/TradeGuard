@@ -33,6 +33,7 @@ class MicrometerOperationalMetricsAdapterTest {
         metrics.recordAfterHoursLookup("found");
         metrics.recordIntradayBarLookup("found");
         metrics.recordEarlyMarketPerformanceCapture("bars_used");
+        metrics.recordEarlyMarketFollowUp("keep");
 
         assertThat(counter(
                 registry,
@@ -81,6 +82,12 @@ class MicrometerOperationalMetricsAdapterTest {
                 "tradeguard.early_market.performance.capture.count",
                 "result",
                 "bars_used"
+        )).isEqualTo(1.0);
+        assertThat(counter(
+                registry,
+                "tradeguard.early_market.follow_up.count",
+                "decision",
+                "keep"
         )).isEqualTo(1.0);
 
         assertThat(registry.getMeters())

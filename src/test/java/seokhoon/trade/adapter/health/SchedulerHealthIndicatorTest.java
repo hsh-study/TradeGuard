@@ -7,6 +7,7 @@ import seokhoon.trade.application.port.out.MarketCalendarPort;
 import seokhoon.trade.application.service.ClosingBetCandidateScanScheduler;
 import seokhoon.trade.application.service.ClosingBetFinalReviewScheduler;
 import seokhoon.trade.application.service.EarlyMarketOpeningScheduler;
+import seokhoon.trade.application.service.EarlyMarketFollowUpScheduler;
 import seokhoon.trade.application.service.EarlyMarketPerformanceCaptureScheduler;
 import seokhoon.trade.application.service.EarlyMarketPreOpenScheduler;
 
@@ -22,6 +23,7 @@ class SchedulerHealthIndicatorTest {
                 providerWith(mock(ClosingBetFinalReviewScheduler.class)),
                 providerWith(mock(EarlyMarketPreOpenScheduler.class)),
                 providerWith(mock(EarlyMarketOpeningScheduler.class)),
+                providerWith(mock(EarlyMarketFollowUpScheduler.class)),
                 providerWith(mock(EarlyMarketPerformanceCaptureScheduler.class)),
                 providerWith(mock(MarketCalendarPort.class))
         );
@@ -34,6 +36,7 @@ class SchedulerHealthIndicatorTest {
                 .containsEntry("finalReviewSchedulerLoaded", true)
                 .containsEntry("earlyMarketPreOpenSchedulerLoaded", true)
                 .containsEntry("earlyMarketOpeningSchedulerLoaded", true)
+                .containsEntry("earlyMarketFollowUpSchedulerLoaded", true)
                 .containsEntry("earlyMarketPerformanceCaptureSchedulerLoaded", true)
                 .containsEntry("marketCalendarLoaded", true);
     }
@@ -45,6 +48,7 @@ class SchedulerHealthIndicatorTest {
                 providerWith(null),
                 providerWith(mock(EarlyMarketPreOpenScheduler.class)),
                 providerWith(mock(EarlyMarketOpeningScheduler.class)),
+                providerWith(mock(EarlyMarketFollowUpScheduler.class)),
                 providerWith(mock(EarlyMarketPerformanceCaptureScheduler.class)),
                 providerWith(mock(MarketCalendarPort.class))
         );

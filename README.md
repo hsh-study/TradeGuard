@@ -173,6 +173,18 @@ curl -X POST 'http://localhost:8080/api/scans/early-market/opening?tradeDate=202
 
 장초반 최종 후보는 기존 signalId 기반 지정가 모의 주문 API에서 사용할 수 있습니다. `EARLY_MARKET_PRE_SCAN`은 관찰 후보이므로 주문 요청이 거절됩니다. 08:30/09:05 스캔과 scheduler는 실제 주문을 생성하지 않습니다.
 
+09:20 장초반 후보 follow-up 수동 실행:
+
+```sh
+curl -X POST 'http://localhost:8080/api/scans/early-market/follow-up?tradeDate=2026-06-10'
+```
+
+같은 거래일의 `EARLY_MARKET_ENTRY_CANDIDATE`를 별도 신호 저장 없이 재평가합니다. `IntradayBarPort`에서 09:05~09:20 1분봉을 조회하며 마지막 가격이 마지막 VWAP 아래이거나 구간 고점 대비 낙폭이 -2% 이하이면 `EXCLUDE`입니다. 구간 중 `close < vwap`이 있었지만 회복했거나 낙폭이 -1%~-2%이면 `CAUTION`, 그 외 VWAP과 고가권을 유지하면 `KEEP`입니다.
+
+분봉이 없거나 조회가 실패하면 `MarketSnapshotPort`로 fallback합니다. snapshot의 현재가, 당일 고가, VWAP으로 같은 기준을 적용하고 `SNAPSHOT_PROXY` reason을 남깁니다. 필요한 값이 부족하면 `DATA_INSUFFICIENT`와 함께 보수적으로 `CAUTION` 처리합니다.
+
+평일 Asia/Seoul 기준 09:20에는 `EARLY_MARKET_FOLLOW_UP_920` scheduler가 같은 use case를 자동 실행합니다. 비거래일에는 `NON_TRADING_DAY`로 건너뛰고, 거래일에는 후보 수와 KEEP/CAUTION/EXCLUDE 수를 구조화 로그에 기록합니다. Discord에는 분류 수, 점수 기준 상위 KEEP 3개, EXCLUDE 후보와 사유를 전송합니다. webhook 미설정은 no-op이며 follow-up은 신호나 주문을 새로 생성하지 않습니다.
+
 09:30 이후 장초반 후보 성과 수동 캡처:
 
 ```sh
@@ -328,7 +340,7 @@ curl 'http://localhost:8080/actuator/metrics'
 ```
 
 - `liveness`: Spring 애플리케이션 생존 상태만 확인한다.
-- `readiness`: 애플리케이션 readiness, DB, Flyway, KIS read-only 설정, Discord 설정, 14:00/15:00 및 장초반 08:30/09:05/09:31 scheduler와 시장 calendar bean을 확인한다.
+- `readiness`: 애플리케이션 readiness, DB, Flyway, KIS read-only 설정, Discord 설정, 14:00/15:00 및 장초반 08:30/09:05/09:20/09:31 scheduler와 시장 calendar bean을 확인한다.
 - DB는 Spring Boot 기본 DataSource health를 사용한다.
 - Flyway pending migration이 있으면 `flywayMigration`이 `DOWN`이다. migration 자체가 실패하면 애플리케이션 시작이 실패하므로 readiness endpoint가 열리지 않는다.
 - KIS provider가 `fake`이면 `UP`, `kis`이면서 자격증명이 없으면 `UNKNOWN`, 자격증명이 구성되면 설정 기준 `UP`이다.
@@ -338,7 +350,7 @@ curl 'http://localhost:8080/actuator/metrics'
 
 ## Scheduler 실행 이력
 
-14:00 예비 스캔, 15:00 최종 리뷰, 장초반 08:30/09:05 스캔 및 09:31 성과 캡처의 자동 scheduler 실행 이력을 조회할 수 있습니다.
+14:00 예비 스캔, 15:00 최종 리뷰, 장초반 08:30/09:05 스캔, 09:20 follow-up 및 09:31 성과 캡처의 자동 scheduler 실행 이력을 조회할 수 있습니다.
 
 ```sh
 curl 'http://localhost:8080/api/scheduler-executions'
@@ -358,7 +370,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 
 실행 상태는 `STARTED`, `SUCCEEDED`, `SKIPPED`, `FAILED`이며 최신 `startedAt` 순으로 반환됩니다. 비거래일에는 `SKIPPED`와 `NON_TRADING_DAY` 사유를 기록합니다. 실행 예외가 발생하면 `FAILED`를 저장한 뒤 예외를 다시 전파합니다.
 
-응답의 `scannedCount`는 14:00에는 시장 후보군 수, 15:00에는 재검토한 pre-scan 후보 수, 09:31 성과 캡처에는 대상 signal 수를 의미합니다. 09:31의 `selectedCount`는 캡처 성공 수입니다. `selectedCount`와 Discord 브리핑 전송 여부인 `notificationSent`도 함께 기록합니다. 수동 scan/review/capture API 호출은 scheduler 실행 이력에 포함하지 않습니다.
+응답의 `scannedCount`는 14:00에는 시장 후보군 수, 15:00에는 재검토한 pre-scan 후보 수, 09:20 follow-up에는 확인한 entry candidate 수, 09:31 성과 캡처에는 대상 signal 수를 의미합니다. 09:20의 `selectedCount`는 KEEP 수이고 09:31은 캡처 성공 수입니다. `selectedCount`와 Discord 브리핑 전송 여부인 `notificationSent`도 함께 기록합니다. 수동 scan/review/follow-up/capture API 호출은 scheduler 실행 이력에 포함하지 않습니다.
 
 운영자는 매 거래일 아래 항목을 확인할 수 있습니다.
 
@@ -382,15 +394,17 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.kis.read_only.count`: `operation`, `result`
 - `tradeguard.after_hours.lookup.count`: `result=found|not_found|failure`
 - `tradeguard.intraday_bar.lookup.count`: `result=found|not_found|failure`
+- `tradeguard.early_market.follow_up.count`: `decision=keep|caution|exclude`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
 
 - `EARLY_MARKET_PRE_OPEN_830`
 - `EARLY_MARKET_OPENING_905`
+- `EARLY_MARKET_FOLLOW_UP_920`
 - `EARLY_MARKET_PERFORMANCE_CAPTURE_930`
 
-장초반 scheduler는 평일 Asia/Seoul 기준 08:30, 09:05, 09:31에 실행하며 `MarketCalendarPort`가 비거래일로 판단하면 `SKIPPED` 이력을 남깁니다. 거래일에는 `STARTED` 후 `SUCCEEDED` 또는 `FAILED`로 전환하고 후보 또는 캡처 수와 Discord 전송 여부를 저장합니다.
+장초반 scheduler는 평일 Asia/Seoul 기준 08:30, 09:05, 09:20, 09:31에 실행하며 `MarketCalendarPort`가 비거래일로 판단하면 `SKIPPED` 이력을 남깁니다. 거래일에는 `STARTED` 후 `SUCCEEDED` 또는 `FAILED`로 전환하고 후보 또는 캡처 수와 Discord 전송 여부를 저장합니다.
 
 개별 metric 조회 예시:
 
@@ -423,7 +437,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 
 - 실계좌 주문 기능은 구현하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
-- 08:30/09:05 장초반 후보 생성과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
+- 08:30/09:05 장초반 후보 생성, 09:20 follow-up과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.
 - 시간외 데이터 연동은 fake/disabled 또는 설정 기반 KIS read-only 일별 시간외 시세 adapter만 사용합니다.
 - KIS 주문, 계좌, 잔고, 정정/취소 endpoint는 호출하지 않습니다.

@@ -2,6 +2,9 @@ package seokhoon.trade.adapter.web;
 
 import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.EarlyMarketCandidate;
+import seokhoon.trade.application.port.in.EarlyMarketFollowUpCandidate;
+import seokhoon.trade.application.port.in.EarlyMarketFollowUpDecision;
+import seokhoon.trade.application.port.in.EarlyMarketFollowUpResult;
 import seokhoon.trade.application.port.in.EarlyMarketScanResult;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
@@ -17,7 +20,8 @@ class EarlyMarketScanControllerTest {
     void runsManualPreOpenScan() {
         EarlyMarketScanController controller = new EarlyMarketScanController(
                 (tradeDate, limit) -> result(tradeDate, limit, "pre-open"),
-                (tradeDate, limit) -> result(tradeDate, limit, "opening")
+                (tradeDate, limit) -> result(tradeDate, limit, "opening"),
+                EarlyMarketScanControllerTest::followUpResult
         );
 
         var response = controller.preOpen(TRADE_DATE, 10);
@@ -32,7 +36,8 @@ class EarlyMarketScanControllerTest {
     void runsManualOpeningCompression() {
         EarlyMarketScanController controller = new EarlyMarketScanController(
                 (tradeDate, limit) -> result(tradeDate, limit, "pre-open"),
-                (tradeDate, limit) -> result(tradeDate, limit, "opening")
+                (tradeDate, limit) -> result(tradeDate, limit, "opening"),
+                EarlyMarketScanControllerTest::followUpResult
         );
 
         var response = controller.opening(TRADE_DATE, 3);
@@ -42,6 +47,24 @@ class EarlyMarketScanControllerTest {
             assertThat(candidate.sourceSignalId()).isEqualTo(1L);
             assertThat(candidate.signalId()).isEqualTo(2L);
             assertThat(candidate.strategyName()).isEqualTo("EARLY_MARKET_BREAKOUT");
+        });
+    }
+
+    @Test
+    void runsManualFollowUp() {
+        EarlyMarketScanController controller = new EarlyMarketScanController(
+                (tradeDate, limit) -> result(tradeDate, limit, "pre-open"),
+                (tradeDate, limit) -> result(tradeDate, limit, "opening"),
+                EarlyMarketScanControllerTest::followUpResult
+        );
+
+        var response = controller.followUp(TRADE_DATE);
+
+        assertThat(response.checkedCount()).isEqualTo(1);
+        assertThat(response.keepCount()).isEqualTo(1);
+        assertThat(response.candidates()).singleElement().satisfies(candidate -> {
+            assertThat(candidate.signalId()).isEqualTo(2L);
+            assertThat(candidate.decision()).isEqualTo(EarlyMarketFollowUpDecision.KEEP);
         });
     }
 
@@ -65,6 +88,28 @@ class EarlyMarketScanControllerTest {
                         List.of("ABOVE_VWAP"),
                         List.of(),
                         TradingSignalStatus.CREATED
+                ))
+        );
+    }
+
+    private static EarlyMarketFollowUpResult followUpResult(LocalDate tradeDate) {
+        return new EarlyMarketFollowUpResult(
+                tradeDate,
+                1,
+                1,
+                0,
+                0,
+                false,
+                List.of(new EarlyMarketFollowUpCandidate(
+                        2L,
+                        "005930",
+                        90,
+                        EarlyMarketFollowUpDecision.KEEP,
+                        List.of("VWAP_MAINTAINED"),
+                        java.math.BigDecimal.valueOf(101),
+                        java.math.BigDecimal.valueOf(102),
+                        new java.math.BigDecimal("-0.9804"),
+                        false
                 ))
         );
     }
