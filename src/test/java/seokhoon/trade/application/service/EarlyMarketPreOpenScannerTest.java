@@ -7,6 +7,7 @@ import seokhoon.trade.application.port.in.EarlyMarketScanResult;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.AfterHoursMarketDataPort;
 import seokhoon.trade.application.port.out.IndicatorSnapshotPort;
+import seokhoon.trade.application.port.out.MarketCalendarPort;
 import seokhoon.trade.application.port.out.MarketRankingPort;
 import seokhoon.trade.application.port.out.MarketRankingStock;
 import seokhoon.trade.application.port.out.NotificationDeliveryResult;
@@ -29,6 +30,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -189,6 +191,59 @@ class EarlyMarketPreOpenScannerTest {
         assertThat(registry.getMeters())
                 .flatExtracting(meter -> meter.getId().getTags())
                 .noneMatch(tag -> tag.getValue().contains("005930"));
+    }
+
+    @Test
+    void usesPreviousTradingDayForAfterHoursLookup() {
+        SignalStore store = new SignalStore();
+        MarketRankingStock stock = stock("005930", "5.0", "60000000000");
+        AtomicReference<LocalDate> requestedDate = new AtomicReference<>();
+        AfterHoursMarketDataPort afterHoursPort = new AfterHoursMarketDataPort() {
+            @Override
+            public List<AfterHoursQuote> findTopAfterHoursMovers(
+                    LocalDate tradeDate,
+                    int limit
+            ) {
+                return List.of();
+            }
+
+            @Override
+            public Optional<AfterHoursQuote> findByStockCode(
+                    String stockCode,
+                    LocalDate tradeDate
+            ) {
+                requestedDate.set(tradeDate);
+                return Optional.empty();
+            }
+        };
+        MarketCalendarPort calendar = date ->
+                date.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
+                        && date.getDayOfWeek() != java.time.DayOfWeek.SUNDAY
+                        && !date.equals(LocalDate.of(2026, 2, 16))
+                        && !date.equals(LocalDate.of(2026, 2, 17))
+                        && !date.equals(LocalDate.of(2026, 2, 18));
+        EarlyMarketPreOpenScanner scanner = new EarlyMarketPreOpenScanner(
+                new RankingPort(List.of(stock), List.of(stock), List.of(stock)),
+                indicatorPort(),
+                afterHoursPort,
+                calendar,
+                store,
+                store,
+                message -> NotificationDeliveryResult.success(),
+                OperationalMetricsPort.noop(),
+                Clock.fixed(
+                        Instant.parse("2026-02-18T23:30:00Z"),
+                        ZoneOffset.UTC
+                )
+        );
+
+        scanner.scan(LocalDate.of(2026, 2, 19), 10);
+
+        assertThat(requestedDate.get()).isEqualTo(LocalDate.of(2026, 2, 13));
+        assertThat(store.saved).singleElement().satisfies(signal ->
+                assertThat(signal.reasons())
+                        .contains("AFTER_HOURS_TRADE_DATE_2026-02-13")
+        );
     }
 
     private static TradingSignal scanWithAfterHours(Optional<AfterHoursQuote> quote) {

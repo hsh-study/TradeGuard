@@ -88,7 +88,15 @@ KIS_AFTER_HOURS_SMOKE_TEST_ENABLED=true ./gradlew test \
 MARKET_CALENDAR_HOLIDAYS=2026-01-01,2026-02-17,2026-02-18
 ```
 
-주말과 설정된 휴장일에는 14:00 예비 스캔 및 15:00 최종 리뷰 scheduler가 use case를 호출하지 않습니다. 수동 스캔/리뷰 API는 휴장일에도 테스트와 디버깅을 위해 실행할 수 있습니다.
+`MarketCalendarPort`는 주말과 설정 휴일을 비거래일로 판단하고 `previousTradingDay`와 `nextTradingDay` 계산에서도 건너뜁니다. 14:00/15:00 및 장초반 08:30/09:05/09:31 scheduler는 비거래일에 use case를 호출하지 않습니다. KRX 공식 휴장일 자동 동기화는 아직 없으므로 연도별 공휴일과 임시휴장일을 이 설정에 반영해야 합니다.
+
+거래일 계산 운영 확인:
+
+```sh
+curl 'http://localhost:8080/api/market-calendar/trading-days?date=2026-02-19'
+```
+
+응답에는 요청일의 `tradingDay`, 입력일을 제외한 `previousTradingDay`와 `nextTradingDay`가 포함됩니다.
 
 ## API
 
@@ -153,7 +161,7 @@ AFTER_HOURS_DATA_PROVIDER=disabled ./gradlew bootRun
 
 Fake adapter는 고정 데이터를 반환해 장초반 점수와 브리핑을 재현 가능하게 합니다. KIS provider는 공식 `주식현재가 시간외일자별주가[v1_국내주식-026]` endpoint `/uapi/domestic-stock/v1/quotations/inquire-daily-overtimeprice`, TR ID `FHPST02320000`을 사용합니다. 최근 일별 시간외 단일가 데이터에서 요청 거래일을 찾아 가격, 전일 대비율, 거래량, 거래대금을 매핑합니다. 종목명이 응답에 보장되지 않아 `stockName`은 종목코드로 대체합니다.
 
-08:30 스캔의 조회 기준일은 현재 직전 평일입니다. 공휴일을 포함한 정확한 직전 거래일 계산은 KRX calendar 연동 TODO입니다. 요청일이 KIS 최근 데이터에 없으면 빈 결과를 반환하고 `AFTER_HOURS_DATA_UNAVAILABLE` reason을 남깁니다. KIS endpoint는 종목별 조회이므로 `findTopAfterHoursMovers`의 시장 전체 순위 조회는 지원하지 않고 빈 결과를 반환합니다.
+08:30 스캔의 시간외 조회 기준일은 `MarketCalendarPort.previousTradingDay(tradeDate)`로 계산합니다. 주말과 `MARKET_CALENDAR_HOLIDAYS`의 연휴/임시휴장일을 건너뛰며 신호 reason에 `AFTER_HOURS_TRADE_DATE_yyyy-MM-dd`를 남깁니다. 요청일이 KIS 최근 데이터에 없으면 빈 결과를 반환하고 `AFTER_HOURS_DATA_UNAVAILABLE` reason을 남깁니다. KIS endpoint는 종목별 조회이므로 `findTopAfterHoursMovers`의 시장 전체 순위 조회는 지원하지 않고 빈 결과를 반환합니다.
 
 09:05 장초반 압축 후보 수동 스캔:
 

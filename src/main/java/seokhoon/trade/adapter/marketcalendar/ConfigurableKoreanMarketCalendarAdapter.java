@@ -17,9 +17,22 @@ public class ConfigurableKoreanMarketCalendarAdapter implements MarketCalendarPo
 
     @Override
     public boolean isTradingDay(LocalDate date) {
+        if (date == null) {
+            throw new IllegalArgumentException("date must not be null");
+        }
         DayOfWeek dayOfWeek = date.getDayOfWeek();
         return dayOfWeek != DayOfWeek.SATURDAY
                 && dayOfWeek != DayOfWeek.SUNDAY
                 && !holidays.contains(date);
+    }
+
+    @Override
+    public LocalDate previousTradingDay(LocalDate date) {
+        return MarketCalendarPort.super.previousTradingDay(date);
+    }
+
+    @Override
+    public LocalDate nextTradingDay(LocalDate date) {
+        return MarketCalendarPort.super.nextTradingDay(date);
     }
 }

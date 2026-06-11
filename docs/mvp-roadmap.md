@@ -46,7 +46,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 종가베팅 전략 | 완료 | 단건·활성 관심종목 분석 API에 연결됐으며 점수 계산과 테스트 존재 |
 | 14:00 예비 스캔 | 부분 완료 | Fake 또는 설정 기반 KIS read-only 시장 순위로 CLOSING_BET_PRE_SCAN 저장, 수동 API, 거래일 14:00 scheduler, opt-in smoke test 존재. KRX calendar 자동 동기화는 TODO |
 | 15:00 최종 리뷰 | 부분 완료 | MarketSnapshotPort 기반 VWAP/고가권/거래대금 재평가, 거래일 15:00 scheduler, opt-in current price smoke test 존재. 더 정교한 intraday feature는 TODO |
-| 장초반 매매 후보 | 부분 완료 | 08:30 시장 순위와 fake 또는 설정 기반 KIS read-only 전일 시간외 단일가 기반 EARLY_MARKET_PRE_SCAN 최대 10개, 09:05 snapshot 기반 EARLY_MARKET_ENTRY_CANDIDATE 최대 3개, 수동 API/scheduler/Discord/실행 이력/metrics 구현. signalId별 수동 성과 캡처/조회와 신호 점수 비교, fake 또는 설정 기반 KIS read-only 당일 1분봉과 5분 집계 기반 09:00~09:30 최고 수익률/최대 낙폭/VWAP 이탈 계산, 분봉 미존재 시 snapshot proxy fallback, 거래일 09:31 자동 성과 캡처와 Discord 요약 구현. KRX 공식 거래일 연동과 과거 분봉 소스는 TODO |
+| 장초반 매매 후보 | 부분 완료 | 08:30 시장 순위와 fake 또는 설정 기반 KIS read-only 전일 시간외 단일가 기반 EARLY_MARKET_PRE_SCAN 최대 10개, MarketCalendarPort의 설정 휴일 기반 직전 거래일 계산과 reason 기록, 09:05 snapshot 기반 EARLY_MARKET_ENTRY_CANDIDATE 최대 3개, 수동 API/scheduler/Discord/실행 이력/metrics 구현. signalId별 수동 성과 캡처/조회와 신호 점수 비교, fake 또는 설정 기반 KIS read-only 당일 1분봉과 5분 집계 기반 09:00~09:30 최고 수익률/최대 낙폭/VWAP 이탈 계산, 분봉 미존재 시 snapshot proxy fallback, 거래일 09:31 자동 성과 캡처와 Discord 요약 구현. KRX 공식 calendar 자동 동기화와 과거 분봉 소스는 TODO |
 | 신호 저장 | 부분 완료 | 논리 키 upsert, 상태 갱신, 리스크 거절 사유 저장, 신호 조회 API와 주요 상태 변경 감사 이력 존재. 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
 | 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, order_requests.signal_id FK 추적, 승인/거절/BROKER_FAILED 결과, 동일 row 수동 재시도, 성공 시 신호 상태 동기화, RETRY_REQUESTED 정체 조회/수동 복구, 주요 상태 변경 감사 이력 존재. 자동 재시도/복구는 미구현 |
@@ -54,7 +54,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 알림 | 부분 완료 | Discord Webhook 기반 종가베팅 브리핑 API와 no-op 처리 존재. 일반 알림 정책은 미구현 |
 | KIS 연동 | 부분 완료 | 모의투자 OAuth, 일봉/순위/current price read-only 조회와 opt-in smoke test 구현. 계좌/주문 연동은 의도적으로 제외 |
 | 운영 관측성 | 부분 완료 | Actuator health/info/metrics, liveness/readiness, dependency health, scheduler 실행 이력, 핵심 Micrometer counter, 구조화 로그와 X-Request-Id 구현. 감사 이력 및 scheduler 실행 이력 correlation 연결 완료. 외부 metrics backend는 미구현 |
-| 시장 calendar | 부분 완료 | 주말 및 설정 휴일 scheduler skip 구현. KRX 공식 휴장일 자동 수집은 미구현 |
+| 시장 calendar | 부분 완료 | 주말 및 설정 휴일 기반 scheduler skip, 이전/다음 거래일 계산, 운영 조회 API 구현. KRX 공식 휴장일 자동 수집은 미구현 |
 | DB migration | 완료 | Flyway V1 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
 
 ## 4. 구현 단계

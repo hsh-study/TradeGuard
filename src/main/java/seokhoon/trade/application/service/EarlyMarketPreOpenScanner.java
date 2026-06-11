@@ -10,6 +10,7 @@ import seokhoon.trade.application.port.in.ScanEarlyMarketPreOpenUseCase;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.IndicatorSnapshotPort;
 import seokhoon.trade.application.port.out.AfterHoursMarketDataPort;
+import seokhoon.trade.application.port.out.MarketCalendarPort;
 import seokhoon.trade.application.port.out.MarketRankingPort;
 import seokhoon.trade.application.port.out.MarketRankingStock;
 import seokhoon.trade.application.port.out.NotificationDeliveryResult;
@@ -56,6 +57,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
     private final MarketRankingPort marketRankingPort;
     private final IndicatorSnapshotPort indicatorSnapshotPort;
     private final AfterHoursMarketDataPort afterHoursMarketDataPort;
+    private final MarketCalendarPort marketCalendarPort;
     private final TradingSignalPort tradingSignalPort;
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final NotificationPort notificationPort;
@@ -67,6 +69,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
             MarketRankingPort marketRankingPort,
             IndicatorSnapshotPort indicatorSnapshotPort,
             AfterHoursMarketDataPort afterHoursMarketDataPort,
+            MarketCalendarPort marketCalendarPort,
             TradingSignalPort tradingSignalPort,
             TradingSignalQueryPort tradingSignalQueryPort,
             NotificationPort notificationPort,
@@ -76,6 +79,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 marketRankingPort,
                 indicatorSnapshotPort,
                 afterHoursMarketDataPort,
+                marketCalendarPort,
                 tradingSignalPort,
                 tradingSignalQueryPort,
                 notificationPort,
@@ -96,6 +100,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 marketRankingPort,
                 indicatorSnapshotPort,
                 AfterHoursMarketDataPort.empty(),
+                EarlyMarketPreOpenScanner::isWeekday,
                 tradingSignalPort,
                 tradingSignalQueryPort,
                 notificationPort,
@@ -114,9 +119,34 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
             OperationalMetricsPort operationalMetricsPort,
             Clock clock
     ) {
+        this(
+                marketRankingPort,
+                indicatorSnapshotPort,
+                afterHoursMarketDataPort,
+                EarlyMarketPreOpenScanner::isWeekday,
+                tradingSignalPort,
+                tradingSignalQueryPort,
+                notificationPort,
+                operationalMetricsPort,
+                clock
+        );
+    }
+
+    EarlyMarketPreOpenScanner(
+            MarketRankingPort marketRankingPort,
+            IndicatorSnapshotPort indicatorSnapshotPort,
+            AfterHoursMarketDataPort afterHoursMarketDataPort,
+            MarketCalendarPort marketCalendarPort,
+            TradingSignalPort tradingSignalPort,
+            TradingSignalQueryPort tradingSignalQueryPort,
+            NotificationPort notificationPort,
+            OperationalMetricsPort operationalMetricsPort,
+            Clock clock
+    ) {
         this.marketRankingPort = marketRankingPort;
         this.indicatorSnapshotPort = indicatorSnapshotPort;
         this.afterHoursMarketDataPort = afterHoursMarketDataPort;
+        this.marketCalendarPort = marketCalendarPort;
         this.tradingSignalPort = tradingSignalPort;
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.notificationPort = notificationPort;
@@ -222,9 +252,12 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         if (aboveMovingAverages) {
             score += 15;
         }
+        LocalDate afterHoursTradeDate =
+                marketCalendarPort.previousTradingDay(tradeDate);
+        reasons.add("AFTER_HOURS_TRADE_DATE_" + afterHoursTradeDate);
         AfterHoursScore afterHoursScore = scoreAfterHours(
                 seed.stock().stockCode(),
-                previousWeekday(tradeDate)
+                afterHoursTradeDate
         );
         score += afterHoursScore.scoreAdjustment();
         reasons.addAll(afterHoursScore.reasons());
@@ -402,13 +435,9 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         }
     }
 
-    private static LocalDate previousWeekday(LocalDate tradeDate) {
-        LocalDate previousDate = tradeDate.minusDays(1);
-        while (previousDate.getDayOfWeek() == DayOfWeek.SATURDAY
-                || previousDate.getDayOfWeek() == DayOfWeek.SUNDAY) {
-            previousDate = previousDate.minusDays(1);
-        }
-        return previousDate;
+    private static boolean isWeekday(LocalDate date) {
+        return date.getDayOfWeek() != DayOfWeek.SATURDAY
+                && date.getDayOfWeek() != DayOfWeek.SUNDAY;
     }
 
     private enum Source {
