@@ -1,0 +1,289 @@
+package seokhoon.trade.application.service;
+
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validation;
+import org.junit.jupiter.api.Test;
+import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
+import seokhoon.trade.application.port.in.EarlyMarketReportDataCompleteness;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyCandidateReport;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyParameterOverrides;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyPeriodReport;
+import seokhoon.trade.application.port.in.RunEarlyMarketStrategyBacktestCommand;
+import seokhoon.trade.application.port.out.EarlyMarketStrategyExperimentPort;
+import seokhoon.trade.config.EarlyMarketStrategyProperties;
+import seokhoon.trade.domain.strategy.EarlyMarketStrategyExperiment;
+import seokhoon.trade.domain.strategy.SignalType;
+
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class EarlyMarketStrategyBacktestServiceTest {
+    private static final LocalDate FROM = LocalDate.of(2026, 6, 1);
+    private static final LocalDate TO = LocalDate.of(2026, 6, 10);
+    private static final Instant CREATED_AT =
+            Instant.parse("2026-06-11T02:00:00Z");
+
+    @Test
+    void appliesPartialOverridesWithoutMutatingGlobalProperties() {
+        EarlyMarketStrategyProperties global =
+                new EarlyMarketStrategyProperties();
+        RecordingPort port = new RecordingPort();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        EarlyMarketStrategyBacktestService service = service(
+                report(3, 1),
+                port,
+                global,
+                registry
+        );
+        EarlyMarketStrategyParameterOverrides overrides =
+                new EarlyMarketStrategyParameterOverrides(
+                        null,
+                        new EarlyMarketStrategyParameterOverrides.Opening(
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                80,
+                                null
+                        ),
+                        new EarlyMarketStrategyParameterOverrides.FollowUp(
+                                new BigDecimal("-2.5"),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null
+                        ),
+                        null
+                );
+
+        var result = service.run(command(overrides));
+
+        assertThat(result.experiment().id()).isEqualTo(1L);
+        assertThat(castMap(
+                result.experiment().parameterSnapshot().get("opening")
+        ))
+                .containsEntry("entryThreshold", 80)
+                .containsEntry("maxCandidates", 3);
+        assertThat(castMap(
+                result.experiment().parameterSnapshot().get("followUp")
+        )).containsEntry(
+                "excludeDrawdownFromHigh",
+                new BigDecimal("-2.5")
+        );
+        assertThat(global.getOpening().getEntryThreshold()).isEqualTo(70);
+        assertThat(global.getFollowUp().getExcludeDrawdownFromHigh())
+                .isEqualByComparingTo("-2.0");
+        assertThat(result.warnings()).containsExactly(
+                "STORED_SIGNALS_NOT_RECALCULATED",
+                "PARAMETER_EFFECT_LIMITED_TO_REPORTING",
+                "MISSING_PERFORMANCE_ROWS"
+        );
+        assertThat(result.periodReportSummary().candidateCount()).isEqualTo(3);
+        assertThat(registry.find("tradeguard.early_market.backtest.count")
+                .tag("result", "saved")
+                .counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void rejectsInvalidFinalOverridesAndKeepsGlobalPropertiesUnchanged() {
+        EarlyMarketStrategyProperties global =
+                new EarlyMarketStrategyProperties();
+        RecordingPort port = new RecordingPort();
+        EarlyMarketStrategyBacktestService service = service(
+                report(3, 0),
+                port,
+                global,
+                new SimpleMeterRegistry()
+        );
+        EarlyMarketStrategyParameterOverrides overrides =
+                new EarlyMarketStrategyParameterOverrides(
+                        null,
+                        new EarlyMarketStrategyParameterOverrides.Opening(
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                101,
+                                0
+                        ),
+                        null,
+                        null
+                );
+
+        assertThatThrownBy(() -> service.run(command(overrides)))
+                .isInstanceOf(ConstraintViolationException.class);
+        assertThat(port.values).isEmpty();
+        assertThat(global.getOpening().getEntryThreshold()).isEqualTo(70);
+        assertThat(global.getOpening().getMaxCandidates()).isEqualTo(3);
+    }
+
+    @Test
+    void doesNotSaveWhenStoredPeriodHasNoData() {
+        RecordingPort port = new RecordingPort();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        EarlyMarketStrategyBacktestService service = service(
+                report(0, 0),
+                port,
+                new EarlyMarketStrategyProperties(),
+                registry
+        );
+
+        assertThatThrownBy(() -> service.run(command(null)))
+                .isInstanceOf(EarlyMarketStrategyExperimentNoDataException.class);
+        assertThat(port.values).isEmpty();
+        assertThat(registry.find("tradeguard.early_market.backtest.count")
+                .tag("result", "no_data")
+                .counter().count()).isEqualTo(1.0);
+    }
+
+    private static EarlyMarketStrategyBacktestService service(
+            EarlyMarketStrategyPeriodReport report,
+            RecordingPort port,
+            EarlyMarketStrategyProperties global,
+            SimpleMeterRegistry registry
+    ) {
+        return new EarlyMarketStrategyBacktestService(
+                (from, to) -> report,
+                port,
+                global,
+                new EarlyMarketStrategyParameterSupport(
+                        Validation.buildDefaultValidatorFactory().getValidator()
+                ),
+                new MicrometerOperationalMetricsAdapter(registry),
+                Clock.fixed(CREATED_AT, ZoneOffset.UTC)
+        );
+    }
+
+    private static RunEarlyMarketStrategyBacktestCommand command(
+            EarlyMarketStrategyParameterOverrides overrides
+    ) {
+        return new RunEarlyMarketStrategyBacktestCommand(
+                "override test",
+                FROM,
+                TO,
+                overrides
+        );
+    }
+
+    private static EarlyMarketStrategyPeriodReport report(
+            int candidateCount,
+            int missingPerformanceCount
+    ) {
+        int capturedCount = candidateCount - missingPerformanceCount;
+        EarlyMarketStrategyCandidateReport best = candidateCount == 0
+                ? null
+                : candidate(11L, "5.0");
+        EarlyMarketStrategyCandidateReport worst = candidateCount == 0
+                ? null
+                : candidate(12L, "-2.0");
+        return new EarlyMarketStrategyPeriodReport(
+                FROM,
+                TO,
+                candidateCount == 0 ? 0 : 2,
+                candidateCount,
+                capturedCount,
+                missingPerformanceCount,
+                candidateCount == 0 ? null : new BigDecimal("1.5000"),
+                candidateCount == 0 ? null : new BigDecimal("-1.0000"),
+                candidateCount == 0 ? null : new BigDecimal("50.0000"),
+                best,
+                worst,
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                new EarlyMarketReportDataCompleteness(
+                        candidateCount,
+                        capturedCount,
+                        missingPerformanceCount,
+                        capturedCount,
+                        capturedCount,
+                        capturedCount,
+                        capturedCount == 0 ? 0 : 1
+                )
+        );
+    }
+
+    private static EarlyMarketStrategyCandidateReport candidate(
+            long signalId,
+            String maxReturn
+    ) {
+        return new EarlyMarketStrategyCandidateReport(
+                signalId,
+                TO,
+                "STOCK" + signalId,
+                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                90,
+                null,
+                new BigDecimal(maxReturn),
+                new BigDecimal("-1.0"),
+                false,
+                List.of(),
+                List.of()
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object value) {
+        return (Map<String, Object>) value;
+    }
+
+    private static class RecordingPort
+            implements EarlyMarketStrategyExperimentPort {
+        private final List<EarlyMarketStrategyExperiment> values =
+                new ArrayList<>();
+
+        @Override
+        public EarlyMarketStrategyExperiment save(
+                EarlyMarketStrategyExperiment experiment
+        ) {
+            EarlyMarketStrategyExperiment saved =
+                    new EarlyMarketStrategyExperiment(
+                            (long) values.size() + 1,
+                            experiment.experimentName(),
+                            experiment.from(),
+                            experiment.to(),
+                            experiment.parameterSnapshot(),
+                            experiment.candidateCount(),
+                            experiment.performanceCapturedCount(),
+                            experiment.averageMaxReturnRate(),
+                            experiment.averageMaxDrawdownRate(),
+                            experiment.winRate(),
+                            experiment.bestSignalId(),
+                            experiment.worstSignalId(),
+                            experiment.createdAt()
+                    );
+            values.add(saved);
+            return saved;
+        }
+
+        @Override
+        public Optional<EarlyMarketStrategyExperiment> findById(long id) {
+            return values.stream()
+                    .filter(value -> value.id() == id)
+                    .findFirst();
+        }
+
+        @Override
+        public List<EarlyMarketStrategyExperiment> findRecent(int limit) {
+            return values.reversed().stream().limit(limit).toList();
+        }
+    }
+}

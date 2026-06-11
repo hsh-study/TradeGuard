@@ -337,6 +337,41 @@ curl 'http://localhost:8080/api/reports/early-market/experiments/compare?ids=1,2
 
 비교 API는 저장된 실험의 결과와 `parameterSnapshot`만 조회합니다. 기간 리포트를 다시 계산하거나 설정을 변경하지 않으며 모의 주문, 자동 주문, 실계좌 주문 또는 시장가 주문을 실행하지 않습니다.
 
+### 장초반 전략 백테스트 실행
+
+현재 설정을 복사한 임시 설정에 일부 파라미터를 override하고, 저장된 신호·성과 기준 기간 리포트와 실험 저장을 한 번에 수행합니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/reports/early-market/backtests' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "experimentName": "entry 80 and drawdown -2.5",
+    "from": "2026-06-01",
+    "to": "2026-06-10",
+    "parameterOverrides": {
+      "opening": {
+        "entryThreshold": 80,
+        "maxCandidates": 2
+      },
+      "followUp": {
+        "excludeDrawdownFromHigh": -2.5
+      }
+    }
+  }'
+```
+
+`parameterOverrides`와 네 하위 그룹 `preOpen`, `opening`, `followUp`, `priceAction`은 선택 사항입니다. 각 그룹에서도 필요한 필드만 전달하며 null 또는 미지정 필드는 현재 `EarlyMarketStrategyProperties` 값을 사용합니다. 최종 병합 설정은 기존 설정 validation을 모두 통과해야 합니다. 임시 설정은 요청 안에서만 사용되고 전역 Spring Bean이나 이후 scheduler 실행 설정을 변경하지 않습니다.
+
+응답은 저장된 `experiment`, 기간 리포트 핵심 값인 `periodReportSummary`, `warnings`를 제공합니다. 실험의 `parameterSnapshot`에는 override가 적용된 최종 설정 전체가 저장되므로 기존 실험 비교 API의 ID로 바로 사용할 수 있습니다.
+
+현재 백테스트는 과거 원천 시세로 신호를 재생성하는 백테스트가 아닙니다. 이미 저장된 신호, reason, follow-up, 성과를 그대로 집계하므로 다음 경고를 반환합니다.
+
+- `STORED_SIGNALS_NOT_RECALCULATED`: override로 과거 신호 점수나 후보를 다시 생성하지 않음
+- `PARAMETER_EFFECT_LIMITED_TO_REPORTING`: 현재 override 효과는 최종 parameter snapshot과 저장 데이터 기반 리포트 기록으로 제한됨
+- `MISSING_PERFORMANCE_ROWS`: 기간 후보 중 저장된 성과가 없는 행이 존재함
+
+후보가 없는 기간은 실험을 저장하지 않고 `404 EARLY_MARKET_STRATEGY_EXPERIMENT_NO_DATA`를 반환합니다. 이 API는 KIS 주문, 모의 주문, 자동 주문, 실계좌 주문 또는 시장가 주문을 실행하지 않습니다.
+
 거래 신호 조회:
 
 ```sh
@@ -528,6 +563,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.early_market.period_report.count`: `result=success|no_data|failure`
 - `tradeguard.early_market.experiment.count`: `result=saved|no_data|failure`
 - `tradeguard.early_market.experiment.compare.count`: `result=success|failure`
+- `tradeguard.early_market.backtest.count`: `result=saved|no_data|failure`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
