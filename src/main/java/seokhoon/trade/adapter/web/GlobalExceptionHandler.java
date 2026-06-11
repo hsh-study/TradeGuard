@@ -12,6 +12,8 @@ import seokhoon.trade.application.service.TradingSignalNotFoundException;
 import seokhoon.trade.application.service.OrderRequestNotFoundException;
 import seokhoon.trade.application.service.EarlyMarketPerformanceNotFoundException;
 import seokhoon.trade.application.service.EarlyMarketFollowUpResultNotFoundException;
+import seokhoon.trade.application.service.EarlyMarketStrategyExperimentNoDataException;
+import seokhoon.trade.application.service.EarlyMarketStrategyExperimentNotFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -45,6 +47,28 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse(
                         "EARLY_MARKET_FOLLOW_UP_RESULT_NOT_FOUND",
+                        exception.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(EarlyMarketStrategyExperimentNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleEarlyMarketStrategyExperimentNotFound(
+            EarlyMarketStrategyExperimentNotFoundException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse(
+                        "EARLY_MARKET_STRATEGY_EXPERIMENT_NOT_FOUND",
+                        exception.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(EarlyMarketStrategyExperimentNoDataException.class)
+    ResponseEntity<ErrorResponse> handleEarlyMarketStrategyExperimentNoData(
+            EarlyMarketStrategyExperimentNoDataException exception
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse(
+                        "EARLY_MARKET_STRATEGY_EXPERIMENT_NO_DATA",
                         exception.getMessage()
                 ));
     }

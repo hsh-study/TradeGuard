@@ -294,6 +294,33 @@ tradeguard.early-market.strategy.follow-up.caution-when-previous-high-not-broken
 
 이 설정은 분석 후보 점수와 follow-up 분류만 조정합니다. 설정 변경으로 자동 주문, 실계좌 주문 또는 시장가 주문이 활성화되지 않습니다.
 
+### 장초반 전략 파라미터 실험 저장
+
+현재 장초반 전략 설정과 기간 리포트 요약을 함께 저장:
+
+```sh
+curl -X POST 'http://localhost:8080/api/reports/early-market/experiments' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "experimentName": "entry threshold 80",
+    "from": "2026-06-01",
+    "to": "2026-06-10"
+  }'
+```
+
+저장된 실험 최신순 조회와 단건 조회:
+
+```sh
+curl 'http://localhost:8080/api/reports/early-market/experiments?limit=20'
+curl 'http://localhost:8080/api/reports/early-market/experiments/1'
+```
+
+POST는 기존 기간 리포트와 동일한 최대 90일 검증을 적용합니다. 후보가 한 건 이상인 기간 리포트가 성공한 경우에만 저장하며 후보가 없으면 `404 EARLY_MARKET_STRATEGY_EXPERIMENT_NO_DATA`를 반환합니다. `experimentName`은 필수이고 최대 100자입니다. 최신순 조회 `limit`은 기본 20, 허용 범위는 1~100입니다.
+
+`parameterSnapshot`은 저장 시점의 `preOpen`, `opening`, `followUp`, `priceAction` 설정 전체를 JSON 객체로 보관합니다. 함께 저장되는 결과는 후보 수, 성과 캡처 수, 평균 최대수익률, 평균 최대낙폭, 승률, 최고·최저 후보 signalId입니다. 기간 리포트 후보 상세와 민감정보는 저장하지 않습니다.
+
+실험 저장은 전략 검증 이력 기능입니다. 기간 리포트를 조회하고 요약을 저장할 뿐 모의 주문, 자동 주문, 실계좌 주문 또는 시장가 주문을 생성하지 않습니다.
+
 거래 신호 조회:
 
 ```sh
@@ -483,6 +510,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.early_market.price_action.count`: `result=sufficient|insufficient`
 - `tradeguard.early_market.report.count`: `result=success|no_data|failure`
 - `tradeguard.early_market.period_report.count`: `result=success|no_data|failure`
+- `tradeguard.early_market.experiment.count`: `result=saved|no_data|failure`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.

@@ -151,6 +151,14 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordEarlyMarketExperiment(String result) {
+        meterRegistry.counter(
+                "tradeguard.early_market.experiment.count",
+                "result", result
+        ).increment();
+    }
+
+    @Override
     public void recordEarlyMarketFollowUpPersist(String result) {
         meterRegistry.counter(
                 "tradeguard.early_market.follow_up.persist.count",
