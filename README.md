@@ -171,6 +171,8 @@ curl -X POST 'http://localhost:8080/api/scans/early-market/opening?tradeDate=202
 
 같은 거래일의 예비 신호를 snapshot으로 재평가합니다. VWAP 위 `+25`, 당일 고가권 `+20`, 누적 거래대금 충분 `+20`, VWAP 이탈 `-30`, 고가 대비 큰 이탈 `-20`을 적용하며 70점 이상만 최대 3개 저장합니다. 결과는 `signalType=EARLY_MARKET_ENTRY_CANDIDATE`입니다.
 
+저장된 `DailyPrice`에서 `MarketCalendarPort.previousTradingDay(tradeDate)`의 전일 고가를 조회하고, `IntradayBarPort`의 09:00~09:05 분봉으로 전일 고가 돌파와 시초가 지지를 추가 평가합니다. 구간 high가 전일 high 이상이면 `+15`, 아니면 `-10`이며 마지막 close가 첫 bar open 이상이면 `+10`, 아니면 `-15`입니다. 전일 일봉 또는 분봉이 없으면 감점하지 않고 `PRICE_ACTION_DATA_INSUFFICIENT`와 구체적인 누락 reason을 남깁니다.
+
 장초반 최종 후보는 기존 signalId 기반 지정가 모의 주문 API에서 사용할 수 있습니다. `EARLY_MARKET_PRE_SCAN`은 관찰 후보이므로 주문 요청이 거절됩니다. 08:30/09:05 스캔과 scheduler는 실제 주문을 생성하지 않습니다.
 
 09:20 장초반 후보 follow-up 수동 실행:
@@ -180,6 +182,8 @@ curl -X POST 'http://localhost:8080/api/scans/early-market/follow-up?tradeDate=2
 ```
 
 같은 거래일의 `EARLY_MARKET_ENTRY_CANDIDATE`를 별도 신호 저장 없이 재평가합니다. `IntradayBarPort`에서 09:05~09:20 1분봉을 조회하며 마지막 가격이 마지막 VWAP 아래이거나 구간 고점 대비 낙폭이 -2% 이하이면 `EXCLUDE`입니다. 구간 중 `close < vwap`이 있었지만 회복했거나 낙폭이 -1%~-2%이면 `CAUTION`, 그 외 VWAP과 고가권을 유지하면 `KEEP`입니다.
+
+동시에 09:00~09:20 가격 행동 feature를 계산합니다. 마지막 가격이 시초가 아래이면 기존 분류와 관계없이 `EXCLUDE`, 전일 고가를 돌파한 뒤 다시 아래로 내려오면 `CAUTION`, 아직 전일 고가를 돌파하지 못한 경우도 `CAUTION`입니다. 전일 고가 위를 유지하면 `PREVIOUS_HIGH_HELD`, 시초가 아래 눌림 뒤 회복하면 `PULLBACK_RECOVERED` reason을 남기며 기존 VWAP/낙폭 판단이 KEEP이면 유지합니다.
 
 분봉이 없거나 조회가 실패하면 `MarketSnapshotPort`로 fallback합니다. snapshot의 현재가, 당일 고가, VWAP으로 같은 기준을 적용하고 `SNAPSHOT_PROXY` reason을 남깁니다. 필요한 값이 부족하면 `DATA_INSUFFICIENT`와 함께 보수적으로 `CAUTION` 처리합니다.
 
@@ -395,6 +399,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.after_hours.lookup.count`: `result=found|not_found|failure`
 - `tradeguard.intraday_bar.lookup.count`: `result=found|not_found|failure`
 - `tradeguard.early_market.follow_up.count`: `decision=keep|caution|exclude`
+- `tradeguard.early_market.price_action.count`: `result=sufficient|insufficient`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
@@ -437,7 +442,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 
 - 실계좌 주문 기능은 구현하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
-- 08:30/09:05 장초반 후보 생성, 09:20 follow-up과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
+- 08:30/09:05 장초반 후보 생성, 전일 고가/시초가 지지 feature, 09:20 follow-up과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.
 - 시간외 데이터 연동은 fake/disabled 또는 설정 기반 KIS read-only 일별 시간외 시세 adapter만 사용합니다.
 - KIS 주문, 계좌, 잔고, 정정/취소 endpoint는 호출하지 않습니다.

@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import seokhoon.trade.application.port.in.CompressEarlyMarketOpeningUseCase;
 import seokhoon.trade.application.port.in.EarlyMarketCandidate;
+import seokhoon.trade.application.port.in.LoadEarlyMarketPriceActionFeaturesUseCase;
 import seokhoon.trade.application.port.in.EarlyMarketScanResult;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
@@ -17,11 +18,13 @@ import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
+import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -40,6 +43,7 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final TradingSignalPort tradingSignalPort;
     private final MarketSnapshotPort marketSnapshotPort;
+    private final LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase;
     private final NotificationPort notificationPort;
     private final Clock clock;
 
@@ -48,12 +52,14 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
             TradingSignalQueryPort tradingSignalQueryPort,
             TradingSignalPort tradingSignalPort,
             MarketSnapshotPort marketSnapshotPort,
+            LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
             NotificationPort notificationPort
     ) {
         this(
                 tradingSignalQueryPort,
                 tradingSignalPort,
                 marketSnapshotPort,
+                priceActionFeaturesUseCase,
                 notificationPort,
                 Clock.systemUTC()
         );
@@ -66,9 +72,28 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
             NotificationPort notificationPort,
             Clock clock
     ) {
+        this(
+                tradingSignalQueryPort,
+                tradingSignalPort,
+                marketSnapshotPort,
+                EarlyMarketOpeningCompressor::insufficientFeatures,
+                notificationPort,
+                clock
+        );
+    }
+
+    EarlyMarketOpeningCompressor(
+            TradingSignalQueryPort tradingSignalQueryPort,
+            TradingSignalPort tradingSignalPort,
+            MarketSnapshotPort marketSnapshotPort,
+            LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
+            NotificationPort notificationPort,
+            Clock clock
+    ) {
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.tradingSignalPort = tradingSignalPort;
         this.marketSnapshotPort = marketSnapshotPort;
+        this.priceActionFeaturesUseCase = priceActionFeaturesUseCase;
         this.notificationPort = notificationPort;
         this.clock = clock;
     }
@@ -124,15 +149,38 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
     private java.util.Optional<Selection> withSnapshot(TradingSignalRecord preScan) {
         try {
             return marketSnapshotPort.getSnapshot(preScan.stockCode())
-                    .map(snapshot -> score(preScan, snapshot));
+                    .map(snapshot -> score(
+                            preScan,
+                            snapshot,
+                            loadPriceActionFeatures(preScan)
+                    ));
         } catch (RuntimeException exception) {
             return java.util.Optional.empty();
         }
     }
 
+    private EarlyMarketPriceActionFeatures loadPriceActionFeatures(
+            TradingSignalRecord preScan
+    ) {
+        try {
+            return priceActionFeaturesUseCase.load(
+                    preScan.stockCode(),
+                    preScan.signalDate(),
+                    LocalTime.of(9, 5)
+            );
+        } catch (RuntimeException exception) {
+            return insufficientFeatures(
+                    preScan.stockCode(),
+                    preScan.signalDate(),
+                    LocalTime.of(9, 5)
+            );
+        }
+    }
+
     private static Selection score(
             TradingSignalRecord preScan,
-            IntradayMarketSnapshot snapshot
+            IntradayMarketSnapshot snapshot,
+            EarlyMarketPriceActionFeatures features
     ) {
         int score = BASE_SCORE;
         List<String> reasons = new ArrayList<>();
@@ -164,7 +212,43 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
         } else {
             reasons.add("ACCUMULATED_TRADING_VALUE_INSUFFICIENT");
         }
+        if (!features.dataSufficient()) {
+            reasons.add("PRICE_ACTION_DATA_INSUFFICIENT");
+            reasons.addAll(features.reasons());
+        } else {
+            if (Boolean.TRUE.equals(features.brokePreviousHigh())) {
+                score += 15;
+            } else {
+                score -= 10;
+            }
+            if (Boolean.TRUE.equals(features.heldOpeningPrice())) {
+                score += 10;
+            } else {
+                score -= 15;
+            }
+            reasons.addAll(features.reasons());
+        }
         return new Selection(preScan, score, reasons);
+    }
+
+    private static EarlyMarketPriceActionFeatures insufficientFeatures(
+            String stockCode,
+            LocalDate tradeDate,
+            LocalTime ignored
+    ) {
+        return new EarlyMarketPriceActionFeatures(
+                stockCode,
+                tradeDate,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                List.of("PRICE_ACTION_FEATURE_UNAVAILABLE")
+        );
     }
 
     private static BigDecimal highRatio(IntradayMarketSnapshot snapshot) {

@@ -10,6 +10,7 @@ import seokhoon.trade.application.port.out.NotificationPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.market.IntradayBar;
+import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
 
@@ -125,6 +126,57 @@ class EarlyMarketFollowUpServiceTest {
         assertThat(candidate.lastPrice()).isNull();
     }
 
+    @Test
+    void changesKeepToCautionWhenPriceFallsBackBelowPreviousHigh() {
+        var result = serviceWithFeatures(features(
+                true,
+                true,
+                false,
+                "101",
+                "100.5"
+        )).followUp(TRADE_DATE);
+
+        assertThat(result.candidates()).singleElement().satisfies(candidate -> {
+            assertThat(candidate.decision()).isEqualTo(EarlyMarketFollowUpDecision.CAUTION);
+            assertThat(candidate.reasons()).contains("PREVIOUS_HIGH_REENTRY_FAILED");
+        });
+    }
+
+    @Test
+    void excludesCandidateWhenOpeningPriceSupportFails() {
+        var result = serviceWithFeatures(features(
+                true,
+                false,
+                false,
+                "99",
+                "100.5"
+        )).followUp(TRADE_DATE);
+
+        assertThat(result.candidates()).singleElement().satisfies(candidate -> {
+            assertThat(candidate.decision()).isEqualTo(EarlyMarketFollowUpDecision.EXCLUDE);
+            assertThat(candidate.reasons()).contains("OPENING_SUPPORT_FAILED");
+        });
+    }
+
+    @Test
+    void keepsCandidateAfterRecoveredPullbackAndPreviousHighSupport() {
+        var result = serviceWithFeatures(features(
+                true,
+                true,
+                true,
+                "100",
+                "100.5"
+        )).followUp(TRADE_DATE);
+
+        assertThat(result.candidates()).singleElement().satisfies(candidate -> {
+            assertThat(candidate.decision()).isEqualTo(EarlyMarketFollowUpDecision.KEEP);
+            assertThat(candidate.reasons()).contains(
+                    "PULLBACK_RECOVERED",
+                    "PREVIOUS_HIGH_HELD"
+            );
+        });
+    }
+
     private static EarlyMarketFollowUpService service(
             List<TradingSignalRecord> signals,
             Map<String, List<IntradayBar>> bars,
@@ -136,9 +188,97 @@ class EarlyMarketFollowUpServiceTest {
                 (stockCode, tradeDate, from, to, interval) ->
                         bars.getOrDefault(stockCode, List.of()),
                 stockCode -> Optional.ofNullable(snapshots.get(stockCode)),
+                (stockCode, tradeDate, to) -> sufficientFeatures(
+                        stockCode,
+                        tradeDate,
+                        bars.getOrDefault(stockCode, List.of())
+                ),
                 notification,
                 OperationalMetricsPort.noop(),
                 CLOCK
+        );
+    }
+
+    private static EarlyMarketFollowUpService serviceWithFeatures(
+            EarlyMarketPriceActionFeatures features
+    ) {
+        List<IntradayBar> bars = List.of(
+                bar("005930", "09:05", "100", "101", "99", "100.5", "99")
+        );
+        return new EarlyMarketFollowUpService(
+                criteria -> List.of(signal(1L, "005930", 90)),
+                (stockCode, tradeDate, from, to, interval) -> bars,
+                stockCode -> Optional.empty(),
+                (stockCode, tradeDate, to) -> features,
+                message -> NotificationDeliveryResult.skipped("disabled"),
+                OperationalMetricsPort.noop(),
+                CLOCK
+        );
+    }
+
+    private static EarlyMarketPriceActionFeatures features(
+            boolean brokePreviousHigh,
+            boolean heldOpeningPrice,
+            boolean pullbackRecovered,
+            String previousHigh,
+            String lastPrice
+    ) {
+        return new EarlyMarketPriceActionFeatures(
+                "005930",
+                TRADE_DATE,
+                TRADE_DATE.minusDays(1),
+                new BigDecimal(previousHigh),
+                new BigDecimal("100"),
+                new BigDecimal(lastPrice),
+                brokePreviousHigh,
+                heldOpeningPrice,
+                pullbackRecovered,
+                true,
+                List.of(
+                        brokePreviousHigh
+                                ? "PREVIOUS_HIGH_BROKEN"
+                                : "PREVIOUS_HIGH_NOT_BROKEN",
+                        heldOpeningPrice
+                                ? "OPENING_PRICE_HELD"
+                                : "OPENING_PRICE_LOST"
+                )
+        );
+    }
+
+    private static EarlyMarketPriceActionFeatures sufficientFeatures(
+            String stockCode,
+            LocalDate tradeDate,
+            List<IntradayBar> bars
+    ) {
+        if (bars.isEmpty()) {
+            return new EarlyMarketPriceActionFeatures(
+                    stockCode,
+                    tradeDate,
+                    TRADE_DATE.minusDays(1),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    List.of("INTRADAY_BARS_UNAVAILABLE")
+            );
+        }
+        BigDecimal openingPrice = bars.getFirst().openPrice();
+        BigDecimal lastPrice = bars.getLast().closePrice();
+        return new EarlyMarketPriceActionFeatures(
+                stockCode,
+                tradeDate,
+                TRADE_DATE.minusDays(1),
+                new BigDecimal("90"),
+                openingPrice,
+                lastPrice,
+                true,
+                lastPrice.compareTo(openingPrice) >= 0,
+                false,
+                true,
+                List.of("PREVIOUS_HIGH_BROKEN", "OPENING_PRICE_HELD")
         );
     }
 

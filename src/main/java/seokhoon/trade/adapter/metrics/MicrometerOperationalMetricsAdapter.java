@@ -125,4 +125,12 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
                 "decision", decision
         ).increment();
     }
+
+    @Override
+    public void recordEarlyMarketPriceAction(String result) {
+        meterRegistry.counter(
+                "tradeguard.early_market.price_action.count",
+                "result", result
+        ).increment();
+    }
 }

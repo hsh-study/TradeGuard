@@ -8,6 +8,7 @@ import seokhoon.trade.application.port.in.EarlyMarketFollowUpCandidate;
 import seokhoon.trade.application.port.in.EarlyMarketFollowUpDecision;
 import seokhoon.trade.application.port.in.EarlyMarketFollowUpResult;
 import seokhoon.trade.application.port.in.FollowUpEarlyMarketCandidatesUseCase;
+import seokhoon.trade.application.port.in.LoadEarlyMarketPriceActionFeaturesUseCase;
 import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.IntradayBarPort;
 import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
@@ -20,6 +21,7 @@ import seokhoon.trade.application.port.out.TradingSignalQueryPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.market.BarInterval;
 import seokhoon.trade.domain.market.IntradayBar;
+import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
 import seokhoon.trade.domain.strategy.SignalType;
 
 import java.math.BigDecimal;
@@ -45,6 +47,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final IntradayBarPort intradayBarPort;
     private final MarketSnapshotPort marketSnapshotPort;
+    private final LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase;
     private final NotificationPort notificationPort;
     private final OperationalMetricsPort metricsPort;
     private final Clock clock;
@@ -54,6 +57,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
             TradingSignalQueryPort tradingSignalQueryPort,
             IntradayBarPort intradayBarPort,
             MarketSnapshotPort marketSnapshotPort,
+            LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
             NotificationPort notificationPort,
             OperationalMetricsPort metricsPort
     ) {
@@ -61,6 +65,7 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
                 tradingSignalQueryPort,
                 intradayBarPort,
                 marketSnapshotPort,
+                priceActionFeaturesUseCase,
                 notificationPort,
                 metricsPort,
                 Clock.systemUTC()
@@ -75,9 +80,30 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
             OperationalMetricsPort metricsPort,
             Clock clock
     ) {
+        this(
+                tradingSignalQueryPort,
+                intradayBarPort,
+                marketSnapshotPort,
+                EarlyMarketFollowUpService::insufficientFeatures,
+                notificationPort,
+                metricsPort,
+                clock
+        );
+    }
+
+    EarlyMarketFollowUpService(
+            TradingSignalQueryPort tradingSignalQueryPort,
+            IntradayBarPort intradayBarPort,
+            MarketSnapshotPort marketSnapshotPort,
+            LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
+            NotificationPort notificationPort,
+            OperationalMetricsPort metricsPort,
+            Clock clock
+    ) {
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.intradayBarPort = intradayBarPort;
         this.marketSnapshotPort = marketSnapshotPort;
+        this.priceActionFeaturesUseCase = priceActionFeaturesUseCase;
         this.notificationPort = notificationPort;
         this.metricsPort = metricsPort;
         this.clock = clock;
@@ -142,10 +168,28 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
 
     private EarlyMarketFollowUpCandidate evaluate(TradingSignalRecord signal) {
         List<IntradayBar> bars = loadBars(signal);
-        if (!bars.isEmpty()) {
-            return evaluateBars(signal, bars);
+        EarlyMarketFollowUpCandidate candidate = !bars.isEmpty()
+                ? evaluateBars(signal, bars)
+                : evaluateSnapshot(signal, loadSnapshot(signal.stockCode()));
+        return applyPriceAction(candidate, loadPriceActionFeatures(signal));
+    }
+
+    private EarlyMarketPriceActionFeatures loadPriceActionFeatures(
+            TradingSignalRecord signal
+    ) {
+        try {
+            return priceActionFeaturesUseCase.load(
+                    signal.stockCode(),
+                    signal.signalDate(),
+                    FOLLOW_UP_TO
+            );
+        } catch (RuntimeException exception) {
+            return insufficientFeatures(
+                    signal.stockCode(),
+                    signal.signalDate(),
+                    FOLLOW_UP_TO
+            );
         }
-        return evaluateSnapshot(signal, loadSnapshot(signal.stockCode()));
     }
 
     private List<IntradayBar> loadBars(TradingSignalRecord signal) {
@@ -284,6 +328,77 @@ public class EarlyMarketFollowUpService implements FollowUpEarlyMarketCandidates
                 high,
                 drawdown,
                 vwapBroken
+        );
+    }
+
+    private static EarlyMarketFollowUpCandidate applyPriceAction(
+            EarlyMarketFollowUpCandidate candidate,
+            EarlyMarketPriceActionFeatures features
+    ) {
+        List<String> reasons = new ArrayList<>(candidate.reasons());
+        EarlyMarketFollowUpDecision decision = candidate.decision();
+        if (!features.dataSufficient()) {
+            reasons.add("PRICE_ACTION_DATA_INSUFFICIENT");
+            reasons.addAll(features.reasons());
+            if (decision == EarlyMarketFollowUpDecision.KEEP) {
+                decision = EarlyMarketFollowUpDecision.CAUTION;
+            }
+        } else if (Boolean.FALSE.equals(features.heldOpeningPrice())) {
+            decision = EarlyMarketFollowUpDecision.EXCLUDE;
+            reasons.add("OPENING_SUPPORT_FAILED");
+            reasons.addAll(features.reasons());
+        } else {
+            if (Boolean.TRUE.equals(features.pullbackRecovered())) {
+                reasons.add("PULLBACK_RECOVERED");
+            }
+            if (Boolean.TRUE.equals(features.brokePreviousHigh())
+                    && features.lastPrice().compareTo(features.previousHigh()) >= 0) {
+                reasons.add("PREVIOUS_HIGH_HELD");
+            } else if (Boolean.TRUE.equals(features.brokePreviousHigh())) {
+                reasons.add("PREVIOUS_HIGH_REENTRY_FAILED");
+                if (decision == EarlyMarketFollowUpDecision.KEEP) {
+                    decision = EarlyMarketFollowUpDecision.CAUTION;
+                }
+            } else {
+                reasons.add("PREVIOUS_HIGH_NOT_BROKEN");
+                if (decision == EarlyMarketFollowUpDecision.KEEP) {
+                    decision = EarlyMarketFollowUpDecision.CAUTION;
+                }
+            }
+            features.reasons().stream()
+                    .filter(reason -> !reasons.contains(reason))
+                    .forEach(reasons::add);
+        }
+        return new EarlyMarketFollowUpCandidate(
+                candidate.signalId(),
+                candidate.stockCode(),
+                candidate.signalScore(),
+                decision,
+                List.copyOf(reasons),
+                candidate.lastPrice(),
+                candidate.highSince0905(),
+                candidate.drawdownFromHigh(),
+                candidate.vwapBroken()
+        );
+    }
+
+    private static EarlyMarketPriceActionFeatures insufficientFeatures(
+            String stockCode,
+            LocalDate tradeDate,
+            LocalTime ignored
+    ) {
+        return new EarlyMarketPriceActionFeatures(
+                stockCode,
+                tradeDate,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                List.of("PRICE_ACTION_FEATURE_UNAVAILABLE")
         );
     }
 

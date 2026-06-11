@@ -12,6 +12,7 @@ import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.strategy.SignalType;
 import seokhoon.trade.domain.strategy.TradingSignal;
 import seokhoon.trade.domain.strategy.TradingSignalStatus;
+import seokhoon.trade.domain.market.EarlyMarketPriceActionFeatures;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -47,7 +48,8 @@ class EarlyMarketOpeningCompressorTest {
             assertThat(signal.reasons()).contains(
                     "ABOVE_VWAP",
                     "NEAR_INTRADAY_HIGH",
-                    "ACCUMULATED_TRADING_VALUE_SUFFICIENT"
+                    "ACCUMULATED_TRADING_VALUE_SUFFICIENT",
+                    "PRICE_ACTION_DATA_INSUFFICIENT"
             );
         });
     }
@@ -63,6 +65,68 @@ class EarlyMarketOpeningCompressorTest {
 
         assertThat(result.selectedCount()).isZero();
         assertThat(store.saved).isEmpty();
+    }
+
+    @Test
+    void addsScoreForPreviousHighBreakAndOpeningPriceSupport() {
+        SignalStore store = new SignalStore();
+        store.preScans.add(preScan(1L, "005930"));
+        SnapshotPort snapshots = new SnapshotPort();
+        snapshots.add(snapshot("005930", "100", "95", "102", "40000000000"));
+        EarlyMarketOpeningCompressor compressor = new EarlyMarketOpeningCompressor(
+                store,
+                store,
+                snapshots,
+                (stockCode, tradeDate, to) -> features(
+                        stockCode,
+                        true,
+                        true,
+                        false
+                ),
+                message -> NotificationDeliveryResult.success(),
+                Clock.fixed(Instant.parse("2026-06-10T00:05:00Z"), ZoneOffset.UTC)
+        );
+
+        compressor.compress(TRADE_DATE, 3);
+
+        assertThat(store.saved).singleElement().satisfies(signal -> {
+            assertThat(signal.score()).isEqualTo(130);
+            assertThat(signal.reasons()).contains(
+                    "PREVIOUS_HIGH_BROKEN",
+                    "OPENING_PRICE_HELD"
+            );
+        });
+    }
+
+    @Test
+    void deductsScoreWhenPreviousHighIsNotBrokenAndOpeningPriceIsLost() {
+        SignalStore store = new SignalStore();
+        store.preScans.add(preScan(1L, "005930"));
+        SnapshotPort snapshots = new SnapshotPort();
+        snapshots.add(snapshot("005930", "100", "95", "102", "40000000000"));
+        EarlyMarketOpeningCompressor compressor = new EarlyMarketOpeningCompressor(
+                store,
+                store,
+                snapshots,
+                (stockCode, tradeDate, to) -> features(
+                        stockCode,
+                        false,
+                        false,
+                        false
+                ),
+                message -> NotificationDeliveryResult.success(),
+                Clock.fixed(Instant.parse("2026-06-10T00:05:00Z"), ZoneOffset.UTC)
+        );
+
+        compressor.compress(TRADE_DATE, 3);
+
+        assertThat(store.saved).singleElement().satisfies(signal -> {
+            assertThat(signal.score()).isEqualTo(80);
+            assertThat(signal.reasons()).contains(
+                    "PREVIOUS_HIGH_NOT_BROKEN",
+                    "OPENING_PRICE_LOST"
+            );
+        });
     }
 
     @Test
@@ -156,6 +220,34 @@ class EarlyMarketOpeningCompressorTest {
                 new BigDecimal(tradingValue),
                 new BigDecimal(vwap),
                 Instant.parse("2026-06-10T00:05:00Z")
+        );
+    }
+
+    private static EarlyMarketPriceActionFeatures features(
+            String stockCode,
+            boolean brokePreviousHigh,
+            boolean heldOpeningPrice,
+            boolean pullbackRecovered
+    ) {
+        return new EarlyMarketPriceActionFeatures(
+                stockCode,
+                TRADE_DATE,
+                TRADE_DATE.minusDays(1),
+                new BigDecimal("99"),
+                new BigDecimal("98"),
+                new BigDecimal("100"),
+                brokePreviousHigh,
+                heldOpeningPrice,
+                pullbackRecovered,
+                true,
+                List.of(
+                        brokePreviousHigh
+                                ? "PREVIOUS_HIGH_BROKEN"
+                                : "PREVIOUS_HIGH_NOT_BROKEN",
+                        heldOpeningPrice
+                                ? "OPENING_PRICE_HELD"
+                                : "OPENING_PRICE_LOST"
+                )
         );
     }
 
