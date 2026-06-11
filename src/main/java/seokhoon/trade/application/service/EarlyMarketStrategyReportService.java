@@ -16,6 +16,7 @@ import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.EarlyMarketPerformancePort;
 import seokhoon.trade.application.port.out.EarlyMarketFollowUpResultPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
+import seokhoon.trade.application.port.out.MarketCalendarPort;
 import seokhoon.trade.application.port.out.TradingSignalQueryPort;
 import seokhoon.trade.application.port.out.TradingSignalRecord;
 import seokhoon.trade.domain.market.EarlyMarketCandidatePerformance;
@@ -52,18 +53,36 @@ public class EarlyMarketStrategyReportService
     private final EarlyMarketPerformancePort performancePort;
     private final EarlyMarketFollowUpResultPort followUpResultPort;
     private final OperationalMetricsPort metricsPort;
+    private final MarketCalendarPort marketCalendarPort;
 
     @Autowired
     public EarlyMarketStrategyReportService(
             TradingSignalQueryPort tradingSignalQueryPort,
             EarlyMarketPerformancePort performancePort,
             EarlyMarketFollowUpResultPort followUpResultPort,
-            OperationalMetricsPort metricsPort
+            OperationalMetricsPort metricsPort,
+            MarketCalendarPort marketCalendarPort
     ) {
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.performancePort = performancePort;
         this.followUpResultPort = followUpResultPort;
         this.metricsPort = metricsPort;
+        this.marketCalendarPort = marketCalendarPort;
+    }
+
+    EarlyMarketStrategyReportService(
+            TradingSignalQueryPort tradingSignalQueryPort,
+            EarlyMarketPerformancePort performancePort,
+            EarlyMarketFollowUpResultPort followUpResultPort,
+            OperationalMetricsPort metricsPort
+    ) {
+        this(
+                tradingSignalQueryPort,
+                performancePort,
+                followUpResultPort,
+                metricsPort,
+                date -> date.getDayOfWeek().getValue() <= 5
+        );
     }
 
     EarlyMarketStrategyReportService(
@@ -75,7 +94,8 @@ public class EarlyMarketStrategyReportService
                 tradingSignalQueryPort,
                 performancePort,
                 EarlyMarketFollowUpResultPort.noop(),
-                metricsPort
+                metricsPort,
+                date -> date.getDayOfWeek().getValue() <= 5
         );
     }
 
@@ -123,7 +143,8 @@ public class EarlyMarketStrategyReportService
                     from,
                     to,
                     candidatesByTradeDate,
-                    allCandidates
+                    allCandidates,
+                    countTradingDays(from, to)
             );
             String metricResult = allCandidates.isEmpty() ? "no_data" : "success";
             metricsPort.recordEarlyMarketPeriodReport(metricResult);
@@ -293,7 +314,8 @@ public class EarlyMarketStrategyReportService
             LocalDate from,
             LocalDate to,
             Map<LocalDate, List<CandidateData>> candidatesByTradeDate,
-            List<CandidateData> candidates
+            List<CandidateData> candidates,
+            int tradingDayCount
     ) {
         int capturedCount = capturedCount(candidates);
         int returnSampleCount = returnSampleCount(candidates);
@@ -307,7 +329,7 @@ public class EarlyMarketStrategyReportService
         return new EarlyMarketStrategyPeriodReport(
                 from,
                 to,
-                candidatesByTradeDate.size(),
+                tradingDayCount,
                 candidates.size(),
                 capturedCount,
                 candidates.size() - capturedCount,
@@ -360,6 +382,12 @@ public class EarlyMarketStrategyReportService
                         winCount
                 )
         );
+    }
+
+    private int countTradingDays(LocalDate from, LocalDate to) {
+        return (int) from.datesUntil(to.plusDays(1))
+                .filter(marketCalendarPort::isTradingDay)
+                .count();
     }
 
     private static EarlyMarketStrategyDailySummary dailySummary(

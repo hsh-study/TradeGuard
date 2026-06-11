@@ -11,6 +11,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "tradeguard.market-calendar")
 public class KoreanMarketCalendarProperties {
     private List<LocalDate> holidays = new ArrayList<>();
+    private String krxEndpoint = "";
 
     public List<LocalDate> getHolidays() {
         return holidays;
@@ -18,5 +19,13 @@ public class KoreanMarketCalendarProperties {
 
     public void setHolidays(List<LocalDate> holidays) {
         this.holidays = holidays == null ? new ArrayList<>() : new ArrayList<>(holidays);
+    }
+
+    public String getKrxEndpoint() {
+        return krxEndpoint;
+    }
+
+    public void setKrxEndpoint(String krxEndpoint) {
+        this.krxEndpoint = krxEndpoint == null ? "" : krxEndpoint.trim();
     }
 }

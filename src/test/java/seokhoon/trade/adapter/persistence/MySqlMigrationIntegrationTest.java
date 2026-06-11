@@ -67,6 +67,7 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "early_market_strategy_experiments"
             )).isTrue();
+            assertThat(tableExists(jdbcTemplate, "market_calendar_days")).isTrue();
             assertThat(columnExists(
                     jdbcTemplate,
                     "trading_signal_status_histories",
@@ -151,6 +152,21 @@ class MySqlMigrationIntegrationTest {
                     "early_market_strategy_experiments",
                     "idx_early_market_experiment_created_at"
             )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "market_calendar_days",
+                    "idx_market_calendar_trade_date"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "market_calendar_days",
+                    "idx_market_calendar_trading_day"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "market_calendar_days",
+                    "idx_market_calendar_source"
+            )).isTrue();
             assertThat(foreignKeyExists(
                     jdbcTemplate,
                     "order_request_status_histories",
@@ -204,6 +220,10 @@ class MySqlMigrationIntegrationTest {
                     Boolean.class
             )).isFalse();
             assertThatThrownBy(() -> insertOrderRequest(jdbcTemplate))
+                    .isInstanceOf(DuplicateKeyException.class);
+
+            insertMarketCalendarDay(jdbcTemplate);
+            assertThatThrownBy(() -> insertMarketCalendarDay(jdbcTemplate))
                     .isInstanceOf(DuplicateKeyException.class);
 
             Instant failedAt = Instant.parse("2026-06-05T06:01:00Z");
@@ -347,6 +367,24 @@ class MySqlMigrationIntegrationTest {
                 null,
                 "CLOSING_BET",
                 Date.valueOf("2026-06-05")
+        );
+    }
+
+    private static void insertMarketCalendarDay(JdbcTemplate jdbcTemplate) {
+        jdbcTemplate.update(
+                """
+                        insert into market_calendar_days
+                            (market, trade_date, trading_day, holiday_name, source,
+                             created_at, updated_at)
+                        values (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                "KRX_STOCK",
+                Date.valueOf("2026-01-01"),
+                false,
+                "NEW_YEAR",
+                "FALLBACK_GENERATED",
+                Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")),
+                Timestamp.from(Instant.parse("2026-01-01T00:00:00Z"))
         );
     }
 }

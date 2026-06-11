@@ -149,7 +149,20 @@ TradingSignal 조회(CLOSING_BET_PRE_SCAN)
 
 `MarketRankingPort`와 `MarketSnapshotPort`는 기본 fake adapter를 사용한다. `tradeguard.market-data.realtime-provider=kis`일 때만 KIS 읽기 전용 순위/current price adapter가 Bean으로 등록된다.
 
-14:00/15:00 scheduler는 실행 전에 `MarketCalendarPort`를 조회한다. `ConfigurableKoreanMarketCalendarAdapter`는 주말과 `tradeguard.market-calendar.holidays`에 설정된 날짜를 비거래일로 판단한다. REST 수동 실행 경로는 calendar를 통과하지 않으므로 휴장일에도 호출할 수 있다.
+14:00/15:00 및 장초반 scheduler는 실행 전에 `MarketCalendarPort`를 조회한다. `ConfigurableKoreanMarketCalendarAdapter`는 `market_calendar_days`의 날짜별 값을 우선 사용하고, DB 범위가 없으면 주말과 `tradeguard.market-calendar.holidays` 기반 fallback을 사용한다. 이전/다음 거래일, 08:30 시간외 기준일과 기간 리포트 거래일 수도 같은 port를 사용한다. REST 수동 전략 실행 경로는 calendar를 통과하지 않으므로 휴장일에도 호출할 수 있다.
+
+```text
+MARKET_CALENDAR_SYNC (04:00 Asia/Seoul)
+  -> SyncMarketCalendarUseCase
+  -> KrxMarketCalendarSyncProvider
+       -> KrxMarketCalendarClient
+       -> KrxMarketCalendarParser
+  -> failure: FallbackGeneratedMarketCalendarSyncProvider
+  -> MarketCalendarDayPort
+  -> market_calendar_days
+```
+
+KRX 공식 endpoint는 adapter 내부에 격리한다. 기본 endpoint는 비어 있으며 안정적으로 검증된 endpoint가 없으면 공식 provider가 실패하고 fallback provider가 연중 전체 날짜를 생성한다. 외부 raw payload는 운영 info log에 남기지 않는다. 이 흐름은 주문 port를 호출하지 않는다.
 
 ### KIS 일봉 수집
 
@@ -173,6 +186,7 @@ KIS 시장 순위와 current price adapter도 같은 인증 정보를 사용하�
 | --- | --- | --- |
 | `stocks` | `stock_code` | 관심종목 |
 | `daily_prices` | `stock_code + trade_date` | 일봉 |
+| `market_calendar_days` | `market + trade_date` | KRX 주식시장 거래일/휴장일과 source |
 | `indicator_snapshots` | 생성 ID, `stock_code + trade_date` unique | 일자별 기술지표 |
 | `trading_signals` | 생성 ID, 전략+종목+일자+유형 unique | 전략 신호와 상태 |
 | `trading_signal_reasons` | signal FK | 점수 근거 목록 |

@@ -47,6 +47,10 @@ public interface OperationalMetricsPort {
 
     void recordEarlyMarketFollowUpPersist(String result);
 
+    void recordMarketCalendarSync(String result, int year);
+
+    void recordMarketCalendarLookup(String result, String market);
+
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
             @Override
@@ -136,6 +140,14 @@ public interface OperationalMetricsPort {
 
             @Override
             public void recordEarlyMarketFollowUpPersist(String result) {
+            }
+
+            @Override
+            public void recordMarketCalendarSync(String result, int year) {
+            }
+
+            @Override
+            public void recordMarketCalendarLookup(String result, String market) {
             }
         };
     }

@@ -10,6 +10,7 @@ import seokhoon.trade.application.service.EarlyMarketOpeningScheduler;
 import seokhoon.trade.application.service.EarlyMarketFollowUpScheduler;
 import seokhoon.trade.application.service.EarlyMarketPerformanceCaptureScheduler;
 import seokhoon.trade.application.service.EarlyMarketPreOpenScheduler;
+import seokhoon.trade.application.service.MarketCalendarSyncScheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -25,7 +26,8 @@ class SchedulerHealthIndicatorTest {
                 providerWith(mock(EarlyMarketOpeningScheduler.class)),
                 providerWith(mock(EarlyMarketFollowUpScheduler.class)),
                 providerWith(mock(EarlyMarketPerformanceCaptureScheduler.class)),
-                providerWith(mock(MarketCalendarPort.class))
+                providerWith(mock(MarketCalendarPort.class)),
+                providerWith(mock(MarketCalendarSyncScheduler.class))
         );
 
         var health = indicator.health();
@@ -38,7 +40,8 @@ class SchedulerHealthIndicatorTest {
                 .containsEntry("earlyMarketOpeningSchedulerLoaded", true)
                 .containsEntry("earlyMarketFollowUpSchedulerLoaded", true)
                 .containsEntry("earlyMarketPerformanceCaptureSchedulerLoaded", true)
-                .containsEntry("marketCalendarLoaded", true);
+                .containsEntry("marketCalendarLoaded", true)
+                .containsEntry("marketCalendarSyncSchedulerLoaded", true);
     }
 
     @Test
@@ -50,7 +53,8 @@ class SchedulerHealthIndicatorTest {
                 providerWith(mock(EarlyMarketOpeningScheduler.class)),
                 providerWith(mock(EarlyMarketFollowUpScheduler.class)),
                 providerWith(mock(EarlyMarketPerformanceCaptureScheduler.class)),
-                providerWith(mock(MarketCalendarPort.class))
+                providerWith(mock(MarketCalendarPort.class)),
+                providerWith(mock(MarketCalendarSyncScheduler.class))
         );
 
         assertThat(indicator.health().getStatus()).isEqualTo(Status.DOWN);

@@ -181,4 +181,23 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
                 "result", result
         ).increment();
     }
+
+    @Override
+    public void recordMarketCalendarSync(String result, int year) {
+        meterRegistry.counter(
+                "tradeguard.market_calendar.sync.count",
+                "result", result,
+                "year", Integer.toString(year),
+                "market", "KRX_STOCK"
+        ).increment();
+    }
+
+    @Override
+    public void recordMarketCalendarLookup(String result, String market) {
+        meterRegistry.counter(
+                "tradeguard.market_calendar.lookup.count",
+                "result", result,
+                "market", market
+        ).increment();
+    }
 }

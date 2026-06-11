@@ -340,7 +340,7 @@ class EarlyMarketStrategyReportServiceTest {
                 TRADE_DATE
         );
 
-        assertThat(report.tradingDayCount()).isZero();
+        assertThat(report.tradingDayCount()).isEqualTo(3);
         assertThat(report.candidateCount()).isZero();
         assertThat(report.winRate()).isNull();
         assertThat(report.byTradeDate()).isEmpty();

@@ -42,7 +42,7 @@ KIS 분봉 adapter는 공식 `주식당일분봉조회[v1_국내주식-022]`의 
 ./gradlew test
 ```
 
-테스트는 H2 MySQL mode에서 Flyway migration과 Hibernate schema validation을 검증합니다. Docker가 사용 가능하면 `MySqlMigrationIntegrationTest`가 MySQL Testcontainers로 V1 migration과 핵심 unique constraint도 검증합니다.
+테스트는 H2 MySQL mode에서 Flyway migration과 Hibernate schema validation을 검증합니다. Docker가 사용 가능하면 `MySqlMigrationIntegrationTest`가 MySQL Testcontainers로 V1~V11 migration과 핵심 unique constraint도 검증합니다.
 
 로컬 자격증명으로 KIS 읽기 전용 smoke test를 실행하려면:
 
@@ -82,13 +82,24 @@ KIS_AFTER_HOURS_SMOKE_TEST_ENABLED=true ./gradlew test \
 
 기본 종목은 삼성전자 `005930`이며 `KIS_AFTER_HOURS_SMOKE_TEST_STOCK_CODE`로 변경할 수 있습니다. 앱키나 앱시크릿이 없으면 skip됩니다. 조회일은 현재 직전 평일이며 공휴일 직후에는 데이터가 없어 실패할 수 있습니다. 시간외 시세 endpoint만 호출하며 주문, 계좌, 잔고, 정정/취소 API는 호출하지 않습니다.
 
-한국 시장 휴장일은 쉼표로 구분한 ISO 날짜로 설정합니다.
+한국 시장 calendar는 `market_calendar_days`에 연중 모든 날짜를 저장합니다. 조회 우선순위는 DB, 주말과 `MARKET_CALENDAR_HOLIDAYS` 기반 fallback 순서입니다. 수동 휴장일은 쉼표로 구분한 ISO 날짜로 설정합니다.
 
 ```sh
 MARKET_CALENDAR_HOLIDAYS=2026-01-01,2026-02-17,2026-02-18
 ```
 
-`MarketCalendarPort`는 주말과 설정 휴일을 비거래일로 판단하고 `previousTradingDay`와 `nextTradingDay` 계산에서도 건너뜁니다. 14:00/15:00 및 장초반 08:30/09:05/09:31 scheduler는 비거래일에 use case를 호출하지 않습니다. KRX 공식 휴장일 자동 동기화는 아직 없으므로 연도별 공휴일과 임시휴장일을 이 설정에 반영해야 합니다.
+DB에 날짜가 있으면 `MarketCalendarPort`는 저장된 `tradingDay`를 사용합니다. DB 범위가 없거나 불완전하면 warning log를 남기고 주말과 `MARKET_CALENDAR_HOLIDAYS`를 사용합니다. 14:00/15:00 및 장초반 08:30/09:05/09:20/09:31 scheduler skip, 08:30 시간외 기준일, 이전/다음 거래일과 기간 리포트의 `tradingDayCount`가 같은 calendar를 사용합니다.
+
+Calendar 동기화:
+
+```sh
+curl -X POST 'http://localhost:8080/api/market-calendar/sync?year=2026'
+curl 'http://localhost:8080/api/market-calendar/days?from=2026-01-01&to=2026-12-31'
+```
+
+동기화 응답은 `syncedCount`, `tradingDayCount`, `holidayCount`, `source`, `warnings`를 반환합니다. `source`는 `KRX_OFFICIAL` 또는 `FALLBACK_GENERATED`입니다.
+
+현재 KRX 정보데이터시스템에는 운영 코드에서 직접 의존할 수 있는 안정적인 무인증 calendar endpoint가 명확히 문서화되어 있지 않습니다. 따라서 `KrxMarketCalendarSyncProvider`의 client/parser 경계는 구현했지만 기본 `MARKET_CALENDAR_KRX_ENDPOINT`는 비어 있습니다. `{year}` placeholder를 포함한 검증된 JSON endpoint를 운영자가 설정하지 않으면 공식 호출은 명시적으로 실패하고, 주말, 수동 휴일, 5월 1일, 연말 최종 영업일 휴장을 반영한 `FALLBACK_GENERATED` calendar가 저장됩니다. fallback은 법정 공휴일과 임시 휴장일을 자동 판별하지 않으므로 `MARKET_CALENDAR_HOLIDAYS`를 manual override로 계속 관리해야 합니다.
 
 거래일 계산 운영 확인:
 
@@ -503,6 +514,7 @@ curl 'http://localhost:8080/actuator/metrics'
 
 - `liveness`: Spring 애플리케이션 생존 상태만 확인한다.
 - `readiness`: 애플리케이션 readiness, DB, Flyway, KIS read-only 설정, Discord 설정, 14:00/15:00 및 장초반 08:30/09:05/09:20/09:31 scheduler와 시장 calendar bean을 확인한다.
+- `marketCalendar`: 현재 연도 DB calendar가 없으면 fallback 사용 가능 상태인 `UNKNOWN`, DB calendar와 향후 30일 내 거래일이 있으면 `UP`, 향후 거래일이 없으면 `DOWN`이다.
 - DB는 Spring Boot 기본 DataSource health를 사용한다.
 - Flyway pending migration이 있으면 `flywayMigration`이 `DOWN`이다. migration 자체가 실패하면 애플리케이션 시작이 실패하므로 readiness endpoint가 열리지 않는다.
 - KIS provider가 `fake`이면 `UP`, `kis`이면서 자격증명이 없으면 `UNKNOWN`, 자격증명이 구성되면 설정 기준 `UP`이다.
@@ -512,7 +524,7 @@ curl 'http://localhost:8080/actuator/metrics'
 
 ## Scheduler 실행 이력
 
-14:00 예비 스캔, 15:00 최종 리뷰, 장초반 08:30/09:05 스캔, 09:20 follow-up 및 09:31 성과 캡처의 자동 scheduler 실행 이력을 조회할 수 있습니다.
+14:00 예비 스캔, 15:00 최종 리뷰, 장초반 08:30/09:05 스캔, 09:20 follow-up, 09:31 성과 캡처와 calendar 동기화의 자동 scheduler 실행 이력을 조회할 수 있습니다.
 
 ```sh
 curl 'http://localhost:8080/api/scheduler-executions'
@@ -565,6 +577,8 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.early_market.experiment.compare.count`: `result=success|failure`
 - `tradeguard.early_market.backtest.count`: `result=saved|no_data|failure`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
+- `tradeguard.market_calendar.sync.count`: `result=success|fallback|failure`, `year`, `market`
+- `tradeguard.market_calendar.lookup.count`: `result=db|fallback|not_found`, `market`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
 
@@ -572,8 +586,11 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `EARLY_MARKET_OPENING_905`
 - `EARLY_MARKET_FOLLOW_UP_920`
 - `EARLY_MARKET_PERFORMANCE_CAPTURE_930`
+- `MARKET_CALENDAR_SYNC`
 
 장초반 scheduler는 평일 Asia/Seoul 기준 08:30, 09:05, 09:20, 09:31에 실행하며 `MarketCalendarPort`가 비거래일로 판단하면 `SKIPPED` 이력을 남깁니다. 거래일에는 `STARTED` 후 `SUCCEEDED` 또는 `FAILED`로 전환하고 후보 또는 캡처 수와 Discord 전송 여부를 저장합니다.
+
+`MARKET_CALENDAR_SYNC`는 매일 Asia/Seoul 04:00에 현재 연도와 다음 연도의 DB 데이터 존재 여부를 확인합니다. 둘 다 있으면 `CALENDAR_YEARS_ALREADY_EXIST`로 skip하고, 누락 연도만 동기화합니다. 실행 이력의 `scannedCount`와 `selectedCount`는 저장 대상으로 처리한 날짜 수이며 `notificationSent=false`입니다. Calendar 동기화는 분석용 기준일 데이터만 갱신하며 자동 주문을 실행하지 않습니다.
 
 개별 metric 조회 예시:
 

@@ -4,9 +4,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
+import seokhoon.trade.application.port.out.MarketCalendarDayPort;
+import seokhoon.trade.application.port.out.OperationalMetricsPort;
+import seokhoon.trade.domain.market.MarketCalendarDay;
+import seokhoon.trade.domain.market.MarketCalendarSource;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -75,6 +80,37 @@ class ConfigurableKoreanMarketCalendarAdapterTest {
     }
 
     @Test
+    void usesStoredHolidayAndTradingDayBeforeFallback() {
+        InMemoryCalendarDayPort port = new InMemoryCalendarDayPort(List.of(
+                day(LocalDate.of(2026, 6, 5), false),
+                day(LocalDate.of(2026, 6, 6), true)
+        ));
+        ConfigurableKoreanMarketCalendarAdapter calendar =
+                calendar(List.of(), port);
+
+        assertThat(calendar.isTradingDay(LocalDate.of(2026, 6, 5))).isFalse();
+        assertThat(calendar.isTradingDay(LocalDate.of(2026, 6, 6))).isTrue();
+    }
+
+    @Test
+    void usesCompleteStoredRangeForPreviousAndNextTradingDay() {
+        InMemoryCalendarDayPort port = new InMemoryCalendarDayPort(List.of(
+                day(LocalDate.of(2026, 6, 5), true),
+                day(LocalDate.of(2026, 6, 6), false),
+                day(LocalDate.of(2026, 6, 7), false),
+                day(LocalDate.of(2026, 6, 8), false),
+                day(LocalDate.of(2026, 6, 9), true)
+        ));
+        ConfigurableKoreanMarketCalendarAdapter calendar =
+                calendar(List.of(), port);
+
+        assertThat(calendar.previousTradingDay(LocalDate.of(2026, 6, 9)))
+                .isEqualTo(LocalDate.of(2026, 6, 5));
+        assertThat(calendar.nextTradingDay(LocalDate.of(2026, 6, 5)))
+                .isEqualTo(LocalDate.of(2026, 6, 9));
+    }
+
+    @Test
     void parsesConfiguredHolidayProperty() {
         new ApplicationContextRunner()
                 .withUserConfiguration(CalendarPropertiesConfiguration.class)
@@ -95,6 +131,76 @@ class ConfigurableKoreanMarketCalendarAdapterTest {
         KoreanMarketCalendarProperties properties = new KoreanMarketCalendarProperties();
         properties.setHolidays(holidays);
         return new ConfigurableKoreanMarketCalendarAdapter(properties);
+    }
+
+    private static ConfigurableKoreanMarketCalendarAdapter calendar(
+            List<LocalDate> holidays,
+            MarketCalendarDayPort port
+    ) {
+        KoreanMarketCalendarProperties properties = new KoreanMarketCalendarProperties();
+        properties.setHolidays(holidays);
+        return new ConfigurableKoreanMarketCalendarAdapter(
+                properties,
+                port,
+                OperationalMetricsPort.noop()
+        );
+    }
+
+    private static MarketCalendarDay day(LocalDate date, boolean tradingDay) {
+        return new MarketCalendarDay(
+                MarketCalendarDay.KRX_STOCK,
+                date,
+                tradingDay,
+                tradingDay ? null : "HOLIDAY",
+                MarketCalendarSource.KRX_OFFICIAL
+        );
+    }
+
+    private static class InMemoryCalendarDayPort implements MarketCalendarDayPort {
+        private final List<MarketCalendarDay> days;
+
+        private InMemoryCalendarDayPort(List<MarketCalendarDay> days) {
+            this.days = days;
+        }
+
+        @Override
+        public void upsertAll(List<MarketCalendarDay> days) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Optional<MarketCalendarDay> findByDate(LocalDate date) {
+            return days.stream().filter(day -> day.date().equals(date)).findFirst();
+        }
+
+        @Override
+        public List<MarketCalendarDay> findBetween(LocalDate from, LocalDate to) {
+            return days.stream()
+                    .filter(day -> !day.date().isBefore(from))
+                    .filter(day -> !day.date().isAfter(to))
+                    .toList();
+        }
+
+        @Override
+        public boolean existsByYear(int year) {
+            return days.stream().anyMatch(day -> day.date().getYear() == year);
+        }
+
+        @Override
+        public Optional<MarketCalendarDay> findPreviousTradingDay(LocalDate date) {
+            return days.stream()
+                    .filter(MarketCalendarDay::tradingDay)
+                    .filter(day -> day.date().isBefore(date))
+                    .max(java.util.Comparator.comparing(MarketCalendarDay::date));
+        }
+
+        @Override
+        public Optional<MarketCalendarDay> findNextTradingDay(LocalDate date) {
+            return days.stream()
+                    .filter(MarketCalendarDay::tradingDay)
+                    .filter(day -> day.date().isAfter(date))
+                    .min(java.util.Comparator.comparing(MarketCalendarDay::date));
+        }
     }
 
     @Configuration(proxyBeanMethods = false)

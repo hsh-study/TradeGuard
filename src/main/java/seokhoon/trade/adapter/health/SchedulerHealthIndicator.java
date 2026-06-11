@@ -11,6 +11,7 @@ import seokhoon.trade.application.service.EarlyMarketOpeningScheduler;
 import seokhoon.trade.application.service.EarlyMarketFollowUpScheduler;
 import seokhoon.trade.application.service.EarlyMarketPerformanceCaptureScheduler;
 import seokhoon.trade.application.service.EarlyMarketPreOpenScheduler;
+import seokhoon.trade.application.service.MarketCalendarSyncScheduler;
 
 @Component("scheduler")
 public class SchedulerHealthIndicator implements HealthIndicator {
@@ -22,6 +23,7 @@ public class SchedulerHealthIndicator implements HealthIndicator {
     private final ObjectProvider<EarlyMarketPerformanceCaptureScheduler>
             earlyPerformanceCaptureScheduler;
     private final ObjectProvider<MarketCalendarPort> marketCalendar;
+    private final ObjectProvider<MarketCalendarSyncScheduler> calendarSyncScheduler;
 
     public SchedulerHealthIndicator(
             ObjectProvider<ClosingBetCandidateScanScheduler> scanScheduler,
@@ -31,7 +33,8 @@ public class SchedulerHealthIndicator implements HealthIndicator {
             ObjectProvider<EarlyMarketFollowUpScheduler> earlyFollowUpScheduler,
             ObjectProvider<EarlyMarketPerformanceCaptureScheduler>
                     earlyPerformanceCaptureScheduler,
-            ObjectProvider<MarketCalendarPort> marketCalendar
+            ObjectProvider<MarketCalendarPort> marketCalendar,
+            ObjectProvider<MarketCalendarSyncScheduler> calendarSyncScheduler
     ) {
         this.scanScheduler = scanScheduler;
         this.reviewScheduler = reviewScheduler;
@@ -40,6 +43,7 @@ public class SchedulerHealthIndicator implements HealthIndicator {
         this.earlyFollowUpScheduler = earlyFollowUpScheduler;
         this.earlyPerformanceCaptureScheduler = earlyPerformanceCaptureScheduler;
         this.marketCalendar = marketCalendar;
+        this.calendarSyncScheduler = calendarSyncScheduler;
     }
 
     @Override
@@ -52,6 +56,7 @@ public class SchedulerHealthIndicator implements HealthIndicator {
         boolean earlyPerformanceCaptureLoaded =
                 earlyPerformanceCaptureScheduler.getIfAvailable() != null;
         boolean calendarLoaded = marketCalendar.getIfAvailable() != null;
+        boolean calendarSyncLoaded = calendarSyncScheduler.getIfAvailable() != null;
         Health.Builder builder = scanLoaded
                 && reviewLoaded
                 && earlyPreOpenLoaded
@@ -59,6 +64,7 @@ public class SchedulerHealthIndicator implements HealthIndicator {
                 && earlyFollowUpLoaded
                 && earlyPerformanceCaptureLoaded
                 && calendarLoaded
+                && calendarSyncLoaded
                 ? Health.up()
                 : Health.down();
         return builder
@@ -72,6 +78,7 @@ public class SchedulerHealthIndicator implements HealthIndicator {
                         earlyPerformanceCaptureLoaded
                 )
                 .withDetail("marketCalendarLoaded", calendarLoaded)
+                .withDetail("marketCalendarSyncSchedulerLoaded", calendarSyncLoaded)
                 .build();
     }
 }
