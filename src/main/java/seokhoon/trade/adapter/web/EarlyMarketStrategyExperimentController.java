@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import seokhoon.trade.application.port.in.CreateEarlyMarketStrategyExperimentCommand;
 import seokhoon.trade.application.port.in.CreateEarlyMarketStrategyExperimentUseCase;
+import seokhoon.trade.application.port.in.CompareEarlyMarketStrategyExperimentsUseCase;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyExperimentComparison;
 import seokhoon.trade.application.port.in.LoadEarlyMarketStrategyExperimentsUseCase;
 import seokhoon.trade.domain.strategy.EarlyMarketStrategyExperiment;
 
@@ -26,13 +28,16 @@ import java.util.List;
 public class EarlyMarketStrategyExperimentController {
     private final CreateEarlyMarketStrategyExperimentUseCase createUseCase;
     private final LoadEarlyMarketStrategyExperimentsUseCase loadUseCase;
+    private final CompareEarlyMarketStrategyExperimentsUseCase compareUseCase;
 
     public EarlyMarketStrategyExperimentController(
             CreateEarlyMarketStrategyExperimentUseCase createUseCase,
-            LoadEarlyMarketStrategyExperimentsUseCase loadUseCase
+            LoadEarlyMarketStrategyExperimentsUseCase loadUseCase,
+            CompareEarlyMarketStrategyExperimentsUseCase compareUseCase
     ) {
         this.createUseCase = createUseCase;
         this.loadUseCase = loadUseCase;
+        this.compareUseCase = compareUseCase;
     }
 
     @PostMapping
@@ -52,6 +57,13 @@ public class EarlyMarketStrategyExperimentController {
             @RequestParam(defaultValue = "20") int limit
     ) {
         return loadUseCase.findRecent(limit);
+    }
+
+    @GetMapping("/compare")
+    EarlyMarketStrategyExperimentComparison compare(
+            @RequestParam(name = "ids") List<Long> experimentIds
+    ) {
+        return compareUseCase.compare(experimentIds);
     }
 
     @GetMapping("/{id}")

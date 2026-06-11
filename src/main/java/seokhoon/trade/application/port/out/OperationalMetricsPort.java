@@ -41,6 +41,8 @@ public interface OperationalMetricsPort {
 
     void recordEarlyMarketExperiment(String result);
 
+    void recordEarlyMarketExperimentCompare(String result);
+
     void recordEarlyMarketFollowUpPersist(String result);
 
     static OperationalMetricsPort noop() {
@@ -120,6 +122,10 @@ public interface OperationalMetricsPort {
 
             @Override
             public void recordEarlyMarketExperiment(String result) {
+            }
+
+            @Override
+            public void recordEarlyMarketExperimentCompare(String result) {
             }
 
             @Override

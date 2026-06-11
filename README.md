@@ -321,6 +321,22 @@ POST는 기존 기간 리포트와 동일한 최대 90일 검증을 적용합니
 
 실험 저장은 전략 검증 이력 기능입니다. 기간 리포트를 조회하고 요약을 저장할 뿐 모의 주문, 자동 주문, 실계좌 주문 또는 시장가 주문을 생성하지 않습니다.
 
+저장된 장초반 전략 실험 비교:
+
+```sh
+curl 'http://localhost:8080/api/reports/early-market/experiments/compare?ids=1,2,3'
+```
+
+`ids`는 필수이며 중복 없는 실험 ID를 2개 이상 10개 이하로 전달해야 합니다. 존재하지 않는 ID가 하나라도 있으면 `404 EARLY_MARKET_STRATEGY_EXPERIMENT_NOT_FOUND`를 반환합니다. 응답은 요청 ID 순서의 실험별 저장 결과와 현재 비교 시각, 다음 세 우수 실험을 제공합니다.
+
+- `bestByWinRate`: 저장된 `winRate`가 가장 높은 실험
+- `bestByAverageMaxReturnRate`: 저장된 평균 최대수익률이 가장 높은 실험
+- `bestByAverageMaxDrawdownRate`: 저장된 평균 최대낙폭이 가장 큰 수치인 실험. 예를 들어 `-0.8%`가 `-2.0%`보다 우수
+
+각 지표가 `null`인 실험은 해당 best 선정 표본에서 제외합니다. 동률이면 요청 ID 목록에서 먼저 나온 실험을 선택합니다. 비교 기간의 `from` 또는 `to`가 하나라도 다르면 notes에 `DIFFERENT_PERIODS`, 최대 후보 수가 최소 후보 수의 2배 이상이면 `DIFFERENT_SAMPLE_SIZE`를 추가합니다.
+
+비교 API는 저장된 실험의 결과와 `parameterSnapshot`만 조회합니다. 기간 리포트를 다시 계산하거나 설정을 변경하지 않으며 모의 주문, 자동 주문, 실계좌 주문 또는 시장가 주문을 실행하지 않습니다.
+
 거래 신호 조회:
 
 ```sh
@@ -511,6 +527,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.early_market.report.count`: `result=success|no_data|failure`
 - `tradeguard.early_market.period_report.count`: `result=success|no_data|failure`
 - `tradeguard.early_market.experiment.count`: `result=saved|no_data|failure`
+- `tradeguard.early_market.experiment.compare.count`: `result=success|failure`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.

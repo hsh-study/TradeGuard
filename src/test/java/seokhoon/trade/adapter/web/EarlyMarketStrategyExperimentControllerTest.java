@@ -6,8 +6,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import seokhoon.trade.application.port.in.CreateEarlyMarketStrategyExperimentCommand;
 import seokhoon.trade.application.port.in.CreateEarlyMarketStrategyExperimentUseCase;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyExperimentComparison;
+import seokhoon.trade.application.port.in.EarlyMarketStrategyExperimentComparisonItem;
 import seokhoon.trade.application.port.in.LoadEarlyMarketStrategyExperimentsUseCase;
 import seokhoon.trade.application.service.EarlyMarketStrategyExperimentNoDataException;
+import seokhoon.trade.application.service.EarlyMarketStrategyExperimentNotFoundException;
 import seokhoon.trade.domain.strategy.EarlyMarketStrategyExperiment;
 
 import java.math.BigDecimal;
@@ -28,7 +31,8 @@ class EarlyMarketStrategyExperimentControllerTest {
         EarlyMarketStrategyExperimentController controller =
                 new EarlyMarketStrategyExperimentController(
                         command -> experiment,
-                        loadUseCase(experiment)
+                        loadUseCase(experiment),
+                        ids -> comparison(experiment)
                 );
         MockMvc mockMvc = mockMvc(controller);
 
@@ -68,7 +72,8 @@ class EarlyMarketStrategyExperimentControllerTest {
         EarlyMarketStrategyExperimentController controller =
                 new EarlyMarketStrategyExperimentController(
                         createUseCase,
-                        loadUseCase(experiment())
+                        loadUseCase(experiment()),
+                        ids -> comparison(experiment())
                 );
 
         mockMvc(controller).perform(
@@ -84,6 +89,56 @@ class EarlyMarketStrategyExperimentControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(
                         "EARLY_MARKET_STRATEGY_EXPERIMENT_NO_DATA"
+                ));
+    }
+
+    @Test
+    void comparesCommaSeparatedExperimentIds() throws Exception {
+        EarlyMarketStrategyExperiment experiment = experiment();
+        EarlyMarketStrategyExperimentController controller =
+                new EarlyMarketStrategyExperimentController(
+                        command -> experiment,
+                        loadUseCase(experiment),
+                        ids -> {
+                            org.assertj.core.api.Assertions.assertThat(ids)
+                                    .containsExactly(1L, 2L, 3L);
+                            return comparison(experiment);
+                        }
+                );
+
+        mockMvc(controller).perform(
+                        get("/api/reports/early-market/experiments/compare")
+                                .param("ids", "1,2,3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.experimentIds[0]").value(1))
+                .andExpect(jsonPath("$.bestByWinRate.id").value(1))
+                .andExpect(jsonPath("$.notes[0]").value("DIFFERENT_PERIODS"));
+    }
+
+    @Test
+    void validatesCompareIdsAndReturnsNotFoundForMissingExperiment()
+            throws Exception {
+        EarlyMarketStrategyExperiment experiment = experiment();
+        EarlyMarketStrategyExperimentController controller =
+                new EarlyMarketStrategyExperimentController(
+                        command -> experiment,
+                        loadUseCase(experiment),
+                        ids -> {
+                            throw new EarlyMarketStrategyExperimentNotFoundException(
+                                    99L
+                            );
+                        }
+                );
+        MockMvc mockMvc = mockMvc(controller);
+
+        mockMvc.perform(get("/api/reports/early-market/experiments/compare"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/reports/early-market/experiments/compare")
+                        .param("ids", "1,99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(
+                        "EARLY_MARKET_STRATEGY_EXPERIMENT_NOT_FOUND"
                 ));
     }
 
@@ -126,6 +181,35 @@ class EarlyMarketStrategyExperimentControllerTest {
                 11L,
                 12L,
                 Instant.parse("2026-06-11T00:00:00Z")
+        );
+    }
+
+    private static EarlyMarketStrategyExperimentComparison comparison(
+            EarlyMarketStrategyExperiment experiment
+    ) {
+        EarlyMarketStrategyExperimentComparisonItem item =
+                new EarlyMarketStrategyExperimentComparisonItem(
+                        experiment.id(),
+                        experiment.experimentName(),
+                        experiment.from(),
+                        experiment.to(),
+                        experiment.candidateCount(),
+                        experiment.performanceCapturedCount(),
+                        experiment.averageMaxReturnRate(),
+                        experiment.averageMaxDrawdownRate(),
+                        experiment.winRate(),
+                        experiment.bestSignalId(),
+                        experiment.worstSignalId(),
+                        experiment.parameterSnapshot()
+                );
+        return new EarlyMarketStrategyExperimentComparison(
+                List.of(1L, 2L, 3L),
+                Instant.parse("2026-06-11T01:00:00Z"),
+                List.of(item),
+                item,
+                item,
+                item,
+                List.of("DIFFERENT_PERIODS")
         );
     }
 }

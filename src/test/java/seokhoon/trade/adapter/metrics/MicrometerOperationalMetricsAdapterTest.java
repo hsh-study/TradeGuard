@@ -38,6 +38,7 @@ class MicrometerOperationalMetricsAdapterTest {
         metrics.recordEarlyMarketReport("success");
         metrics.recordEarlyMarketPeriodReport("success");
         metrics.recordEarlyMarketExperiment("saved");
+        metrics.recordEarlyMarketExperimentCompare("success");
         metrics.recordEarlyMarketFollowUpPersist("saved");
 
         assertThat(counter(
@@ -117,6 +118,12 @@ class MicrometerOperationalMetricsAdapterTest {
                 "tradeguard.early_market.experiment.count",
                 "result",
                 "saved"
+        )).isEqualTo(1.0);
+        assertThat(counter(
+                registry,
+                "tradeguard.early_market.experiment.compare.count",
+                "result",
+                "success"
         )).isEqualTo(1.0);
         assertThat(counter(
                 registry,
