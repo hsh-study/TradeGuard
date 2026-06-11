@@ -214,6 +214,18 @@ curl 'http://localhost:8080/api/scans/early-market/performances/21'
 
 자동 캡처 후 Discord에는 후보 수, 캡처 성공 수, `bars_used`/`snapshot_proxy` 수, `vwapBroken` 후보 수, `maxReturnRateUntil0930` 상위 3개를 요약합니다. webhook 미설정 시 알림은 no-op이며 scheduler 자체는 성공하고 `notificationSent=false`로 기록됩니다.
 
+장초반 전략 일별 성과 리포트:
+
+```sh
+curl 'http://localhost:8080/api/reports/early-market/daily?tradeDate=2026-06-10'
+```
+
+리포트는 해당 거래일의 `EARLY_MARKET_PRE_SCAN`, `EARLY_MARKET_ENTRY_CANDIDATE` 신호와 저장된 `EarlyMarketCandidatePerformance`를 signalId로 결합합니다. 후보 수, 성과 캡처 수, 평균 최대수익률, 평균 최대낙폭, 최고/최저 후보와 전체 후보 상세를 반환합니다. `bestCandidate`는 `maxReturnRateUntil0930`이 가장 큰 후보, `worstCandidate`는 가장 작은 후보입니다.
+
+그룹은 signal type, 점수 구간 `70-79`/`80-89`/`90+`, `vwapBroken`, 전일 고가 돌파, 시초가 지지별로 후보 수와 성과 수, 평균 최대수익률/최대낙폭을 제공합니다. price action 그룹은 신호 reason의 `PREVIOUS_HIGH_BROKEN`, `PREVIOUS_HIGH_NOT_BROKEN`, `OPENING_PRICE_HELD`, `OPENING_PRICE_LOST`를 사용하며 reason이 없으면 `UNKNOWN`입니다.
+
+성과 레코드가 없는 후보는 `excludedFromPerformanceCount`에 포함됩니다. 성과가 저장됐더라도 수익률 또는 낙폭이 `null`이면 해당 평균 표본에서 제외하며 `dataCompleteness`의 표본 수로 확인할 수 있습니다. 현재 09:20 follow-up 결과는 별도 저장하지 않으므로 리포트가 follow-up을 재실행하거나 Discord를 전송하지 않습니다. follow-up 기간 분석은 결과 영속화 이후 확장 TODO입니다. 이 조회 API는 주문을 생성하지 않습니다.
+
 거래 신호 조회:
 
 ```sh
@@ -400,6 +412,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.intraday_bar.lookup.count`: `result=found|not_found|failure`
 - `tradeguard.early_market.follow_up.count`: `decision=keep|caution|exclude`
 - `tradeguard.early_market.price_action.count`: `result=sufficient|insufficient`
+- `tradeguard.early_market.report.count`: `result=success|no_data|failure`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
@@ -443,6 +456,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - 실계좌 주문 기능은 구현하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
 - 08:30/09:05 장초반 후보 생성, 전일 고가/시초가 지지 feature, 09:20 follow-up과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
+- 장초반 전략 성과 리포트는 조회와 집계만 수행하며 신호 또는 주문을 생성하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.
 - 시간외 데이터 연동은 fake/disabled 또는 설정 기반 KIS read-only 일별 시간외 시세 adapter만 사용합니다.
 - KIS 주문, 계좌, 잔고, 정정/취소 endpoint는 호출하지 않습니다.

@@ -1,0 +1,222 @@
+package seokhoon.trade.application.service;
+
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.Test;
+import seokhoon.trade.adapter.metrics.MicrometerOperationalMetricsAdapter;
+import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
+import seokhoon.trade.application.port.out.EarlyMarketPerformancePort;
+import seokhoon.trade.application.port.out.TradingSignalRecord;
+import seokhoon.trade.domain.market.EarlyMarketCandidatePerformance;
+import seokhoon.trade.domain.strategy.SignalType;
+import seokhoon.trade.domain.strategy.TradingSignalStatus;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class EarlyMarketStrategyReportServiceTest {
+    private static final LocalDate TRADE_DATE = LocalDate.of(2026, 6, 10);
+
+    @Test
+    void aggregatesReturnsMissingPerformanceBucketsAndBestWorstCandidates() {
+        List<TradingSignalRecord> signals = List.of(
+                signal(1L, SignalType.EARLY_MARKET_PRE_SCAN, 75, List.of()),
+                signal(
+                        2L,
+                        SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                        85,
+                        List.of("PREVIOUS_HIGH_NOT_BROKEN", "OPENING_PRICE_LOST")
+                ),
+                signal(
+                        3L,
+                        SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                        95,
+                        List.of("PREVIOUS_HIGH_BROKEN", "OPENING_PRICE_HELD")
+                )
+        );
+        EarlyMarketStrategyReportService service = service(
+                signals,
+                List.of(
+                        performance(1L, SignalType.EARLY_MARKET_PRE_SCAN, "4", "-2", false),
+                        performance(
+                                3L,
+                                SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                                "10",
+                                "-4",
+                                true
+                        )
+                )
+        );
+
+        var report = service.loadDailyReport(TRADE_DATE);
+
+        assertThat(report.preScanCount()).isEqualTo(1);
+        assertThat(report.entryCandidateCount()).isEqualTo(2);
+        assertThat(report.performanceCapturedCount()).isEqualTo(2);
+        assertThat(report.excludedFromPerformanceCount()).isEqualTo(1);
+        assertThat(report.averageMaxReturnRate()).isEqualByComparingTo("7.0000");
+        assertThat(report.averageMaxDrawdownRate()).isEqualByComparingTo("-3.0000");
+        assertThat(report.bestCandidate().signalId()).isEqualTo(3L);
+        assertThat(report.worstCandidate().signalId()).isEqualTo(1L);
+        assertThat(report.byScoreBucket())
+                .containsKeys("70-79", "80-89", "90+");
+        assertThat(report.byScoreBucket().get("80-89").performanceCapturedCount())
+                .isZero();
+        assertThat(report.byVwapBroken().get("TRUE").candidateCount()).isEqualTo(1);
+        assertThat(report.byVwapBroken().get("FALSE").candidateCount()).isEqualTo(1);
+        assertThat(report.byVwapBroken().get("UNKNOWN").candidateCount()).isEqualTo(1);
+        assertThat(report.byPreviousHighBreakout().get("TRUE").candidateCount())
+                .isEqualTo(1);
+        assertThat(report.byOpeningPriceHeld().get("FALSE").candidateCount())
+                .isEqualTo(1);
+        assertThat(report.dataCompleteness().maxReturnSampleCount()).isEqualTo(2);
+        assertThat(report.candidates()).hasSize(3);
+    }
+
+    @Test
+    void excludesNullRatesFromAverageEvenWhenPerformanceWasCaptured() {
+        EarlyMarketStrategyReportService service = service(
+                List.of(signal(
+                        1L,
+                        SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                        90,
+                        List.of()
+                )),
+                List.of(performance(
+                        1L,
+                        SignalType.EARLY_MARKET_ENTRY_CANDIDATE,
+                        null,
+                        null,
+                        null
+                ))
+        );
+
+        var report = service.loadDailyReport(TRADE_DATE);
+
+        assertThat(report.performanceCapturedCount()).isEqualTo(1);
+        assertThat(report.excludedFromPerformanceCount()).isZero();
+        assertThat(report.averageMaxReturnRate()).isNull();
+        assertThat(report.averageMaxDrawdownRate()).isNull();
+        assertThat(report.bestCandidate()).isNull();
+        assertThat(report.dataCompleteness().maxReturnSampleCount()).isZero();
+    }
+
+    @Test
+    void recordsNoDataAndFailureMetrics() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        EarlyMarketStrategyReportService noDataService = new EarlyMarketStrategyReportService(
+                criteria -> List.of(),
+                performancePort(List.of()),
+                new MicrometerOperationalMetricsAdapter(registry)
+        );
+
+        noDataService.loadDailyReport(TRADE_DATE);
+
+        assertThat(registry.find("tradeguard.early_market.report.count")
+                .tag("result", "no_data")
+                .counter().count()).isEqualTo(1.0);
+
+        EarlyMarketStrategyReportService failingService =
+                new EarlyMarketStrategyReportService(
+                        criteria -> {
+                            throw new IllegalStateException("signal lookup failed");
+                        },
+                        performancePort(List.of()),
+                        new MicrometerOperationalMetricsAdapter(registry)
+                );
+        assertThatThrownBy(() -> failingService.loadDailyReport(TRADE_DATE))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(registry.find("tradeguard.early_market.report.count")
+                .tag("result", "failure")
+                .counter().count()).isEqualTo(1.0);
+    }
+
+    private static EarlyMarketStrategyReportService service(
+            List<TradingSignalRecord> signals,
+            List<EarlyMarketCandidatePerformance> performances
+    ) {
+        return new EarlyMarketStrategyReportService(
+                (TradingSignalSearchCriteria criteria) -> signals.stream()
+                        .filter(signal -> signal.signalType() == criteria.signalType())
+                        .toList(),
+                performancePort(performances),
+                seokhoon.trade.application.port.out.OperationalMetricsPort.noop()
+        );
+    }
+
+    private static EarlyMarketPerformancePort performancePort(
+            List<EarlyMarketCandidatePerformance> performances
+    ) {
+        return new EarlyMarketPerformancePort() {
+            @Override
+            public EarlyMarketCandidatePerformance save(
+                    EarlyMarketCandidatePerformance performance
+            ) {
+                return performance;
+            }
+
+            @Override
+            public List<EarlyMarketCandidatePerformance> findByTradeDate(
+                    LocalDate tradeDate
+            ) {
+                return performances;
+            }
+
+            @Override
+            public Optional<EarlyMarketCandidatePerformance> findBySignalId(
+                    long signalId
+            ) {
+                return performances.stream()
+                        .filter(performance -> performance.signalId() == signalId)
+                        .findFirst();
+            }
+        };
+    }
+
+    private static TradingSignalRecord signal(
+            long id,
+            SignalType signalType,
+            int score,
+            List<String> reasons
+    ) {
+        return new TradingSignalRecord(
+                id,
+                EarlyMarketPreOpenScanner.STRATEGY_NAME,
+                "STOCK" + id,
+                TRADE_DATE,
+                signalType,
+                score,
+                reasons,
+                List.of(),
+                TradingSignalStatus.CREATED
+        );
+    }
+
+    private static EarlyMarketCandidatePerformance performance(
+            long signalId,
+            SignalType signalType,
+            String maxReturn,
+            String maxDrawdown,
+            Boolean vwapBroken
+    ) {
+        return new EarlyMarketCandidatePerformance(
+                signalId,
+                "STOCK" + signalId,
+                TRADE_DATE,
+                signalType,
+                null,
+                null,
+                null,
+                BigDecimal.valueOf(100),
+                maxReturn == null ? null : new BigDecimal(maxReturn),
+                maxDrawdown == null ? null : new BigDecimal(maxDrawdown),
+                vwapBroken,
+                Instant.parse("2026-06-10T00:31:00Z")
+        );
+    }
+}
