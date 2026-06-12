@@ -150,6 +150,11 @@ public class ConfigurableKoreanMarketCalendarAdapter implements MarketCalendarPo
         }
 
         @Override
+        public MarketCalendarDay save(MarketCalendarDay day) {
+            return day;
+        }
+
+        @Override
         public Optional<MarketCalendarDay> findByDate(LocalDate date) {
             return Optional.empty();
         }

@@ -9,6 +9,8 @@ import java.util.Optional;
 public interface MarketCalendarDayPort {
     void upsertAll(List<MarketCalendarDay> days);
 
+    MarketCalendarDay save(MarketCalendarDay day);
+
     Optional<MarketCalendarDay> findByDate(LocalDate date);
 
     List<MarketCalendarDay> findBetween(LocalDate from, LocalDate to);

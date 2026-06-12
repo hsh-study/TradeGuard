@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.out.MarketCalendarDayPort;
 import seokhoon.trade.domain.market.MarketCalendarDay;
+import seokhoon.trade.domain.market.MarketCalendarSource;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -40,13 +41,34 @@ public class MarketCalendarDayPersistenceAdapter implements MarketCalendarDayPor
                                 day.date()
                         )
                         .map(entity -> {
-                            entity.update(day, now);
+                            if (entity.toDomain().source()
+                                    != MarketCalendarSource.MANUAL_OVERRIDE
+                                    || day.source()
+                                    == MarketCalendarSource.MANUAL_OVERRIDE) {
+                                entity.update(day, now);
+                            }
                             return entity;
                         })
                         .orElseGet(() -> MarketCalendarDayEntity.create(day, now)))
                 .toList();
         repository.saveAll(entities);
         repository.flush();
+    }
+
+    @Override
+    @Transactional
+    public MarketCalendarDay save(MarketCalendarDay day) {
+        Instant now = Instant.now(clock);
+        MarketCalendarDayEntity entity = repository.findByMarketAndTradeDate(
+                        day.market(),
+                        day.date()
+                )
+                .map(existing -> {
+                    existing.update(day, now);
+                    return existing;
+                })
+                .orElseGet(() -> MarketCalendarDayEntity.create(day, now));
+        return repository.saveAndFlush(entity).toDomain();
     }
 
     @Override

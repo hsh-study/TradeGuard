@@ -93,6 +93,24 @@ class ConfigurableKoreanMarketCalendarAdapterTest {
     }
 
     @Test
+    void manualOverrideTakesPriorityOverRuntimeWeekendFallback() {
+        LocalDate saturday = LocalDate.of(2026, 6, 6);
+        InMemoryCalendarDayPort port = new InMemoryCalendarDayPort(List.of(
+                new MarketCalendarDay(
+                        MarketCalendarDay.KRX_STOCK,
+                        saturday,
+                        true,
+                        null,
+                        MarketCalendarSource.MANUAL_OVERRIDE
+                )
+        ));
+        ConfigurableKoreanMarketCalendarAdapter calendar =
+                calendar(List.of(), port);
+
+        assertThat(calendar.isTradingDay(saturday)).isTrue();
+    }
+
+    @Test
     void usesCompleteStoredRangeForPreviousAndNextTradingDay() {
         InMemoryCalendarDayPort port = new InMemoryCalendarDayPort(List.of(
                 day(LocalDate.of(2026, 6, 5), true),
@@ -165,6 +183,11 @@ class ConfigurableKoreanMarketCalendarAdapterTest {
 
         @Override
         public void upsertAll(List<MarketCalendarDay> days) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public MarketCalendarDay save(MarketCalendarDay day) {
             throw new UnsupportedOperationException();
         }
 

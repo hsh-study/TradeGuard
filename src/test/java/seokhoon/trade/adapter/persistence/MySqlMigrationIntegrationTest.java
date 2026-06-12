@@ -68,6 +68,10 @@ class MySqlMigrationIntegrationTest {
                     "early_market_strategy_experiments"
             )).isTrue();
             assertThat(tableExists(jdbcTemplate, "market_calendar_days")).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "market_calendar_day_audits"
+            )).isTrue();
             assertThat(columnExists(
                     jdbcTemplate,
                     "trading_signal_status_histories",
@@ -166,6 +170,16 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "market_calendar_days",
                     "idx_market_calendar_source"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "market_calendar_day_audits",
+                    "idx_market_calendar_audit_trade_date"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "market_calendar_day_audits",
+                    "idx_market_calendar_audit_created_at"
             )).isTrue();
             assertThat(foreignKeyExists(
                     jdbcTemplate,

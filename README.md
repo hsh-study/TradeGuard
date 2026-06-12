@@ -42,7 +42,7 @@ KIS 분봉 adapter는 공식 `주식당일분봉조회[v1_국내주식-022]`의 
 ./gradlew test
 ```
 
-테스트는 H2 MySQL mode에서 Flyway migration과 Hibernate schema validation을 검증합니다. Docker가 사용 가능하면 `MySqlMigrationIntegrationTest`가 MySQL Testcontainers로 V1~V11 migration과 핵심 unique constraint도 검증합니다.
+테스트는 H2 MySQL mode에서 Flyway migration과 Hibernate schema validation을 검증합니다. Docker가 사용 가능하면 `MySqlMigrationIntegrationTest`가 MySQL Testcontainers로 V1~V12 migration과 핵심 unique constraint도 검증합니다.
 
 로컬 자격증명으로 KIS 읽기 전용 smoke test를 실행하려면:
 
@@ -82,7 +82,14 @@ KIS_AFTER_HOURS_SMOKE_TEST_ENABLED=true ./gradlew test \
 
 기본 종목은 삼성전자 `005930`이며 `KIS_AFTER_HOURS_SMOKE_TEST_STOCK_CODE`로 변경할 수 있습니다. 앱키나 앱시크릿이 없으면 skip됩니다. 조회일은 현재 직전 평일이며 공휴일 직후에는 데이터가 없어 실패할 수 있습니다. 시간외 시세 endpoint만 호출하며 주문, 계좌, 잔고, 정정/취소 API는 호출하지 않습니다.
 
-한국 시장 calendar는 `market_calendar_days`에 연중 모든 날짜를 저장합니다. 조회 우선순위는 DB, 주말과 `MARKET_CALENDAR_HOLIDAYS` 기반 fallback 순서입니다. 수동 휴장일은 쉼표로 구분한 ISO 날짜로 설정합니다.
+한국 시장 calendar는 `market_calendar_days`에 연중 모든 날짜를 저장합니다. 운영 source 우선순위는 다음과 같습니다.
+
+1. `MANUAL_OVERRIDE`
+2. `KRX_OFFICIAL`
+3. `FALLBACK_GENERATED`
+4. DB 날짜가 없을 때 runtime 주말 + `MARKET_CALENDAR_HOLIDAYS` fallback
+
+동일 날짜는 하나의 row만 저장되며, `MANUAL_OVERRIDE` row는 이후 KRX/fallback 재동기화로 덮어쓰지 않습니다. Runtime fallback용 수동 휴장일은 쉼표로 구분한 ISO 날짜로 설정합니다.
 
 ```sh
 MARKET_CALENDAR_HOLIDAYS=2026-01-01,2026-02-17,2026-02-18
@@ -100,6 +107,31 @@ curl 'http://localhost:8080/api/market-calendar/days?from=2026-01-01&to=2026-12-
 동기화 응답은 `syncedCount`, `tradingDayCount`, `holidayCount`, `source`, `warnings`를 반환합니다. `source`는 `KRX_OFFICIAL` 또는 `FALLBACK_GENERATED`입니다.
 
 현재 KRX 정보데이터시스템에는 운영 코드에서 직접 의존할 수 있는 안정적인 무인증 calendar endpoint가 명확히 문서화되어 있지 않습니다. 따라서 `KrxMarketCalendarSyncProvider`의 client/parser 경계는 구현했지만 기본 `MARKET_CALENDAR_KRX_ENDPOINT`는 비어 있습니다. `{year}` placeholder를 포함한 검증된 JSON endpoint를 운영자가 설정하지 않으면 공식 호출은 명시적으로 실패하고, 주말, 수동 휴일, 5월 1일, 연말 최종 영업일 휴장을 반영한 `FALLBACK_GENERATED` calendar가 저장됩니다. fallback은 법정 공휴일과 임시 휴장일을 자동 판별하지 않으므로 `MARKET_CALENDAR_HOLIDAYS`를 manual override로 계속 관리해야 합니다.
+
+Calendar 수동 보정:
+
+```sh
+curl -X PATCH 'http://localhost:8080/api/market-calendar/days/2026-08-17' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "market": "KRX_STOCK",
+    "tradingDay": false,
+    "holidayName": "TEMPORARY_CLOSURE",
+    "reason": "KRX 공지 기준 임시 휴장 보정",
+    "actor": "operator"
+  }'
+```
+
+기존 row가 없으면 생성하고, 있으면 갱신합니다. `reason`은 필수이며 `actor`가 없으면 `MANUAL_API`를 사용합니다. 저장 source는 `MANUAL_OVERRIDE`가 되고 before/after 값은 `market_calendar_day_audits`에 기록됩니다.
+
+Calendar 검증 및 audit 조회:
+
+```sh
+curl 'http://localhost:8080/api/market-calendar/validation?year=2026'
+curl 'http://localhost:8080/api/market-calendar/audits?from=2026-01-01&to=2026-12-31'
+```
+
+검증 응답은 연중 누락 날짜, 주말 거래일, 평일 휴장일, source별 개수와 향후 30일 거래일 존재 여부 warning을 제공합니다. Audit은 `createdAt`, `id` 최신순입니다. 동기화, 검증, 수동 보정은 calendar 기준정보만 관리하며 자동 주문을 실행하지 않습니다.
 
 거래일 계산 운영 확인:
 
@@ -579,6 +611,8 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 - `tradeguard.market_calendar.sync.count`: `result=success|fallback|failure`, `year`, `market`
 - `tradeguard.market_calendar.lookup.count`: `result=db|fallback|not_found`, `market`
+- `tradeguard.market_calendar.override.count`: `result=success|failure`
+- `tradeguard.market_calendar.validation.count`: `result=success|failure`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
 

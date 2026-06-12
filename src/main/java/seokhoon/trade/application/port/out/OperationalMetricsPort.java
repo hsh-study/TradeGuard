@@ -51,6 +51,10 @@ public interface OperationalMetricsPort {
 
     void recordMarketCalendarLookup(String result, String market);
 
+    void recordMarketCalendarOverride(String result);
+
+    void recordMarketCalendarValidation(String result);
+
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
             @Override
@@ -148,6 +152,14 @@ public interface OperationalMetricsPort {
 
             @Override
             public void recordMarketCalendarLookup(String result, String market) {
+            }
+
+            @Override
+            public void recordMarketCalendarOverride(String result) {
+            }
+
+            @Override
+            public void recordMarketCalendarValidation(String result) {
             }
         };
     }

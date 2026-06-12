@@ -77,6 +77,13 @@ class MarketCalendarSyncServiceTest {
         }
 
         @Override
+        public MarketCalendarDay save(MarketCalendarDay day) {
+            days.removeIf(existing -> existing.date().equals(day.date()));
+            days.add(day);
+            return day;
+        }
+
+        @Override
         public Optional<MarketCalendarDay> findByDate(LocalDate date) {
             return days.stream().filter(day -> day.date().equals(date)).findFirst();
         }

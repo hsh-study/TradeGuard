@@ -200,4 +200,20 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
                 "market", market
         ).increment();
     }
+
+    @Override
+    public void recordMarketCalendarOverride(String result) {
+        meterRegistry.counter(
+                "tradeguard.market_calendar.override.count",
+                "result", result
+        ).increment();
+    }
+
+    @Override
+    public void recordMarketCalendarValidation(String result) {
+        meterRegistry.counter(
+                "tradeguard.market_calendar.validation.count",
+                "result", result
+        ).increment();
+    }
 }
