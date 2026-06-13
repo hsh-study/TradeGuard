@@ -246,4 +246,16 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
         meterRegistry.counter("tradeguard.live_position.exit_evaluation.count",
                 "result", result).increment();
     }
+
+    @Override
+    public void recordLiveOrderReconciliation(String result) {
+        meterRegistry.counter("tradeguard.live_order.reconciliation.count",
+                "result", result).increment();
+    }
+
+    @Override
+    public void recordLiveOrderCancel(String result) {
+        meterRegistry.counter("tradeguard.live_order.cancel.count",
+                "result", result).increment();
+    }
 }

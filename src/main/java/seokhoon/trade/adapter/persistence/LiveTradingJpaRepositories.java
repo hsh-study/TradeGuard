@@ -12,6 +12,12 @@ interface LiveOrderRequestJpaRepository extends JpaRepository<LiveOrderRequestEn
     List<LiveOrderRequestEntity> findByStatusOrderByRequestedAtDesc(LiveOrderStatus status);
     List<LiveOrderRequestEntity> findByStatusInOrderByRequestedAtAsc(List<LiveOrderStatus> statuses);
 }
+
+interface LiveOrderCancelRequestJpaRepository
+        extends JpaRepository<LiveOrderCancelRequestEntity,Long> {
+    List<LiveOrderCancelRequestEntity>
+            findByOrderIdOrderByRequestedAtDesc(long orderId);
+}
 interface LivePositionJpaRepository extends JpaRepository<LivePositionEntity,Long> {
     List<LivePositionEntity> findByStatusOrderByOpenedAtAsc(LivePositionStatus status);
     Optional<LivePositionEntity> findFirstByStockCodeAndStatusNotOrderByOpenedAtDesc(String stockCode, LivePositionStatus status);

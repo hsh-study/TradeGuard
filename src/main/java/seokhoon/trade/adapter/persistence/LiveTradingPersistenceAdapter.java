@@ -12,20 +12,23 @@ import java.util.Optional;
 @Component
 public class LiveTradingPersistenceAdapter implements LiveOrderRequestPort,
         LivePositionPort, LivePositionExitRulePort, LiveTradeFillPort,
-        LiveOrderStatusHistoryPort, LiveTradingRuntimeStatePort {
+        LiveOrderStatusHistoryPort, LiveTradingRuntimeStatePort,
+        LiveOrderCancelRequestPort {
     private final LiveOrderRequestJpaRepository orders;
     private final LivePositionJpaRepository positions;
     private final LivePositionExitRuleJpaRepository rules;
     private final LiveTradeFillJpaRepository fills;
     private final LiveOrderStatusHistoryJpaRepository histories;
     private final LiveTradingRuntimeStateJpaRepository runtime;
+    private final LiveOrderCancelRequestJpaRepository cancellations;
 
     public LiveTradingPersistenceAdapter(LiveOrderRequestJpaRepository orders,
             LivePositionJpaRepository positions, LivePositionExitRuleJpaRepository rules,
             LiveTradeFillJpaRepository fills, LiveOrderStatusHistoryJpaRepository histories,
-            LiveTradingRuntimeStateJpaRepository runtime) {
+            LiveTradingRuntimeStateJpaRepository runtime,
+            LiveOrderCancelRequestJpaRepository cancellations) {
         this.orders=orders;this.positions=positions;this.rules=rules;this.fills=fills;
-        this.histories=histories;this.runtime=runtime;
+        this.histories=histories;this.runtime=runtime;this.cancellations=cancellations;
     }
 
     @Transactional public LiveOrderRequest save(LiveOrderRequest v) {
@@ -51,6 +54,8 @@ public class LiveTradingPersistenceAdapter implements LiveOrderRequestPort,
     @Transactional(readOnly=true) public List<LiveTradeFill> findFillsByOrderId(long id){return fills.findByOrderIdOrderByFilledAtAsc(id).stream().map(LiveTradeFillEntity::toDomain).toList();}
     @Transactional public void save(LiveOrderStatusHistory v){histories.save(LiveOrderStatusHistoryEntity.from(v));}
     @Transactional(readOnly=true) public List<LiveOrderStatusHistory> findHistoriesByOrderId(long id){return histories.findByOrderIdOrderByCreatedAtAsc(id).stream().map(LiveOrderStatusHistoryEntity::toDomain).toList();}
+    @Transactional public LiveOrderCancelRequest save(LiveOrderCancelRequest v){var e=v.id()==null?LiveOrderCancelRequestEntity.from(v):cancellations.findById(v.id()).orElseThrow();e.update(v);return cancellations.saveAndFlush(e).toDomain();}
+    @Transactional(readOnly=true) public List<LiveOrderCancelRequest> findByOrderId(long id){return cancellations.findByOrderIdOrderByRequestedAtDesc(id).stream().map(LiveOrderCancelRequestEntity::toDomain).toList();}
     @Transactional(readOnly=true) public LiveTradingRuntimeState get(){return runtime.findById(1L).orElseThrow().toDomain();}
     @Transactional public LiveTradingRuntimeState save(LiveTradingRuntimeState v){var e=runtime.findById(1L).orElseThrow();e.update(v);return runtime.saveAndFlush(e).toDomain();}
 }

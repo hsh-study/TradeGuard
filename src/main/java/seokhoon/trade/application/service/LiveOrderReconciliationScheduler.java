@@ -15,7 +15,7 @@ public class LiveOrderReconciliationScheduler {
     public LiveOrderReconciliationScheduler(ReconcileLiveOrdersUseCase useCase,LiveTradingProperties properties){this.useCase=useCase;this.properties=properties;}
     @Scheduled(cron="${tradeguard.live-trading.reconciliation-cron:30 * * * * MON-FRI}",zone="Asia/Seoul")
     public void reconcile(){
-        if(!properties.isLiveTradingEnabled()||!properties.isKisTradingEnabled())return;
+        if(!properties.isKisTradingEnabled())return;
         try{
             int count=useCase.reconcile();
             log.atInfo().addKeyValue("schedulerName","LIVE_ORDER_RECONCILIATION")

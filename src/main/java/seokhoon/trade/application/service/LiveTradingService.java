@@ -22,7 +22,7 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
         RequestLiveSellUseCase, EvaluateLivePositionExitUseCase,
         PreviewLivePositionExitUseCase, LoadLiveTradingUseCase,
         SetLiveTradingKillSwitchUseCase, ApplyLiveTradeFillUseCase,
-        ReconcileLiveOrdersUseCase {
+        ReconcileLiveOrdersUseCase, CancelLiveOrderUseCase {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private static final LocalTime OPEN = LocalTime.of(9, 0);
     private static final LocalTime CLOSE = LocalTime.of(15, 30);
@@ -33,6 +33,7 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
     private final LivePositionExitRulePort rules;
     private final LiveTradeFillPort fills;
     private final LiveOrderStatusHistoryPort histories;
+    private final LiveOrderCancelRequestPort cancellations;
     private final LiveTradingRuntimeStatePort runtime;
     private final LiveTradingOrderPort broker;
     private final LivePricePort prices;
@@ -45,10 +46,11 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
             LiveOrderRequestPort orders, LivePositionPort positions,
             LivePositionExitRulePort rules, LiveTradeFillPort fills,
             LiveOrderStatusHistoryPort histories,
+            LiveOrderCancelRequestPort cancellations,
             LiveTradingRuntimeStatePort runtime, LiveTradingOrderPort broker,
             LivePricePort prices, MarketCalendarPort calendar,
             OperationalMetricsPort metrics) {
-        this(properties,orders,positions,rules,fills,histories,runtime,broker,
+        this(properties,orders,positions,rules,fills,histories,cancellations,runtime,broker,
                 prices,calendar,metrics,Clock.system(SEOUL));
     }
 
@@ -56,11 +58,13 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
             LiveOrderRequestPort orders, LivePositionPort positions,
             LivePositionExitRulePort rules, LiveTradeFillPort fills,
             LiveOrderStatusHistoryPort histories,
+            LiveOrderCancelRequestPort cancellations,
             LiveTradingRuntimeStatePort runtime, LiveTradingOrderPort broker,
             LivePricePort prices, MarketCalendarPort calendar,
             OperationalMetricsPort metrics, Clock clock) {
         this.properties=properties;this.orders=orders;this.positions=positions;
         this.rules=rules;this.fills=fills;this.histories=histories;
+        this.cancellations=cancellations;
         this.runtime=runtime;this.broker=broker;this.prices=prices;
         this.calendar=calendar;this.metrics=metrics;this.clock=clock;
     }
@@ -147,6 +151,9 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
     @Override public List<LivePosition> positions(){return positions.findOpenPositions();}
     @Override public LivePosition position(long id){return positions.findPositionById(id).orElseThrow(()->new LiveTradingException("Live position not found"));}
     @Override public List<LiveOrderStatusHistory> histories(long id){order(id);return histories.findHistoriesByOrderId(id);}
+    @Override public List<LiveOrderRequest> openOrders(){return orders.findOpenSubmittedOrders();}
+    @Override public List<LiveTradeFill> fills(long id){order(id);return fills.findFillsByOrderId(id);}
+    @Override public List<LiveOrderCancelRequest> cancelRequests(long id){order(id);return cancellations.findByOrderId(id);}
 
     @Override @Transactional
     public LiveTradingRuntimeState set(boolean enabled, String reason) {
@@ -158,23 +165,26 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
     public LivePosition apply(LiveTradeFill fill) {
         LiveOrderRequest order = order(fill.liveOrderRequestId());
         List<LiveTradeFill> existingFills = fills.findFillsByOrderId(order.id());
-        if (!existingFills.isEmpty()) {
-            if (fill.filledQuantity() <= existingFills.stream()
-                    .mapToInt(LiveTradeFill::filledQuantity).sum()) {
-                return positions.findByStockCode(fill.stockCode())
-                        .orElseThrow(() -> new LiveTradingException(
-                                "Fill was already applied"));
-            }
+        int previouslyFilled = existingFills.stream()
+                .mapToInt(LiveTradeFill::filledQuantity).sum();
+        if (previouslyFilled + fill.filledQuantity() > order.quantity()) {
+            throw new LiveTradingException("Fill quantity exceeds order quantity");
         }
         fills.save(fill);
         LiveOrderStatus from = order.status();
-        LiveOrderStatus fillStatus = fill.filledQuantity() < order.quantity()
+        int totalFilled = previouslyFilled + fill.filledQuantity();
+        int remaining = order.quantity() - totalFilled;
+        LiveOrderStatus fillStatus = remaining > 0
                 ? LiveOrderStatus.PARTIALLY_FILLED
                 : LiveOrderStatus.FILLED;
-        LiveOrderRequest filled = orders.save(order.withStatus(
-                fillStatus, order.kisOrderNo(),
-                order.kisOriginalOrderNo(), null, clock.instant()));
+        LiveOrderRequest filled = orders.save(order.withExecution(
+                totalFilled, remaining, fillStatus, clock.instant()));
         history(filled.id(), from, fillStatus, "KIS_FILL_CONFIRMED");
+        return applyFillToPosition(fill, fillStatus);
+    }
+
+    private LivePosition applyFillToPosition(LiveTradeFill fill,
+            LiveOrderStatus fillStatus) {
         if (fill.side() == OrderSide.BUY) {
             LivePosition position = positions.findByStockCode(fill.stockCode())
                     .filter(existing -> existing.status() == LivePositionStatus.OPEN)
@@ -210,15 +220,145 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
 
     @Override
     public int reconcile() {
-        properties.validateOrderEnabled();
+        properties.validateKisAccessEnabled();
         List<LiveOrderRequest> openOrders = orders.findOpenSubmittedOrders();
-        List<LiveTradeFill> confirmed = broker.inquireFilledOrders(openOrders)
-                .stream()
-                .filter(fill -> fills.findFillsByOrderId(
-                        fill.liveOrderRequestId()).isEmpty())
-                .toList();
-        confirmed.forEach(this::apply);
-        return confirmed.size();
+        if (openOrders.isEmpty()) return 0;
+        int updated = 0;
+        for (LiveOpenOrderSnapshot snapshot :
+                broker.inquireOpenOrders(openOrders)) {
+            try {
+                LiveOrderRequest current = order(snapshot.liveOrderRequestId());
+                int cumulative = Math.min(current.quantity(),
+                        Math.max(0, snapshot.filledQuantity()));
+                int delta = cumulative - current.filledQuantity();
+                if (delta > 0 && snapshot.averageFilledPrice() != null) {
+                    BigDecimal cumulativeAmount = snapshot.averageFilledPrice()
+                            .multiply(BigDecimal.valueOf(cumulative));
+                    BigDecimal previousAmount = fills.findFillsByOrderId(
+                            current.id()).stream()
+                            .map(LiveTradeFill::filledAmount)
+                            .reduce(BigDecimal.ZERO,BigDecimal::add);
+                    BigDecimal amount = cumulativeAmount.subtract(
+                            previousAmount);
+                    BigDecimal deltaPrice = amount.divide(
+                            BigDecimal.valueOf(delta),4,RoundingMode.HALF_UP);
+                    BigDecimal fee = money(amount.multiply(
+                            current.side() == OrderSide.BUY
+                                    ? properties.getBuyCommissionRate()
+                                    : properties.getSellCommissionRate()));
+                    BigDecimal tax = current.side() == OrderSide.SELL
+                            ? money(amount.multiply(properties.getSellTaxRate()))
+                            : BigDecimal.ZERO;
+                    LiveTradeFill fill = new LiveTradeFill(null,current.id(),
+                            current.stockCode(),current.side(),delta,
+                            deltaPrice,amount,fee,tax,
+                            snapshot.inquiredAt());
+                    fills.save(fill);
+                    LiveOrderStatus fillStatus = cumulative == current.quantity()
+                            ? LiveOrderStatus.FILLED
+                            : LiveOrderStatus.PARTIALLY_FILLED;
+                    applyFillToPosition(fill, fillStatus);
+                }
+                int remaining = Math.max(0,
+                        Math.min(current.quantity() - cumulative,
+                                snapshot.remainingQuantity()));
+                LiveOrderStatus next = remaining == 0
+                        ? cumulative == current.quantity()
+                                ? LiveOrderStatus.FILLED
+                                : LiveOrderStatus.CANCELED
+                        : cumulative > 0 ? LiveOrderStatus.PARTIALLY_FILLED
+                        : LiveOrderStatus.ACCEPTED;
+                LiveOrderRequest saved = orders.save(current.withExecution(
+                        cumulative, remaining, next, snapshot.inquiredAt()));
+                if (current.status() != next) {
+                    history(saved.id(),current.status(),next,
+                            "KIS_ORDER_RECONCILED");
+                }
+                metrics.recordLiveOrderReconciliation(
+                        next == LiveOrderStatus.FILLED ? "filled"
+                                : next == LiveOrderStatus.PARTIALLY_FILLED
+                                ? "partial" : "updated");
+                updated++;
+                if (shouldAutoCancel(saved)) {
+                    cancel(saved.id(), null, "AUTO_CANCEL_POLICY");
+                }
+            } catch (RuntimeException exception) {
+                metrics.recordLiveOrderReconciliation("failure");
+            }
+        }
+        return updated;
+    }
+
+    @Override
+    @Transactional(noRollbackFor = LiveTradingException.class)
+    public LiveOrderCancelResult cancel(long orderId, Integer cancelQuantity,
+            String reason) {
+        properties.validateKisAccessEnabled();
+        LiveOrderRequest order = order(orderId);
+        if (order.status() != LiveOrderStatus.ACCEPTED
+                && order.status() != LiveOrderStatus.PARTIALLY_FILLED) {
+            throw new LiveTradingException(
+                    "Only ACCEPTED or PARTIALLY_FILLED orders can be canceled");
+        }
+        int remaining = order.remainingQuantity() > 0
+                ? order.remainingQuantity()
+                : order.quantity() - order.filledQuantity();
+        int quantity = cancelQuantity == null ? remaining : cancelQuantity;
+        if (quantity <= 0 || quantity > remaining) {
+            throw new LiveTradingException(
+                    "cancelQuantity exceeds remaining quantity");
+        }
+        Instant now = clock.instant();
+        LiveOrderCancelRequest request = cancellations.save(
+                new LiveOrderCancelRequest(null,order.id(),
+                        order.kisOriginalOrderNo(),quantity,
+                        LiveOrderCancelStatus.CREATED,null,null,
+                        safeReason(reason),now,null,now));
+        LiveOrderRequest requested = orders.save(order.withCancelRequested(now));
+        history(order.id(),order.status(),LiveOrderStatus.CANCEL_REQUESTED,
+                request.reason());
+        try {
+            request = cancellations.save(request.withResult(
+                    LiveOrderCancelStatus.SUBMITTED,null,null,now));
+            LiveOrderCancellation response = broker.cancelOrder(order,quantity,
+                    quantity == remaining);
+            if (!response.accepted()) {
+                cancellations.save(request.withResult(
+                        LiveOrderCancelStatus.REJECTED,null,
+                        sanitize(response.failureReason()),clock.instant()));
+                orders.save(requested.withStatus(order.status(),
+                        order.kisOrderNo(),order.kisOriginalOrderNo(),
+                        null,clock.instant()));
+                history(order.id(),LiveOrderStatus.CANCEL_REQUESTED,
+                        order.status(),"KIS_CANCEL_REJECTED");
+                metrics.recordLiveOrderCancel("failure");
+                throw new LiveTradingException("KIS cancel order was rejected");
+            }
+            LiveOrderCancelRequest accepted = cancellations.save(
+                    request.withResult(LiveOrderCancelStatus.ACCEPTED,
+                            response.cancelOrderNo(),null,clock.instant()));
+            LiveOrderRequest canceled = orders.save(
+                    requested.withCancellationAccepted(quantity,
+                            clock.instant()));
+            history(order.id(),LiveOrderStatus.CANCEL_REQUESTED,
+                    canceled.status(),"KIS_CANCEL_ACCEPTED");
+            if (canceled.status() == LiveOrderStatus.CANCELED) {
+                reopenSellPositionAfterCancel(order);
+            }
+            metrics.recordLiveOrderCancel("success");
+            return new LiveOrderCancelResult(canceled,accepted);
+        } catch (LiveTradingException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            cancellations.save(request.withResult(LiveOrderCancelStatus.FAILED,
+                    null,exception.getClass().getSimpleName(),clock.instant()));
+            orders.save(requested.withStatus(order.status(),order.kisOrderNo(),
+                    order.kisOriginalOrderNo(),null,clock.instant()));
+            history(order.id(),LiveOrderStatus.CANCEL_REQUESTED,order.status(),
+                    "KIS_CANCEL_FAILED");
+            metrics.recordLiveOrderCancel("failure");
+            throw new LiveTradingException("KIS cancel order failed");
+        }
     }
 
     private LiveOrderRequest submit(LiveOrderRequest created, String reason) {
@@ -249,6 +389,12 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
             LiveOrderRequest accepted = orders.save(submitted.withStatus(
                     LiveOrderStatus.ACCEPTED, response.orderNo(),
                     response.originalOrderNo(), null, clock.instant()));
+            int expireMinutes = accepted.side() == OrderSide.BUY
+                    ? properties.getBuyOrderExpireMinutes()
+                    : properties.getSellOrderExpireMinutes();
+            accepted = orders.save(accepted.withExpireAt(
+                    clock.instant().plus(Duration.ofMinutes(expireMinutes)),
+                    clock.instant()));
             history(accepted.id(), LiveOrderStatus.SUBMITTED,
                     LiveOrderStatus.ACCEPTED, "KIS_ORDER_ACCEPTED");
             metrics.recordLiveOrderSubmit(submitted.side().name(), "success");
@@ -269,7 +415,7 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
         Instant now=clock.instant();
         return new LiveOrderRequest(null,signalId,stockCode.trim(),side,quantity,
                 price,OrderType.LIMIT,LiveOrderStatus.CREATED,null,null,null,
-                now,null,now);
+                now,null,now,quantity,0,null,null,null,null);
     }
 
     private void guardNewOrder() {
@@ -336,6 +482,30 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
                 existing.buyCommission().add(fill.fee()),
                 LivePositionStatus.OPEN, existing.openedAt(), null
         ));
+    }
+
+    private boolean shouldAutoCancel(LiveOrderRequest order) {
+        if (!properties.isLiveOrderAutoCancelEnabled()
+                || order.remainingQuantity() <= 0) return false;
+        Instant now = clock.instant();
+        if (order.expireAt() != null && !now.isBefore(order.expireAt())) {
+            return true;
+        }
+        ZonedDateTime seoul = ZonedDateTime.now(clock)
+                .withZoneSameInstant(SEOUL);
+        return calendar.isTradingDay(seoul.toLocalDate())
+                && !seoul.toLocalTime().isBefore(CLOSE.minusMinutes(
+                        properties.getCancelBeforeMarketCloseMinutes()));
+    }
+
+    private void reopenSellPositionAfterCancel(LiveOrderRequest order) {
+        if (order.side() != OrderSide.SELL) return;
+        positions.findByStockCode(order.stockCode())
+                .filter(position -> position.status()
+                        == LivePositionStatus.SELL_ORDERED)
+                .ifPresent(position -> positions.updatePosition(
+                        position.withStatus(LivePositionStatus.OPEN,
+                                clock.instant())));
     }
 
     private LivePositionExitPreview calculate(LivePosition p,

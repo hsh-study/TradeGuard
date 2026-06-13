@@ -181,13 +181,37 @@ curl -X POST 'http://localhost:8080/api/live-orders/sell' \
 curl 'http://localhost:8080/api/live-orders?status=ACCEPTED'
 curl 'http://localhost:8080/api/live-orders/10'
 curl 'http://localhost:8080/api/live-orders/10/histories'
+curl 'http://localhost:8080/api/live-orders/open'
+curl 'http://localhost:8080/api/live-orders/10/fills'
+curl 'http://localhost:8080/api/live-orders/10/cancel-requests'
 curl 'http://localhost:8080/api/live-positions'
 curl 'http://localhost:8080/api/live-positions/3/exit-preview?currentPrice=73500'
 ```
 
+미체결 지정가 주문 취소:
+
+```sh
+curl -X POST 'http://localhost:8080/api/live-orders/10/cancel' \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"OPERATOR_CANCEL","cancelQuantity":1}'
+```
+
+`cancelQuantity`을 생략하면 저장된 미체결 잔량 전체를 취소합니다. `ACCEPTED` 또는 `PARTIALLY_FILLED` 주문만 취소할 수 있으며 kill switch가 켜져 있어도 기존 주문의 위험 축소를 위한 취소는 허용됩니다. 취소에는 `KIS_TRADING_ENABLED=true`와 유효한 계좌/환경 설정이 필요합니다. KIS 공식 현금주문 정정취소 endpoint와 실전/모의 취소 TR ID `TTTC0013U`/`VTTC0013U`를 사용합니다. 정정 주문은 아직 지원하지 않습니다.
+
 순손익은 `매도금액 - 매도세금 - 매도수수료 - 매수금액 - 매수수수료`이며 익절은 순수익률 기준입니다. 기본 threshold는 매수가 5만원 미만 `+5%/-3%`, 5만~20만원 `+4%/-2.5%`, 20만원 이상 `+3%/-2%`입니다. `maxLossAmount` 도달은 손절률보다 우선합니다.
 
 `LIVE_POSITION_EXIT_MONITOR`는 두 feature flag가 켜진 장중에 1분마다 OPEN 포지션을 평가합니다. 매도는 현재가 지정가만 사용하며 `SELL_ORDERED` 포지션에는 중복 주문하지 않습니다. 주문 실패 시 포지션은 OPEN을 유지합니다. 자동매수는 구현하지 않았습니다.
+
+`LIVE_ORDER_RECONCILIATION`은 `KIS_TRADING_ENABLED=true`일 때 평일 1분마다 `ACCEPTED`/`PARTIALLY_FILLED` 주문의 누적 체결량과 잔량을 조회합니다. 새로 늘어난 체결 수량만 fill로 저장하고 매수 평균가/수량 또는 매도 잔여 포지션에 반영합니다. 전량 체결은 `FILLED`, 일부 체결은 `PARTIALLY_FILLED`로 전환됩니다.
+
+자동취소 기본값은 비활성입니다.
+
+- `LIVE_ORDER_AUTO_CANCEL_ENABLED=false`
+- `LIVE_BUY_ORDER_EXPIRE_MINUTES=3`
+- `LIVE_SELL_ORDER_EXPIRE_MINUTES=3`
+- `LIVE_CANCEL_BEFORE_MARKET_CLOSE_MINUTES=5`
+
+자동취소를 명시적으로 켠 경우에만 주문별 만료시간 또는 장 마감 임박 조건으로 미체결 잔량을 취소합니다. 시장가 주문, 자동매수, 공매도, 신용/미수 주문은 계속 지원하지 않습니다.
 
 Kill switch:
 
@@ -197,7 +221,7 @@ curl -X POST 'http://localhost:8080/api/live-trading/kill-switch' \
   -d '{"enabled":true,"reason":"OPERATOR_EMERGENCY_STOP"}'
 ```
 
-Kill switch가 켜지면 수동 매수·매도와 자동매도 신규 주문을 모두 차단합니다. 이미 접수된 주문 취소는 현재 TODO입니다.
+Kill switch가 켜지면 수동 매수·매도와 자동매도 신규 주문을 모두 차단합니다. 이미 접수된 주문 취소와 reconciliation은 위험 축소 목적이므로 허용됩니다.
 
 관심종목 등록:
 

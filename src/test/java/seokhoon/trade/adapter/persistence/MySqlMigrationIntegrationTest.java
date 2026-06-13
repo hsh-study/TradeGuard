@@ -98,6 +98,16 @@ class MySqlMigrationIntegrationTest {
             assertThat(tableExists(jdbcTemplate, "live_trade_fills")).isTrue();
             assertThat(tableExists(jdbcTemplate, "live_order_status_histories")).isTrue();
             assertThat(tableExists(jdbcTemplate, "live_trading_runtime_state")).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "live_order_cancel_requests"
+            )).isTrue();
+            assertThat(columnExists(jdbcTemplate,"live_order_requests",
+                    "remaining_quantity")).isTrue();
+            assertThat(columnExists(jdbcTemplate,"live_order_requests",
+                    "filled_quantity")).isTrue();
+            assertThat(columnExists(jdbcTemplate,"live_order_requests",
+                    "expire_at")).isTrue();
             assertThat(columnExists(
                     jdbcTemplate,
                     "trading_signal_status_histories",

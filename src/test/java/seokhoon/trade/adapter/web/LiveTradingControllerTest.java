@@ -22,6 +22,7 @@ class LiveTradingControllerTest {
         var preview=mock(LiveTradingUseCases.PreviewLivePositionExitUseCase.class);
         var load=mock(LiveTradingUseCases.LoadLiveTradingUseCase.class);
         var kill=mock(LiveTradingUseCases.SetLiveTradingKillSwitchUseCase.class);
+        var cancel=mock(LiveTradingUseCases.CancelLiveOrderUseCase.class);
         when(buy.buy(eq(7L),eq("005930"),eq(1),any(),eq(OrderType.LIMIT)))
                 .thenReturn(order());
         when(preview.preview(eq(3L),any())).thenReturn(new LivePositionExitPreview(
@@ -29,7 +30,7 @@ class LiveTradingControllerTest {
                 BigDecimal.ZERO,amount(5),amount(5),true,false,false,
                 LiveExitAction.SELL_TAKE_PROFIT));
         MockMvc mvc=MockMvcBuilders.standaloneSetup(
-                new LiveTradingController(buy,sell,preview,load,kill)).build();
+                new LiveTradingController(buy,sell,preview,load,kill,cancel)).build();
 
         mvc.perform(post("/api/live-orders/buy")
                         .contentType("application/json")
@@ -53,7 +54,8 @@ class LiveTradingControllerTest {
                 buy,mock(LiveTradingUseCases.RequestLiveSellUseCase.class),
                 mock(LiveTradingUseCases.PreviewLivePositionExitUseCase.class),
                 mock(LiveTradingUseCases.LoadLiveTradingUseCase.class),
-                mock(LiveTradingUseCases.SetLiveTradingKillSwitchUseCase.class)))
+                mock(LiveTradingUseCases.SetLiveTradingKillSwitchUseCase.class),
+                mock(LiveTradingUseCases.CancelLiveOrderUseCase.class)))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         when(buy.buy(any(),any(),anyInt(),any(),isNull()))
                 .thenThrow(new IllegalArgumentException("Only LIMIT orders are allowed"));
@@ -65,6 +67,38 @@ class LiveTradingControllerTest {
                                  "orderPrice":70000,"orderType":null}
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void exposesCancelAndOpenOrderQueries() throws Exception {
+        var cancel=mock(LiveTradingUseCases.CancelLiveOrderUseCase.class);
+        var load=mock(LiveTradingUseCases.LoadLiveTradingUseCase.class);
+        when(load.openOrders()).thenReturn(java.util.List.of(order()));
+        when(cancel.cancel(1L,null,"operator")).thenReturn(
+                new LiveTradingUseCases.LiveOrderCancelResult(
+                        order().withCanceled(Instant.now()),
+                        new LiveOrderCancelRequest(1L,1L,null,1,
+                                LiveOrderCancelStatus.ACCEPTED,"CANCEL",null,
+                                "operator",Instant.now(),Instant.now(),
+                                Instant.now())));
+        MockMvc mvc=MockMvcBuilders.standaloneSetup(new LiveTradingController(
+                mock(LiveTradingUseCases.RequestLiveBuyUseCase.class),
+                mock(LiveTradingUseCases.RequestLiveSellUseCase.class),
+                mock(LiveTradingUseCases.PreviewLivePositionExitUseCase.class),
+                load,
+                mock(LiveTradingUseCases.SetLiveTradingKillSwitchUseCase.class),
+                cancel)).build();
+
+        mvc.perform(get("/api/live-orders/open"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("ACCEPTED"));
+        mvc.perform(post("/api/live-orders/1/cancel")
+                        .contentType("application/json")
+                        .content("""
+                                {"reason":"operator"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.order.status").value("CANCELED"));
     }
 
     private static LiveOrderRequest order(){Instant now=Instant.now();return new LiveOrderRequest(1L,7L,"005930",OrderSide.BUY,1,amount(70000),OrderType.LIMIT,LiveOrderStatus.ACCEPTED,"ORDER",null,null,now,now,now);}

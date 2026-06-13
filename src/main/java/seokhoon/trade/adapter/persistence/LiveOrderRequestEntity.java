@@ -23,6 +23,12 @@ class LiveOrderRequestEntity {
     @Column(name = "requested_at", nullable = false) Instant requestedAt;
     @Column(name = "submitted_at") Instant submittedAt;
     @Column(name = "updated_at", nullable = false) Instant updatedAt;
+    @Column(name = "remaining_quantity", nullable = false) int remainingQuantity;
+    @Column(name = "filled_quantity", nullable = false) int filledQuantity;
+    @Column(name = "last_inquired_at") Instant lastInquiredAt;
+    @Column(name = "cancel_requested_at") Instant cancelRequestedAt;
+    @Column(name = "canceled_at") Instant canceledAt;
+    @Column(name = "expire_at") Instant expireAt;
 
     protected LiveOrderRequestEntity() {}
 
@@ -39,11 +45,19 @@ class LiveOrderRequestEntity {
         kisOrderNo = value.kisOrderNo(); kisOriginalOrderNo = value.kisOriginalOrderNo();
         failureReason = value.failureReason(); requestedAt = value.requestedAt();
         submittedAt = value.submittedAt(); updatedAt = value.updatedAt();
+        remainingQuantity = value.remainingQuantity();
+        filledQuantity = value.filledQuantity();
+        lastInquiredAt = value.lastInquiredAt();
+        cancelRequestedAt = value.cancelRequestedAt();
+        canceledAt = value.canceledAt();
+        expireAt = value.expireAt();
     }
 
     LiveOrderRequest toDomain() {
         return new LiveOrderRequest(id, signalId, stockCode, side, quantity,
                 orderPrice, orderType, status, kisOrderNo, kisOriginalOrderNo,
-                failureReason, requestedAt, submittedAt, updatedAt);
+                failureReason, requestedAt, submittedAt, updatedAt,
+                remainingQuantity, filledQuantity, lastInquiredAt,
+                cancelRequestedAt, canceledAt, expireAt);
     }
 }

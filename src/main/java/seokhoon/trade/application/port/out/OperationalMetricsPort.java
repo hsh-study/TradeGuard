@@ -62,6 +62,8 @@ public interface OperationalMetricsPort {
     void recordLiveOrderSubmit(String side, String result);
 
     void recordLivePositionExitEvaluation(String result);
+    void recordLiveOrderReconciliation(String result);
+    void recordLiveOrderCancel(String result);
 
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
@@ -180,6 +182,8 @@ public interface OperationalMetricsPort {
             @Override public void recordLiveOrderRequest(String side, String status) {}
             @Override public void recordLiveOrderSubmit(String side, String result) {}
             @Override public void recordLivePositionExitEvaluation(String result) {}
+            @Override public void recordLiveOrderReconciliation(String result) {}
+            @Override public void recordLiveOrderCancel(String result) {}
         };
     }
 }

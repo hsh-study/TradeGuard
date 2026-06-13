@@ -26,6 +26,10 @@ public class LiveTradingProperties {
     private BigDecimal highPriceThreshold2 = new BigDecimal("200000");
     private BigDecimal maxAllowedOrderAmount = new BigDecimal("1000000");
     private OrderType allowedOrderType = OrderType.LIMIT;
+    private boolean liveOrderAutoCancelEnabled;
+    private int buyOrderExpireMinutes = 3;
+    private int sellOrderExpireMinutes = 3;
+    private int cancelBeforeMarketCloseMinutes = 5;
 
     public void validateConfiguration() {
         nonNegative(buyCommissionRate, "buyCommissionRate");
@@ -41,6 +45,12 @@ public class LiveTradingProperties {
         if (allowedOrderType != OrderType.LIMIT) {
             throw new IllegalStateException("Only LIMIT live orders are allowed");
         }
+        if (buyOrderExpireMinutes <= 0 || sellOrderExpireMinutes <= 0) {
+            throw new IllegalStateException("Live order expiration minutes must be positive");
+        }
+        if (cancelBeforeMarketCloseMinutes < 0) {
+            throw new IllegalStateException("cancelBeforeMarketCloseMinutes must be non-negative");
+        }
     }
 
     public void validateOrderEnabled() {
@@ -48,6 +58,11 @@ public class LiveTradingProperties {
         if (!liveTradingEnabled) {
             throw new LiveTradingDisabledException("LIVE_TRADING_ENABLED is false");
         }
+        validateKisAccessEnabled();
+    }
+
+    public void validateKisAccessEnabled() {
+        validateConfiguration();
         if (!kisTradingEnabled) {
             throw new LiveTradingDisabledException("KIS_TRADING_ENABLED is false");
         }
@@ -110,4 +125,12 @@ public class LiveTradingProperties {
     public void setMaxAllowedOrderAmount(BigDecimal value) { maxAllowedOrderAmount = value; }
     public OrderType getAllowedOrderType() { return allowedOrderType; }
     public void setAllowedOrderType(OrderType value) { allowedOrderType = value; }
+    public boolean isLiveOrderAutoCancelEnabled() { return liveOrderAutoCancelEnabled; }
+    public void setLiveOrderAutoCancelEnabled(boolean value) { liveOrderAutoCancelEnabled = value; }
+    public int getBuyOrderExpireMinutes() { return buyOrderExpireMinutes; }
+    public void setBuyOrderExpireMinutes(int value) { buyOrderExpireMinutes = value; }
+    public int getSellOrderExpireMinutes() { return sellOrderExpireMinutes; }
+    public void setSellOrderExpireMinutes(int value) { sellOrderExpireMinutes = value; }
+    public int getCancelBeforeMarketCloseMinutes() { return cancelBeforeMarketCloseMinutes; }
+    public void setCancelBeforeMarketCloseMinutes(int value) { cancelBeforeMarketCloseMinutes = value; }
 }
