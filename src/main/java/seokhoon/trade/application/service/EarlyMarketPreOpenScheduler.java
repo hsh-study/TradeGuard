@@ -6,6 +6,8 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import seokhoon.trade.application.port.in.CaptureEarlyMarketPreOpenDataUseCase;
+import seokhoon.trade.application.port.in.EarlyMarketDataCaptureResult;
 import seokhoon.trade.application.port.in.ScanEarlyMarketPreOpenUseCase;
 import seokhoon.trade.application.port.out.CorrelationIdProvider;
 import seokhoon.trade.application.port.out.MarketCalendarPort;
@@ -18,6 +20,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 
 @Component
 public class EarlyMarketPreOpenScheduler {
@@ -26,6 +29,7 @@ public class EarlyMarketPreOpenScheduler {
     private static final int DEFAULT_LIMIT = 10;
 
     private final ScanEarlyMarketPreOpenUseCase useCase;
+    private final CaptureEarlyMarketPreOpenDataUseCase dataCaptureUseCase;
     private final MarketCalendarPort marketCalendarPort;
     private final SchedulerExecutionHistoryPort historyPort;
     private final OperationalMetricsPort metricsPort;
@@ -35,6 +39,7 @@ public class EarlyMarketPreOpenScheduler {
     @Autowired
     public EarlyMarketPreOpenScheduler(
             ScanEarlyMarketPreOpenUseCase useCase,
+            CaptureEarlyMarketPreOpenDataUseCase dataCaptureUseCase,
             MarketCalendarPort marketCalendarPort,
             SchedulerExecutionHistoryPort historyPort,
             OperationalMetricsPort metricsPort,
@@ -42,6 +47,7 @@ public class EarlyMarketPreOpenScheduler {
     ) {
         this(
                 useCase,
+                dataCaptureUseCase,
                 marketCalendarPort,
                 historyPort,
                 metricsPort,
@@ -58,7 +64,31 @@ public class EarlyMarketPreOpenScheduler {
             CorrelationIdProvider correlationIdProvider,
             Clock clock
     ) {
+        this(
+                useCase,
+                tradeDate -> new EarlyMarketDataCaptureResult(
+                        tradeDate,
+                        List.of()
+                ),
+                marketCalendarPort,
+                historyPort,
+                metricsPort,
+                correlationIdProvider,
+                clock
+        );
+    }
+
+    EarlyMarketPreOpenScheduler(
+            ScanEarlyMarketPreOpenUseCase useCase,
+            CaptureEarlyMarketPreOpenDataUseCase dataCaptureUseCase,
+            MarketCalendarPort marketCalendarPort,
+            SchedulerExecutionHistoryPort historyPort,
+            OperationalMetricsPort metricsPort,
+            CorrelationIdProvider correlationIdProvider,
+            Clock clock
+    ) {
         this.useCase = useCase;
+        this.dataCaptureUseCase = dataCaptureUseCase;
         this.marketCalendarPort = marketCalendarPort;
         this.historyPort = historyPort;
         this.metricsPort = metricsPort;
@@ -102,6 +132,12 @@ public class EarlyMarketPreOpenScheduler {
         metricsPort.recordSchedulerExecution(schedulerName, SchedulerExecutionStatus.STARTED);
         logResult(schedulerName, tradeDate, SchedulerExecutionStatus.STARTED, 0, 0, false, correlationId);
         try {
+            EarlyMarketDataCaptureRunner.run(
+                    log,
+                    schedulerName,
+                    tradeDate,
+                    () -> dataCaptureUseCase.capturePreOpen(tradeDate)
+            );
             var result = useCase.scan(tradeDate, DEFAULT_LIMIT);
             historyPort.markSucceeded(
                     historyId,

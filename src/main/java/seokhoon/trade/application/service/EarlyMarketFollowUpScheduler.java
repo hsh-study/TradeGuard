@@ -6,6 +6,8 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import seokhoon.trade.application.port.in.CaptureEarlyMarketFollowUpDataUseCase;
+import seokhoon.trade.application.port.in.EarlyMarketDataCaptureResult;
 import seokhoon.trade.application.port.in.EarlyMarketFollowUpResult;
 import seokhoon.trade.application.port.in.FollowUpEarlyMarketCandidatesUseCase;
 import seokhoon.trade.application.port.out.CorrelationIdProvider;
@@ -19,6 +21,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 
 @Component
 public class EarlyMarketFollowUpScheduler {
@@ -26,6 +29,7 @@ public class EarlyMarketFollowUpScheduler {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final FollowUpEarlyMarketCandidatesUseCase followUpUseCase;
+    private final CaptureEarlyMarketFollowUpDataUseCase dataCaptureUseCase;
     private final MarketCalendarPort marketCalendarPort;
     private final SchedulerExecutionHistoryPort historyPort;
     private final OperationalMetricsPort metricsPort;
@@ -35,6 +39,7 @@ public class EarlyMarketFollowUpScheduler {
     @Autowired
     public EarlyMarketFollowUpScheduler(
             FollowUpEarlyMarketCandidatesUseCase followUpUseCase,
+            CaptureEarlyMarketFollowUpDataUseCase dataCaptureUseCase,
             MarketCalendarPort marketCalendarPort,
             SchedulerExecutionHistoryPort historyPort,
             OperationalMetricsPort metricsPort,
@@ -42,6 +47,7 @@ public class EarlyMarketFollowUpScheduler {
     ) {
         this(
                 followUpUseCase,
+                dataCaptureUseCase,
                 marketCalendarPort,
                 historyPort,
                 metricsPort,
@@ -58,7 +64,31 @@ public class EarlyMarketFollowUpScheduler {
             CorrelationIdProvider correlationIdProvider,
             Clock clock
     ) {
+        this(
+                followUpUseCase,
+                tradeDate -> new EarlyMarketDataCaptureResult(
+                        tradeDate,
+                        List.of()
+                ),
+                marketCalendarPort,
+                historyPort,
+                metricsPort,
+                correlationIdProvider,
+                clock
+        );
+    }
+
+    EarlyMarketFollowUpScheduler(
+            FollowUpEarlyMarketCandidatesUseCase followUpUseCase,
+            CaptureEarlyMarketFollowUpDataUseCase dataCaptureUseCase,
+            MarketCalendarPort marketCalendarPort,
+            SchedulerExecutionHistoryPort historyPort,
+            OperationalMetricsPort metricsPort,
+            CorrelationIdProvider correlationIdProvider,
+            Clock clock
+    ) {
         this.followUpUseCase = followUpUseCase;
+        this.dataCaptureUseCase = dataCaptureUseCase;
         this.marketCalendarPort = marketCalendarPort;
         this.historyPort = historyPort;
         this.metricsPort = metricsPort;
@@ -126,6 +156,12 @@ public class EarlyMarketFollowUpScheduler {
                 correlationId
         );
         try {
+            EarlyMarketDataCaptureRunner.run(
+                    log,
+                    schedulerName,
+                    tradeDate,
+                    () -> dataCaptureUseCase.captureFollowUp(tradeDate)
+            );
             EarlyMarketFollowUpResult result = followUpUseCase.followUp(tradeDate);
             historyPort.markSucceeded(
                     historyId,

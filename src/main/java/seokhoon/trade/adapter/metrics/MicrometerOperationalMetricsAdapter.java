@@ -216,4 +216,16 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
                 "result", result
         ).increment();
     }
+
+    @Override
+    public void recordEarlyMarketDataCapture(
+            String captureType,
+            String result
+    ) {
+        meterRegistry.counter(
+                "tradeguard.early_market.data_capture.count",
+                "captureType", captureType,
+                "result", result
+        ).increment();
+    }
 }

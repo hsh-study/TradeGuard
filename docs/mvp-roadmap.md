@@ -46,7 +46,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 종가베팅 전략 | 완료 | 단건·활성 관심종목 분석 API에 연결됐으며 점수 계산과 테스트 존재 |
 | 14:00 예비 스캔 | 부분 완료 | Fake 또는 설정 기반 KIS read-only 시장 순위로 CLOSING_BET_PRE_SCAN 저장, 수동 API, DB 우선 시장 calendar 기반 14:00 scheduler, opt-in smoke test 존재 |
 | 15:00 최종 리뷰 | 부분 완료 | MarketSnapshotPort 기반 VWAP/고가권/거래대금 재평가, 거래일 15:00 scheduler, opt-in current price smoke test 존재. 더 정교한 intraday feature는 TODO |
-| 장초반 매매 후보 | 부분 완료 | 08:30 시장 순위와 fake 또는 설정 기반 KIS read-only 전일 시간외 단일가 기반 EARLY_MARKET_PRE_SCAN 최대 10개, DB 우선 MarketCalendarPort의 직전 거래일 계산과 reason 기록, 09:05 snapshot 기반 EARLY_MARKET_ENTRY_CANDIDATE 최대 3개 구현. 저장 일봉과 09:00~09:20 분봉 기반 전일 고가 돌파, 시초가 지지, 눌림 후 회복 feature를 09:05 점수와 09:20 분류에 반영. 09:20 KEEP/CAUTION/EXCLUDE follow-up 수동 API와 scheduler, snapshot fallback, Discord, 실행 이력, metrics 및 signalId별 결과 upsert/조회 API 구현. signalId별 수동 성과 캡처/조회와 신호 점수 비교, fake 또는 설정 기반 KIS read-only 당일 1분봉과 5분 집계 기반 09:00~09:30 최고 수익률/최대 낙폭/VWAP 이탈 계산, 분봉 미존재 시 snapshot proxy fallback, 거래일 09:31 자동 성과 캡처와 Discord 요약 구현. 신호/성과/follow-up decision을 signal type, 점수, VWAP, 전일 고가, 시초가 지지, KEEP/CAUTION/EXCLUDE로 집계하는 거래일 및 최대 90일 기간 단위 전략 리포트 API 구현. 기간 리포트는 calendar 기준 거래일 수, 후보 단위 가중 평균, 승률, 날짜별 요약과 completeness를 제공. 08:30 시간외 점수, 09:05 점수·진입 기준·최대 후보 수, 09:20 VWAP·낙폭·price action 판단을 validation이 적용된 설정으로 분리했으며 기본값은 기존 정책과 동일. 현재 파라미터 전체 JSON snapshot과 기간 리포트 핵심 결과를 실험 이력으로 저장하고 최신순/단건 조회하는 API를 구현했으며 no-data 기간은 저장하지 않음. 저장된 실험 2~10개를 승률, 평균 최대수익률, 평균 최대낙폭으로 비교하고 기간·표본 차이 notes를 제공하는 조회 API 구현. 현재 설정을 deep copy하고 부분 override를 validation한 뒤 저장 데이터 기반 기간 리포트와 실험 snapshot을 함께 생성하는 제한적 backtest API 구현. 과거 신호·점수 재계산은 아직 하지 않으며 응답 warning으로 한계를 명시. 모든 리포트·실험·비교·backtest 기능은 자동 주문을 실행하지 않음. 과거 분봉 소스는 TODO |
+| 장초반 매매 후보 | 부분 완료 | 기존 08:30/09:05/09:20/09:31 분석 흐름, follow-up/성과/리포트/파라미터 실험/제한적 backtest 구현. V13에서 시장 순위, 직전 거래일 시간외 시세, 09:00~09:30 1분봉과 단계별 market snapshot을 capture 이력과 함께 아카이브하고 조회하는 API를 추가함. 동일 bar와 동일 시각 snapshot은 upsert하며 캡처 실패는 전략 실행을 막지 않고 상태·metric·warning log로 기록함. 과거 신호 재계산 replay 백테스트는 원천 데이터가 충분히 축적된 뒤 구현. 모든 기능은 자동 주문을 실행하지 않음 |
 | 신호 저장 | 부분 완료 | 논리 키 upsert, 상태 갱신, 리스크 거절 사유 저장, 신호 조회 API와 주요 상태 변경 감사 이력 존재. 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
 | 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, order_requests.signal_id FK 추적, 승인/거절/BROKER_FAILED 결과, 동일 row 수동 재시도, 성공 시 신호 상태 동기화, RETRY_REQUESTED 정체 조회/수동 복구, 주요 상태 변경 감사 이력 존재. 자동 재시도/복구는 미구현 |
@@ -55,7 +55,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | KIS 연동 | 부분 완료 | 모의투자 OAuth, 일봉/순위/current price read-only 조회와 opt-in smoke test 구현. 계좌/주문 연동은 의도적으로 제외 |
 | 운영 관측성 | 부분 완료 | Actuator health/info/metrics, liveness/readiness, dependency health, scheduler 실행 이력, 핵심 Micrometer counter, 구조화 로그와 X-Request-Id 구현. 감사 이력 및 scheduler 실행 이력 correlation 연결 완료. 외부 metrics backend는 미구현 |
 | 시장 calendar | 부분 완료 | V11 `market_calendar_days`, V12 보정 audit, MANUAL_OVERRIDE 우선 정책, DB 우선 scheduler skip/이전·다음 거래일/시간외 기준일/리포트 거래일 수, 연도 sync·조회·검증·보정·audit API, 04:00 누락 연도 scheduler, health/metrics 구현. 공식 provider client/parser는 분리했으나 안정적인 KRX 무인증 endpoint가 명확하지 않아 기본은 생성 fallback이며 `MARKET_CALENDAR_HOLIDAYS` runtime fallback 관리가 필요 |
-| DB migration | 완료 | Flyway V1~V12 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
+| DB migration | 완료 | Flyway V1~V13 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
 
 ## 4. 구현 단계
 
@@ -156,7 +156,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 - 자동 매도와 포지션 청산
 - 실시간 체결/호가 스트리밍
 - 다중 전략 포트폴리오 최적화
-- 백테스트 엔진
+- 과거 원천 데이터 기반 replay 백테스트 엔진
 - 운영자용 Web UI
 - MSA, Kafka, Kubernetes
 
@@ -179,8 +179,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 가장 가까운 작업 순서는 다음과 같다.
 
-1. KRX 공식 휴장일 calendar 동기화 또는 연도별 설정 검증 추가
-2. 15:00 intraday feature 확장(VWAP 이탈 시간, 체결강도, 호가 잔량 등)
-3. 재시도/복구 동시성에 대한 optimistic locking 또는 조건부 update 강화
-4. 인증 도입 시 감사 이력 userId/operatorId 정책 설계
+1. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
+2. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
+3. 15:00 intraday feature 확장(VWAP 이탈 시간, 체결강도, 호가 잔량 등)
+4. 재시도/복구 동시성에 대한 optimistic locking 또는 조건부 update 강화
 5. scheduler 실행 이력과 metric의 보존/외부 수집 정책 수립

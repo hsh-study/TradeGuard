@@ -6,7 +6,9 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import seokhoon.trade.application.port.in.CaptureEarlyMarketPerformanceDataUseCase;
 import seokhoon.trade.application.port.in.CaptureEarlyMarketPerformancesUseCase;
+import seokhoon.trade.application.port.in.EarlyMarketDataCaptureResult;
 import seokhoon.trade.application.port.in.EarlyMarketPerformanceCaptureResult;
 import seokhoon.trade.application.port.in.EarlyMarketPerformanceView;
 import seokhoon.trade.application.port.out.CorrelationIdProvider;
@@ -34,6 +36,7 @@ public class EarlyMarketPerformanceCaptureScheduler {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final CaptureEarlyMarketPerformancesUseCase captureUseCase;
+    private final CaptureEarlyMarketPerformanceDataUseCase dataCaptureUseCase;
     private final MarketCalendarPort marketCalendarPort;
     private final NotificationPort notificationPort;
     private final SchedulerExecutionHistoryPort historyPort;
@@ -44,6 +47,7 @@ public class EarlyMarketPerformanceCaptureScheduler {
     @Autowired
     public EarlyMarketPerformanceCaptureScheduler(
             CaptureEarlyMarketPerformancesUseCase captureUseCase,
+            CaptureEarlyMarketPerformanceDataUseCase dataCaptureUseCase,
             MarketCalendarPort marketCalendarPort,
             NotificationPort notificationPort,
             SchedulerExecutionHistoryPort historyPort,
@@ -52,6 +56,7 @@ public class EarlyMarketPerformanceCaptureScheduler {
     ) {
         this(
                 captureUseCase,
+                dataCaptureUseCase,
                 marketCalendarPort,
                 notificationPort,
                 historyPort,
@@ -70,7 +75,33 @@ public class EarlyMarketPerformanceCaptureScheduler {
             CorrelationIdProvider correlationIdProvider,
             Clock clock
     ) {
+        this(
+                captureUseCase,
+                tradeDate -> new EarlyMarketDataCaptureResult(
+                        tradeDate,
+                        List.of()
+                ),
+                marketCalendarPort,
+                notificationPort,
+                historyPort,
+                metricsPort,
+                correlationIdProvider,
+                clock
+        );
+    }
+
+    EarlyMarketPerformanceCaptureScheduler(
+            CaptureEarlyMarketPerformancesUseCase captureUseCase,
+            CaptureEarlyMarketPerformanceDataUseCase dataCaptureUseCase,
+            MarketCalendarPort marketCalendarPort,
+            NotificationPort notificationPort,
+            SchedulerExecutionHistoryPort historyPort,
+            OperationalMetricsPort metricsPort,
+            CorrelationIdProvider correlationIdProvider,
+            Clock clock
+    ) {
         this.captureUseCase = captureUseCase;
+        this.dataCaptureUseCase = dataCaptureUseCase;
         this.marketCalendarPort = marketCalendarPort;
         this.notificationPort = notificationPort;
         this.historyPort = historyPort;
@@ -138,6 +169,12 @@ public class EarlyMarketPerformanceCaptureScheduler {
                 correlationId
         );
         try {
+            EarlyMarketDataCaptureRunner.run(
+                    log,
+                    schedulerName,
+                    tradeDate,
+                    () -> dataCaptureUseCase.capturePerformance(tradeDate)
+            );
             EarlyMarketPerformanceCaptureResult result =
                     captureUseCase.capture(tradeDate);
             NotificationDeliveryResult notification = sendBriefing(result);

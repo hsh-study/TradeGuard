@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -90,6 +91,34 @@ class EarlyMarketPreOpenSchedulerTest {
                 .isInstanceOf(IllegalStateException.class);
         assertThat(history.failedId).isEqualTo(1L);
         assertThat(history.failureReason).contains("ranking unavailable");
+    }
+
+    @Test
+    void continuesStrategyWhenRawDataCaptureFails() {
+        RecordingHistory history = new RecordingHistory();
+        AtomicBoolean strategyExecuted = new AtomicBoolean();
+        EarlyMarketPreOpenScheduler scheduler = new EarlyMarketPreOpenScheduler(
+                (tradeDate, limit) -> {
+                    strategyExecuted.set(true);
+                    return new EarlyMarketScanResult(
+                            tradeDate, 1, 1, false, "summary", List.of()
+                    );
+                },
+                tradeDate -> {
+                    throw new IllegalStateException("archive unavailable");
+                },
+                date -> true,
+                history,
+                seokhoon.trade.application.port.out.OperationalMetricsPort.noop(),
+                fixedCorrelation(),
+                CLOCK
+        );
+
+        scheduler.scanPreOpen();
+
+        assertThat(strategyExecuted).isTrue();
+        assertThat(history.scannedCount).isEqualTo(1);
+        assertThat(history.failedId).isZero();
     }
 
     private static CorrelationIdProvider fixedCorrelation() {

@@ -72,6 +72,26 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "market_calendar_day_audits"
             )).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "early_market_data_captures"
+            )).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "early_market_ranking_snapshots"
+            )).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "early_market_after_hours_snapshots"
+            )).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "early_market_intraday_bar_snapshots"
+            )).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "early_market_market_snapshots"
+            )).isTrue();
             assertThat(columnExists(
                     jdbcTemplate,
                     "trading_signal_status_histories",
@@ -180,6 +200,21 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "market_calendar_day_audits",
                     "idx_market_calendar_audit_created_at"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "early_market_data_captures",
+                    "uk_early_market_capture_date_type"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "early_market_intraday_bar_snapshots",
+                    "uk_early_market_intraday_bar"
+            )).isTrue();
+            assertThat(indexExists(
+                    jdbcTemplate,
+                    "early_market_market_snapshots",
+                    "uk_early_market_market_snapshot"
             )).isTrue();
             assertThat(foreignKeyExists(
                     jdbcTemplate,

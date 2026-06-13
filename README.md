@@ -268,6 +268,27 @@ curl 'http://localhost:8080/api/scans/early-market/performances/21'
 
 자동 캡처 후 Discord에는 후보 수, 캡처 성공 수, `bars_used`/`snapshot_proxy` 수, `vwapBroken` 후보 수, `maxReturnRateUntil0930` 상위 3개를 요약합니다. webhook 미설정 시 알림은 no-op이며 scheduler 자체는 성공하고 `notificationSent=false`로 기록됩니다.
 
+### 장초반 원천 데이터 아카이브
+
+08:30/09:05/09:20/09:31 scheduler는 전략 실행 전에 당시 조회 가능한 원천 데이터를 별도 테이블에 보존합니다.
+
+- 08:30: 시장 순위 universe와 직전 거래일 시간외 시세
+- 09:05: 09:00~09:05 1분봉과 opening snapshot
+- 09:20: 09:05~09:20 1분봉, 분봉 부재 시 follow-up snapshot
+- 09:31: 09:00~09:30 1분봉, 분봉 부재 시 performance snapshot
+
+```sh
+curl 'http://localhost:8080/api/early-market/data-captures?tradeDate=2026-06-10'
+curl 'http://localhost:8080/api/early-market/ranking-snapshots?tradeDate=2026-06-10'
+curl 'http://localhost:8080/api/early-market/after-hours-snapshots?tradeDate=2026-06-10'
+curl 'http://localhost:8080/api/early-market/intraday-bars?tradeDate=2026-06-10&stockCode=005930'
+curl 'http://localhost:8080/api/early-market/market-snapshots?tradeDate=2026-06-10&stockCode=005930'
+```
+
+동일한 `(tradeDate, stockCode, barTime, intervalType)` bar와 동일 시각·유형의 market snapshot은 upsert합니다. 캡처 이력은 거래일·capture type별로 `SUCCEEDED`, `PARTIAL`, `FAILED`, `SKIPPED` 상태와 item count, 제한된 실패 사유를 저장합니다.
+
+원천 데이터 저장 실패는 warning log와 `tradeguard.early_market.data_capture.count` metric에 남기되 기존 전략 신호·follow-up·성과 계산은 가능한 경우 계속 실행합니다. raw 외부 응답은 info log에 남기지 않습니다. replay 백테스트는 이 데이터가 충분히 축적된 뒤 구현하며, 현재 아카이브와 조회 API는 주문을 생성하지 않습니다.
+
 장초반 전략 일별 성과 리포트:
 
 ```sh
@@ -609,6 +630,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.early_market.experiment.compare.count`: `result=success|failure`
 - `tradeguard.early_market.backtest.count`: `result=saved|no_data|failure`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
+- `tradeguard.early_market.data_capture.count`: `captureType`, `result=success|partial|failure`
 - `tradeguard.market_calendar.sync.count`: `result=success|fallback|failure`, `year`, `market`
 - `tradeguard.market_calendar.lookup.count`: `result=db|fallback|not_found`, `market`
 - `tradeguard.market_calendar.override.count`: `result=success|failure`
@@ -661,6 +683,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - 09:20 follow-up 결과 저장과 조회는 분석 데이터만 다루며 자동 주문을 실행하지 않습니다.
 - 장초반 전략 성과 리포트는 조회와 집계만 수행하며 신호 또는 주문을 생성하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.
+- 장초반 원천 데이터 아카이브는 replay 입력만 저장하며 주문을 생성하지 않습니다.
 - 시간외 데이터 연동은 fake/disabled 또는 설정 기반 KIS read-only 일별 시간외 시세 adapter만 사용합니다.
 - KIS 주문, 계좌, 잔고, 정정/취소 endpoint는 호출하지 않습니다.
 - API Key, App Secret, 계좌번호는 코드에 하드코딩하지 않습니다.
