@@ -55,7 +55,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | KIS 연동 | 부분 완료 | 모의투자 OAuth, 일봉/순위/current price read-only 조회와 opt-in smoke test 구현. 계좌/주문 연동은 의도적으로 제외 |
 | 운영 관측성 | 부분 완료 | Actuator health/info/metrics, liveness/readiness, dependency health, scheduler 실행 이력, 핵심 Micrometer counter, 구조화 로그와 X-Request-Id 구현. 감사 이력 및 scheduler 실행 이력 correlation 연결 완료. 외부 metrics backend는 미구현 |
 | 시장 calendar | 부분 완료 | V11 `market_calendar_days`, V12 보정 audit, MANUAL_OVERRIDE 우선 정책, DB 우선 scheduler skip/이전·다음 거래일/시간외 기준일/리포트 거래일 수, 연도 sync·조회·검증·보정·audit API, 04:00 누락 연도 scheduler, health/metrics 구현. 공식 provider client/parser는 분리했으나 안정적인 KRX 무인증 endpoint가 명확하지 않아 기본은 생성 fallback이며 `MARKET_CALENDAR_HOLIDAYS` runtime fallback 관리가 필요 |
-| DB migration | 완료 | Flyway V1~V13 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
+| KIS 실매매 1단계 | 부분 완료 | V14 live 주문/포지션/체결/exit rule/상태 이력/runtime kill switch 추가. 두 feature flag와 계좌 설정, 장중 검사, 지정가·주문한도·signal 중복 정책을 통과한 수동 매수/매도만 허용. 보유 포지션은 세금·수수료 반영 순손익과 가격대별 threshold로 자동매도 평가. 자동매수·시장가·신용·미수·공매도·주문 취소는 미구현 |
+| DB migration | 완료 | Flyway V1~V14 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
 
 ## 4. 구현 단계
 
@@ -151,16 +152,16 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 다음 항목은 MVP 1차 범위에 포함하지 않는다.
 
-- 실계좌 주문
 - 시장가 주문
-- 자동 매도와 포지션 청산
+- 자동매수
+- 주문 정정/취소와 미체결 장기 관리
 - 실시간 체결/호가 스트리밍
 - 다중 전략 포트폴리오 최적화
 - 과거 원천 데이터 기반 replay 백테스트 엔진
 - 운영자용 Web UI
 - MSA, Kafka, Kubernetes
 
-우선순위는 “실주문 연결”보다 데이터 품질, 전략 재현성, 리스크 이력, 모의 주문 안정성에 둔다.
+실매매 1단계 이후에도 데이터 품질, 전략 재현성, 리스크 이력과 주문 안전성을 우선한다.
 장초반 일별/기간 리포트도 저장 데이터 검증 전용이며 자동 주문 실행 경로와 연결하지 않는다.
 
 ## 6. 테스트 계획
@@ -179,8 +180,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 가장 가까운 작업 순서는 다음과 같다.
 
-1. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
-2. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
-3. 15:00 intraday feature 확장(VWAP 이탈 시간, 체결강도, 호가 잔량 등)
-4. 재시도/복구 동시성에 대한 optimistic locking 또는 조건부 update 강화
+1. 실매매 주문 정정/취소와 미체결 주문 운영 정책
+2. 체결 reconciliation의 부분체결 누적 및 멱등성 강화
+3. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
+4. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
 5. scheduler 실행 이력과 metric의 보존/외부 수집 정책 수립

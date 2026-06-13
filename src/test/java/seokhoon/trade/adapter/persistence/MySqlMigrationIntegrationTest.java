@@ -92,6 +92,12 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "early_market_market_snapshots"
             )).isTrue();
+            assertThat(tableExists(jdbcTemplate, "live_order_requests")).isTrue();
+            assertThat(tableExists(jdbcTemplate, "live_positions")).isTrue();
+            assertThat(tableExists(jdbcTemplate, "live_position_exit_rules")).isTrue();
+            assertThat(tableExists(jdbcTemplate, "live_trade_fills")).isTrue();
+            assertThat(tableExists(jdbcTemplate, "live_order_status_histories")).isTrue();
+            assertThat(tableExists(jdbcTemplate, "live_trading_runtime_state")).isTrue();
             assertThat(columnExists(
                     jdbcTemplate,
                     "trading_signal_status_histories",

@@ -14,6 +14,8 @@ import seokhoon.trade.application.service.EarlyMarketPerformanceNotFoundExceptio
 import seokhoon.trade.application.service.EarlyMarketFollowUpResultNotFoundException;
 import seokhoon.trade.application.service.EarlyMarketStrategyExperimentNoDataException;
 import seokhoon.trade.application.service.EarlyMarketStrategyExperimentNotFoundException;
+import seokhoon.trade.application.service.LiveTradingException;
+import seokhoon.trade.config.LiveTradingDisabledException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -90,6 +92,12 @@ public class GlobalExceptionHandler {
     })
     ResponseEntity<ErrorResponse> handleInvalidRequest(Exception exception) {
         return invalidRequest(exception.getMessage());
+    }
+
+    @ExceptionHandler({LiveTradingException.class, LiveTradingDisabledException.class})
+    ResponseEntity<ErrorResponse> handleLiveTradingBlocked(RuntimeException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("LIVE_TRADING_BLOCKED", exception.getMessage()));
     }
 
     private static ResponseEntity<ErrorResponse> invalidRequest(String message) {

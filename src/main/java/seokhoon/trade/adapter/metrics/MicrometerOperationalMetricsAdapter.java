@@ -228,4 +228,22 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
                 "result", result
         ).increment();
     }
+
+    @Override
+    public void recordLiveOrderRequest(String side, String status) {
+        meterRegistry.counter("tradeguard.live_order.request.count",
+                "side", side, "status", status).increment();
+    }
+
+    @Override
+    public void recordLiveOrderSubmit(String side, String result) {
+        meterRegistry.counter("tradeguard.live_order.submit.count",
+                "side", side, "result", result).increment();
+    }
+
+    @Override
+    public void recordLivePositionExitEvaluation(String result) {
+        meterRegistry.counter("tradeguard.live_position.exit_evaluation.count",
+                "result", result).increment();
+    }
 }

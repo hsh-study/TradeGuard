@@ -57,6 +57,12 @@ public interface OperationalMetricsPort {
 
     void recordEarlyMarketDataCapture(String captureType, String result);
 
+    void recordLiveOrderRequest(String side, String status);
+
+    void recordLiveOrderSubmit(String side, String result);
+
+    void recordLivePositionExitEvaluation(String result);
+
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
             @Override
@@ -170,6 +176,10 @@ public interface OperationalMetricsPort {
                     String result
             ) {
             }
+
+            @Override public void recordLiveOrderRequest(String side, String status) {}
+            @Override public void recordLiveOrderSubmit(String side, String result) {}
+            @Override public void recordLivePositionExitEvaluation(String result) {}
         };
     }
 }

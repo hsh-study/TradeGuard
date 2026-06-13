@@ -143,6 +143,62 @@ curl 'http://localhost:8080/api/market-calendar/trading-days?date=2026-02-19'
 
 ## API
 
+### KIS 수동 승인형 실매매
+
+Live trading은 기본 비활성입니다. 신규 주문은 아래 조건을 모두 만족할 때만 허용됩니다.
+
+- `LIVE_TRADING_ENABLED=true`
+- `KIS_TRADING_ENABLED=true`
+- 계좌번호와 계좌상품코드 설정
+- DB kill switch 비활성
+- `MarketCalendarPort` 기준 거래일의 09:00~15:30
+- `LIMIT` 지정가 주문
+- 주문금액이 `LIVE_MAX_ALLOWED_ORDER_AMOUNT` 이하
+
+실전은 `KIS_TRADING_ENVIRONMENT=REAL`과 공식 실전 host, 모의는 `DEMO`와 모의 host 조합만 허용합니다. KIS 공식 현금주문 endpoint `/uapi/domestic-stock/v1/trading/order-cash`를 사용하며 실전 매수/매도 TR_ID는 `TTTC0012U`/`TTTC0011U`, 모의는 `VTTC0012U`/`VTTC0011U`입니다. KRX 직접 주문 API는 사용하지 않습니다.
+
+수동 지정가 매수:
+
+```sh
+curl -X POST 'http://localhost:8080/api/live-orders/buy' \
+  -H 'Content-Type: application/json' \
+  -d '{"signalId":21,"stockCode":"005930","quantity":1,
+       "orderPrice":70000,"orderType":"LIMIT"}'
+```
+
+수동 지정가 매도:
+
+```sh
+curl -X POST 'http://localhost:8080/api/live-orders/sell' \
+  -H 'Content-Type: application/json' \
+  -d '{"positionId":3,"quantity":1,"orderPrice":73500,
+       "reason":"MANUAL_EXIT"}'
+```
+
+조회와 예상 순손익:
+
+```sh
+curl 'http://localhost:8080/api/live-orders?status=ACCEPTED'
+curl 'http://localhost:8080/api/live-orders/10'
+curl 'http://localhost:8080/api/live-orders/10/histories'
+curl 'http://localhost:8080/api/live-positions'
+curl 'http://localhost:8080/api/live-positions/3/exit-preview?currentPrice=73500'
+```
+
+순손익은 `매도금액 - 매도세금 - 매도수수료 - 매수금액 - 매수수수료`이며 익절은 순수익률 기준입니다. 기본 threshold는 매수가 5만원 미만 `+5%/-3%`, 5만~20만원 `+4%/-2.5%`, 20만원 이상 `+3%/-2%`입니다. `maxLossAmount` 도달은 손절률보다 우선합니다.
+
+`LIVE_POSITION_EXIT_MONITOR`는 두 feature flag가 켜진 장중에 1분마다 OPEN 포지션을 평가합니다. 매도는 현재가 지정가만 사용하며 `SELL_ORDERED` 포지션에는 중복 주문하지 않습니다. 주문 실패 시 포지션은 OPEN을 유지합니다. 자동매수는 구현하지 않았습니다.
+
+Kill switch:
+
+```sh
+curl -X POST 'http://localhost:8080/api/live-trading/kill-switch' \
+  -H 'Content-Type: application/json' \
+  -d '{"enabled":true,"reason":"OPERATOR_EMERGENCY_STOP"}'
+```
+
+Kill switch가 켜지면 수동 매수·매도와 자동매도 신규 주문을 모두 차단합니다. 이미 접수된 주문 취소는 현재 TODO입니다.
+
 관심종목 등록:
 
 ```sh
@@ -631,6 +687,9 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.early_market.backtest.count`: `result=saved|no_data|failure`
 - `tradeguard.early_market.performance.capture.count`: `result=bars_used|snapshot_proxy|failed`
 - `tradeguard.early_market.data_capture.count`: `captureType`, `result=success|partial|failure`
+- `tradeguard.live_order.request.count`: `side`, `status`
+- `tradeguard.live_order.submit.count`: `side`, `result=success|failure`
+- `tradeguard.live_position.exit_evaluation.count`: `result=hold|take_profit|stop_loss|max_loss|failure`
 - `tradeguard.market_calendar.sync.count`: `result=success|fallback|failure`, `year`, `market`
 - `tradeguard.market_calendar.lookup.count`: `result=db|fallback|not_found`, `market`
 - `tradeguard.market_calendar.override.count`: `result=success|failure`
@@ -677,15 +736,16 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 
 ## 안전 원칙
 
-- 실계좌 주문 기능은 구현하지 않습니다.
+- 실계좌 주문은 두 feature flag, 계좌 설정, 장중 검사와 kill switch를 통과한 수동 요청 또는 보유 포지션 자동매도에서만 가능합니다.
 - 시장가 주문은 지원하지 않습니다.
+- 자동매수, 공매도, 신용, 미수 주문은 지원하지 않습니다.
 - 08:30/09:05 장초반 후보 생성, 전일 고가/시초가 지지 feature, 09:20 follow-up과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
 - 09:20 follow-up 결과 저장과 조회는 분석 데이터만 다루며 자동 주문을 실행하지 않습니다.
 - 장초반 전략 성과 리포트는 조회와 집계만 수행하며 신호 또는 주문을 생성하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.
 - 장초반 원천 데이터 아카이브는 replay 입력만 저장하며 주문을 생성하지 않습니다.
 - 시간외 데이터 연동은 fake/disabled 또는 설정 기반 KIS read-only 일별 시간외 시세 adapter만 사용합니다.
-- KIS 주문, 계좌, 잔고, 정정/취소 endpoint는 호출하지 않습니다.
+- KIS 현금 지정가 주문과 현금 체결조회만 사용하며 정정/취소는 아직 구현하지 않습니다.
 - API Key, App Secret, 계좌번호는 코드에 하드코딩하지 않습니다.
 - Discord Webhook URL은 환경변수로만 주입하며 코드에 하드코딩하지 않습니다.
-- `KisBrokerAdapter`는 스켈레톤만 제공하며 실제 주문 API를 호출하지 않습니다.
+- 기존 mock order와 `FakeBrokerAdapter` 경로는 그대로 유지됩니다.
