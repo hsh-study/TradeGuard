@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.IntradayBarPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
+import seokhoon.trade.application.port.out.KisAccessTokenProvider;
 import seokhoon.trade.domain.market.BarInterval;
 import seokhoon.trade.domain.market.IntradayBar;
 import tools.jackson.databind.JsonNode;
@@ -121,7 +122,8 @@ public class KisIntradayBarAdapter implements IntradayBarPort {
     ) {
         properties.validateForRequest();
         Map<String, String> headers = Map.of(
-                "authorization", "Bearer " + tokenProvider.getAccessToken(),
+                "authorization", "Bearer " + tokenProvider.getAccessToken(
+                        properties.getEnvironment()),
                 "appkey", properties.getAppKey(),
                 "appsecret", properties.getAppSecret(),
                 "tr_id", INTRADAY_BAR_TR_ID,

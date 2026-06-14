@@ -28,7 +28,7 @@ class KisLiveTradingOrderAdapterTest {
         LiveTradingProperties live=properties("REAL","https://openapi.koreainvestment.com:9443");
         KisProperties kis=new KisProperties();kis.setAppKey("key");kis.setAppSecret("secret");
         LiveKisAccessTokenProvider tokens=mock(LiveKisAccessTokenProvider.class);
-        when(tokens.get()).thenReturn("token");
+        when(tokens.getAccessToken(any())).thenReturn("token");
         KisLiveTradingOrderAdapter adapter=new KisLiveTradingOrderAdapter(client,tokens,kis,live);
 
         LiveOrderSubmission result=adapter.submitBuyLimitOrder(order(OrderSide.BUY));
@@ -39,13 +39,15 @@ class KisLiveTradingOrderAdapterTest {
         assertThat(client.headers).containsEntry("tr_id","TTTC0012U");
         assertThat(client.body.toString()).contains("ORD_DVSN=00").contains("PDNO=005930");
         assertThat(client.headers.toString()).doesNotContain("ACCOUNT");
+        verify(tokens).getAccessToken(
+                seokhoon.trade.domain.kis.KisEnvironment.REAL);
     }
 
     @Test
     void usesOfficialRealSellAndDemoBuyTrIds() throws Exception {
         RecordingClient realClient=client();
         KisProperties kis=new KisProperties();kis.setAppKey("key");kis.setAppSecret("secret");
-        LiveKisAccessTokenProvider tokens=mock(LiveKisAccessTokenProvider.class);when(tokens.get()).thenReturn("token");
+        LiveKisAccessTokenProvider tokens=mock(LiveKisAccessTokenProvider.class);when(tokens.getAccessToken(any())).thenReturn("token");
         new KisLiveTradingOrderAdapter(realClient,tokens,kis,
                 properties("REAL","https://openapi.koreainvestment.com:9443"))
                 .submitSellLimitOrder(order(OrderSide.SELL));
@@ -65,7 +67,7 @@ class KisLiveTradingOrderAdapterTest {
         kis.setAppSecret("secret");
         LiveKisAccessTokenProvider tokens=mock(
                 LiveKisAccessTokenProvider.class);
-        when(tokens.get()).thenReturn("token");
+        when(tokens.getAccessToken(any())).thenReturn("token");
         KisLiveTradingOrderAdapter adapter=new KisLiveTradingOrderAdapter(
                 client,tokens,kis,properties("DEMO",
                 "https://openapivts.koreainvestment.com:29443"));
@@ -106,7 +108,7 @@ class KisLiveTradingOrderAdapterTest {
         kis.setAppSecret("secret");
         LiveKisAccessTokenProvider tokens=mock(
                 LiveKisAccessTokenProvider.class);
-        when(tokens.get()).thenReturn("token");
+        when(tokens.getAccessToken(any())).thenReturn("token");
         KisLiveTradingOrderAdapter adapter=new KisLiveTradingOrderAdapter(
                 client,tokens,kis,properties("REAL",
                 "https://openapi.koreainvestment.com:9443"));
@@ -126,7 +128,7 @@ class KisLiveTradingOrderAdapterTest {
     }
 
     private static RecordingClient client() throws Exception{return new RecordingClient(new KisHttpResponse(200,JSON.readTree("{\"rt_cd\":\"0\",\"output\":{\"ODNO\":\"1\"}}")));}
-    private static LiveTradingProperties properties(String env,String url){LiveTradingProperties p=new LiveTradingProperties();p.setLiveTradingEnabled(true);p.setKisTradingEnabled(true);p.setAccountNumber("ACCOUNT");p.setAccountProductCode("01");p.setKisEnvironment(env);p.setTradingBaseUrl(url);return p;}
+    private static LiveTradingProperties properties(String env,String url){LiveTradingProperties p=new LiveTradingProperties();p.setLiveTradingEnabled(true);p.setKisTradingEnabled(true);p.setAccountNumber("ACCOUNT");p.setAccountProductCode("01");p.setKisEnvironment(env);return p;}
     private static LiveOrderRequest order(OrderSide side){return new LiveOrderRequest(1L,null,"005930",side,1,new BigDecimal("70000"),OrderType.LIMIT,LiveOrderStatus.RISK_APPROVED,null,null,null,Instant.now(),null,Instant.now());}
 
     private static class RecordingClient implements KisHttpClient {

@@ -155,7 +155,29 @@ Live trading은 기본 비활성입니다. 신규 주문은 아래 조건을 모
 - `LIMIT` 지정가 주문
 - 주문금액이 `LIVE_MAX_ALLOWED_ORDER_AMOUNT` 이하
 
-실전은 `KIS_TRADING_ENVIRONMENT=REAL`과 공식 실전 host, 모의는 `DEMO`와 모의 host 조합만 허용합니다. KIS 공식 현금주문 endpoint `/uapi/domestic-stock/v1/trading/order-cash`를 사용하며 실전 매수/매도 TR_ID는 `TTTC0012U`/`TTTC0011U`, 모의는 `VTTC0012U`/`VTTC0011U`입니다. KRX 직접 주문 API는 사용하지 않습니다.
+실전은 `KIS_TRADING_ENVIRONMENT=REAL`, 모의는 `DEMO`로 선택합니다. 환경에 따라 실전 `https://openapi.koreainvestment.com:9443` 또는 모의 `https://openapivts.koreainvestment.com:29443`가 자동 선택되며 운영 설정에서 별도 주문 base URL을 받지 않습니다. KIS 공식 현금주문 endpoint `/uapi/domestic-stock/v1/trading/order-cash`를 사용하며 실전 매수/매도 TR_ID는 `TTTC0012U`/`TTTC0011U`, 모의는 `VTTC0012U`/`VTTC0011U`입니다. KRX 직접 주문 API는 사용하지 않습니다.
+
+### KIS OAuth tokenP
+
+read-only 시세 환경은 `KIS_READ_ONLY_ENVIRONMENT=DEMO`, live 주문 환경은 `KIS_TRADING_ENVIRONMENT=REAL|DEMO`로 독립 지정합니다. 두 환경의 access token은 절대 공유하지 않고 환경별 MEMORY cache에 저장합니다.
+
+- token 없음: `/oauth2/tokenP` 1회 발급
+- 유효 token: cache hit
+- 만료 600초 전: 갱신
+- `KIS_TOKEN_DAILY_REFRESH_ENABLED=true`: KST 발급일이 바뀌면 갱신
+- 갱신 실패: 기존 token이 아직 유효하면 유지, 만료됐으면 요청 실패
+- 동시 요청: 환경별 lock으로 tokenP 중복 호출 방지
+- `KIS_TOKEN_REFRESH`: 매일 `KIS_TOKEN_ISSUE_TIME_KST` 기본 07:30 KST에 사용 중인 환경만 갱신
+
+```sh
+curl 'http://localhost:8080/api/kis/token/status'
+curl -X POST \
+  'http://localhost:8080/api/kis/token/refresh?environment=DEMO'
+```
+
+응답에는 `environment`, `tokenPresent`, `expiresAt`, `secondsToExpire`, `dailyIssuedDate`만 포함되며 access token 원문은 반환하지 않습니다. `kisOAuthToken` health도 동일하게 만료 정보만 노출합니다.
+
+현재 `KIS_TOKEN_CACHE_MODE=MEMORY`만 지원합니다. 따라서 서버 재시작 시 token을 다시 발급하고, 다중 서버 인스턴스끼리 cache를 공유하지 않습니다. DB cache는 후속 범위입니다. `KIS_BASE_URL_OVERRIDE`는 테스트 전용이며 운영에서는 비워 둡니다.
 
 수동 지정가 매수:
 
@@ -202,7 +224,7 @@ curl -X POST 'http://localhost:8080/api/live-orders/10/cancel' \
 
 `LIVE_POSITION_EXIT_MONITOR`는 두 feature flag가 켜진 장중에 1분마다 OPEN 포지션을 평가합니다. 매도는 현재가 지정가만 사용하며 `SELL_ORDERED` 포지션에는 중복 주문하지 않습니다. 주문 실패 시 포지션은 OPEN을 유지합니다. 자동매수는 구현하지 않았습니다.
 
-`LIVE_ORDER_RECONCILIATION`은 `KIS_TRADING_ENABLED=true`일 때 평일 1분마다 `ACCEPTED`/`PARTIALLY_FILLED` 주문의 누적 체결량과 잔량을 조회합니다. 새로 늘어난 체결 수량만 fill로 저장하고 매수 평균가/수량 또는 매도 잔여 포지션에 반영합니다. 전량 체결은 `FILLED`, 일부 체결은 `PARTIALLY_FILLED`로 전환됩니다.
+`LIVE_ORDER_RECONCILIATION`은 `KIS_TRADING_ENABLED=true`일 때 평일 1분마다 `ACCEPTED`/`PARTIALLY_FILLED` 주문의 누적 체결량과 잔량을 조회합니다. 새로 늘어난 체결 수량만 fill로 저장하고 매수 평균가/수량 또는 매도 잔여 포지션에 반영합니다. 전량 체결은 `FILLED`, 일부 체결은 `PARTIALLY_FILLED`로 전환됩니다. 주문·취소·체결조회 전에 공통 token provider에서 해당 live 환경 token을 획득하며 token 발급 또는 만료 복구에 실패하면 실주문 요청은 차단됩니다.
 
 자동취소 기본값은 비활성입니다.
 

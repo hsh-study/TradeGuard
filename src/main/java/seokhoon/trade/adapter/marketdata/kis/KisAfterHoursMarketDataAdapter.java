@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import seokhoon.trade.adapter.marketdata.ConditionalOnAfterHoursProvider;
 import seokhoon.trade.application.port.out.AfterHoursMarketDataPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
+import seokhoon.trade.application.port.out.KisAccessTokenProvider;
 import seokhoon.trade.domain.market.AfterHoursQuote;
 import tools.jackson.databind.JsonNode;
 
@@ -106,7 +107,8 @@ public class KisAfterHoursMarketDataAdapter implements AfterHoursMarketDataPort 
     ) {
         properties.validateForRequest();
         Map<String, String> headers = Map.of(
-                "authorization", "Bearer " + tokenProvider.getAccessToken(),
+                "authorization", "Bearer " + tokenProvider.getAccessToken(
+                        properties.getEnvironment()),
                 "appkey", properties.getAppKey(),
                 "appsecret", properties.getAppSecret(),
                 "tr_id", DAILY_AFTER_HOURS_TR_ID,

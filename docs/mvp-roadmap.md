@@ -180,7 +180,12 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 가장 가까운 작업 순서는 다음과 같다.
 
+KIS OAuth tokenP는 실전/모의 환경별 MEMORY cache, 만료 전 갱신,
+KST 일별 갱신, scheduler, health/API/metrics까지 구현했다.
+다중 인스턴스 공유용 DB token cache는 아직 구현하지 않았다.
+
 1. KIS 주문 정정 API와 취소가능조회 모의환경 공식 TR ID 확인
-2. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
-3. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
-4. scheduler 실행 이력과 metric의 보존/외부 수집 정책 수립
+2. 운영 배포 체크리스트와 credential rotation 절차 작성
+3. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
+4. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
+5. scheduler 실행 이력과 metric의 보존/외부 수집 정책 수립

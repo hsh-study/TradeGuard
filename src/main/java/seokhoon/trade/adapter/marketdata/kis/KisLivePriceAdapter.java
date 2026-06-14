@@ -3,6 +3,7 @@ package seokhoon.trade.adapter.marketdata.kis;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.LivePricePort;
+import seokhoon.trade.application.port.out.KisAccessTokenProvider;
 import seokhoon.trade.config.LiveTradingProperties;
 import tools.jackson.databind.JsonNode;
 
@@ -22,13 +23,13 @@ public class KisLivePriceAdapter implements LivePricePort {
             "/uapi/domestic-stock/v1/quotations/inquire-price";
     private static final String TR_ID = "FHKST01010100";
     private final KisHttpClient client;
-    private final LiveKisAccessTokenProvider tokens;
+    private final KisAccessTokenProvider tokens;
     private final KisProperties kis;
     private final LiveTradingProperties live;
 
     KisLivePriceAdapter(
             KisHttpClient client,
-            LiveKisAccessTokenProvider tokens,
+            KisAccessTokenProvider tokens,
             KisProperties kis,
             LiveTradingProperties live
     ) {
@@ -44,9 +45,10 @@ public class KisLivePriceAdapter implements LivePricePort {
         String query = "FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD="
                 + URLEncoder.encode(stockCode, StandardCharsets.UTF_8);
         KisHttpResponse response = client.get(
-                URI.create(live.getTradingBaseUrl() + PATH + "?" + query),
+                URI.create(kis.baseUrl(live.environment()) + PATH + "?" + query),
                 Map.of(
-                        "authorization", "Bearer " + tokens.get(),
+                        "authorization", "Bearer "
+                                + tokens.getAccessToken(live.environment()),
                         "appkey", kis.getAppKey(),
                         "appsecret", kis.getAppSecret(),
                         "tr_id", TR_ID,

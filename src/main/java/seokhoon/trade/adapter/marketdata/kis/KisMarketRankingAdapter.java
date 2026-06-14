@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.MarketRankingPort;
 import seokhoon.trade.application.port.out.MarketRankingStock;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
+import seokhoon.trade.application.port.out.KisAccessTokenProvider;
 import seokhoon.trade.domain.stock.Market;
 import tools.jackson.databind.JsonNode;
 
@@ -131,7 +132,8 @@ public class KisMarketRankingAdapter implements MarketRankingPort {
     private JsonNode request(String path, String trId, Map<String, String> parameters) {
         properties.validateForRequest();
         Map<String, String> headers = Map.of(
-                "authorization", "Bearer " + tokenProvider.getAccessToken(),
+                "authorization", "Bearer " + tokenProvider.getAccessToken(
+                        properties.getEnvironment()),
                 "appkey", properties.getAppKey(),
                 "appsecret", properties.getAppSecret(),
                 "tr_id", trId,

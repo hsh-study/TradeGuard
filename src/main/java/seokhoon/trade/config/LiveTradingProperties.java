@@ -3,6 +3,7 @@ package seokhoon.trade.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.domain.order.OrderType;
+import seokhoon.trade.domain.kis.KisEnvironment;
 
 import java.math.BigDecimal;
 
@@ -13,7 +14,6 @@ public class LiveTradingProperties {
     private boolean kisTradingEnabled;
     private String accountNumber = "";
     private String accountProductCode = "";
-    private String tradingBaseUrl = "https://openapi.koreainvestment.com:9443";
     private String kisEnvironment = "REAL";
     private BigDecimal buyCommissionRate = new BigDecimal("0.00015");
     private BigDecimal sellCommissionRate = new BigDecimal("0.00015");
@@ -72,15 +72,9 @@ public class LiveTradingProperties {
         if (accountProductCode == null || accountProductCode.isBlank()) {
             throw new LiveTradingDisabledException("KIS account product code is not configured");
         }
-        if ("REAL".equalsIgnoreCase(kisEnvironment)) {
-            if (!"https://openapi.koreainvestment.com:9443".equals(tradingBaseUrl)) {
-                throw new LiveTradingDisabledException("REAL trading requires the KIS production host");
-            }
-        } else if ("DEMO".equalsIgnoreCase(kisEnvironment)) {
-            if (!"https://openapivts.koreainvestment.com:29443".equals(tradingBaseUrl)) {
-                throw new LiveTradingDisabledException("DEMO trading requires the KIS virtual host");
-            }
-        } else {
+        try {
+            environment();
+        } catch (IllegalArgumentException exception) {
             throw new LiveTradingDisabledException("KIS trading environment must be REAL or DEMO");
         }
     }
@@ -99,10 +93,11 @@ public class LiveTradingProperties {
     public void setAccountNumber(String value) { accountNumber = value; }
     public String getAccountProductCode() { return accountProductCode; }
     public void setAccountProductCode(String value) { accountProductCode = value; }
-    public String getTradingBaseUrl() { return tradingBaseUrl; }
-    public void setTradingBaseUrl(String value) { tradingBaseUrl = value; }
     public String getKisEnvironment() { return kisEnvironment; }
     public void setKisEnvironment(String value) { kisEnvironment = value; }
+    public KisEnvironment environment() {
+        return KisEnvironment.valueOf(kisEnvironment.trim().toUpperCase());
+    }
     public BigDecimal getBuyCommissionRate() { return buyCommissionRate; }
     public void setBuyCommissionRate(BigDecimal value) { buyCommissionRate = value; }
     public BigDecimal getSellCommissionRate() { return sellCommissionRate; }

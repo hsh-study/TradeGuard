@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.MarketDataPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
+import seokhoon.trade.application.port.out.KisAccessTokenProvider;
 import seokhoon.trade.domain.market.DailyPrice;
 import tools.jackson.databind.JsonNode;
 
@@ -72,7 +73,8 @@ public class KisMarketDataAdapter implements MarketDataPort {
     private List<DailyPrice> fetch(String stockCode, LocalDate from, LocalDate to) {
         properties.validateForRequest();
         Map<String, String> headers = Map.of(
-                "authorization", "Bearer " + tokenProvider.getAccessToken(),
+                "authorization", "Bearer " + tokenProvider.getAccessToken(
+                        properties.getEnvironment()),
                 "appkey", properties.getAppKey(),
                 "appsecret", properties.getAppSecret(),
                 "tr_id", DAILY_PRICE_TR_ID,

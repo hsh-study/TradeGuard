@@ -95,6 +95,24 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordKisTokenIssue(String environment, String result) {
+        meterRegistry.counter(
+                "tradeguard.kis.token.issue.count",
+                "environment", environment,
+                "result", result
+        ).increment();
+    }
+
+    @Override
+    public void recordKisTokenCache(String environment, String result) {
+        meterRegistry.counter(
+                "tradeguard.kis.token.cache.count",
+                "environment", environment,
+                "result", result
+        ).increment();
+    }
+
+    @Override
     public void recordAfterHoursLookup(String result) {
         meterRegistry.counter(
                 "tradeguard.after_hours.lookup.count",

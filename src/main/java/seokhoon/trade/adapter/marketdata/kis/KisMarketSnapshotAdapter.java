@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.IntradayMarketSnapshot;
 import seokhoon.trade.application.port.out.MarketSnapshotPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
+import seokhoon.trade.application.port.out.KisAccessTokenProvider;
 import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
@@ -106,7 +107,8 @@ public class KisMarketSnapshotAdapter implements MarketSnapshotPort {
     private Optional<IntradayMarketSnapshot> fetchSnapshot(String stockCode) {
         properties.validateForRequest();
         Map<String, String> headers = Map.of(
-                "authorization", "Bearer " + tokenProvider.getAccessToken(),
+                "authorization", "Bearer " + tokenProvider.getAccessToken(
+                        properties.getEnvironment()),
                 "appkey", properties.getAppKey(),
                 "appsecret", properties.getAppSecret(),
                 "tr_id", CURRENT_PRICE_TR_ID,

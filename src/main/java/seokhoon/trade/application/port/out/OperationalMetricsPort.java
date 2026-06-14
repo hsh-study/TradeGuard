@@ -24,6 +24,8 @@ public interface OperationalMetricsPort {
     void recordDiscordNotification(String result);
 
     void recordKisReadOnly(String operation, String result);
+    void recordKisTokenIssue(String environment, String result);
+    void recordKisTokenCache(String environment, String result);
 
     void recordAfterHoursLookup(String result);
 
@@ -110,6 +112,14 @@ public interface OperationalMetricsPort {
 
             @Override
             public void recordKisReadOnly(String operation, String result) {
+            }
+
+            @Override
+            public void recordKisTokenIssue(String environment, String result) {
+            }
+
+            @Override
+            public void recordKisTokenCache(String environment, String result) {
             }
 
             @Override

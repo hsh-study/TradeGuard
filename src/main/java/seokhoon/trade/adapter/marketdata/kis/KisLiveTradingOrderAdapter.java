@@ -23,11 +23,11 @@ public class KisLiveTradingOrderAdapter implements LiveTradingOrderPort {
     private static final String CANCEL_PATH="/uapi/domestic-stock/v1/trading/order-rvsecncl";
     private static final String CANCELABLE_PATH="/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl";
     private final KisHttpClient client;
-    private final LiveKisAccessTokenProvider tokens;
+    private final KisAccessTokenProvider tokens;
     private final KisProperties kis;
     private final LiveTradingProperties live;
 
-    KisLiveTradingOrderAdapter(KisHttpClient client,LiveKisAccessTokenProvider tokens,
+    KisLiveTradingOrderAdapter(KisHttpClient client,KisAccessTokenProvider tokens,
             KisProperties kis,LiveTradingProperties live){this.client=client;this.tokens=tokens;this.kis=kis;this.live=live;}
 
     @Override public LiveOrderSubmission submitBuyLimitOrder(LiveOrderRequest order){return submit(order,true);}
@@ -48,7 +48,7 @@ public class KisLiveTradingOrderAdapter implements LiveTradingOrderPort {
                 "SLL_TYPE","00",
                 "CNDT_PRIC",""
         );
-        KisHttpResponse response=client.postJson(URI.create(live.getTradingBaseUrl()+ORDER_PATH),headers,body);
+        KisHttpResponse response=client.postJson(URI.create(baseUrl()+ORDER_PATH),headers,body);
         if(response.statusCode()!=200)return LiveOrderSubmission.rejected("KIS_HTTP_"+response.statusCode());
         if(!"0".equals(response.body().path("rt_cd").asText()))return LiveOrderSubmission.rejected(error(response.body()));
         JsonNode output=response.body().path("output");
@@ -74,7 +74,8 @@ public class KisLiveTradingOrderAdapter implements LiveTradingOrderPort {
                 Map.entry("CTX_AREA_NK100",""),Map.entry("EXCG_ID_DVSN_CD","KRX")
         ));
         String trId=isReal()?"TTTC0081R":"VTTC0081R";
-        KisHttpResponse response=client.get(URI.create(live.getTradingBaseUrl()+INQUIRY_PATH+"?"+query),headers(trId));
+        KisHttpResponse response=client.get(URI.create(
+                baseUrl()+INQUIRY_PATH+"?"+query),headers(trId));
         if(response.statusCode()!=200||!"0".equals(response.body().path("rt_cd").asText()))throw new KisApiException("KIS fill inquiry failed");
         Map<String,LiveOrderRequest> byNo=new HashMap<>();orders.forEach(o->byNo.put(o.kisOrderNo(),o));
         List<LiveTradeFill> result=new ArrayList<>();
@@ -116,7 +117,7 @@ public class KisLiveTradingOrderAdapter implements LiveTradingOrderPort {
         body.put("CNDT_PRIC","");
         String trId=isReal()?"TTTC0013U":"VTTC0013U";
         KisHttpResponse response=client.postJson(
-                URI.create(live.getTradingBaseUrl()+CANCEL_PATH),
+                URI.create(baseUrl()+CANCEL_PATH),
                 headers(trId),body);
         if(response.statusCode()!=200) {
             return LiveOrderCancellation.rejected(
@@ -152,7 +153,7 @@ public class KisLiveTradingOrderAdapter implements LiveTradingOrderPort {
         ));
         String trId=isReal()?"TTTC0081R":"VTTC0081R";
         KisHttpResponse response=client.get(URI.create(
-                live.getTradingBaseUrl()+INQUIRY_PATH+"?"+query),headers(trId));
+                baseUrl()+INQUIRY_PATH+"?"+query),headers(trId));
         if(response.statusCode()!=200
                 ||!"0".equals(response.body().path("rt_cd").asText())) {
             throw new KisApiException("KIS open order inquiry failed");
@@ -191,7 +192,7 @@ public class KisLiveTradingOrderAdapter implements LiveTradingOrderPort {
                 "CTX_AREA_FK100","","CTX_AREA_NK100",""
         ));
         KisHttpResponse response=client.get(URI.create(
-                live.getTradingBaseUrl()+CANCELABLE_PATH+"?"+query),
+                baseUrl()+CANCELABLE_PATH+"?"+query),
                 headers("TTTC0084R"));
         if(response.statusCode()!=200
                 ||!"0".equals(response.body().path("rt_cd").asText())) {
@@ -205,7 +206,8 @@ public class KisLiveTradingOrderAdapter implements LiveTradingOrderPort {
         return 0;
     }
 
-    private Map<String,String> headers(String trId){return Map.of("authorization","Bearer "+tokens.get(),"appkey",kis.getAppKey(),"appsecret",kis.getAppSecret(),"tr_id",trId,"custtype","P");}
+    private Map<String,String> headers(String trId){return Map.of("authorization","Bearer "+tokens.getAccessToken(live.environment()),"appkey",kis.getAppKey(),"appsecret",kis.getAppSecret(),"tr_id",trId,"custtype","P");}
+    private String baseUrl(){return kis.baseUrl(live.environment());}
     private String trId(boolean buy){return isReal()?(buy?"TTTC0012U":"TTTC0011U"):(buy?"VTTC0012U":"VTTC0011U");}
     private boolean isReal(){return "REAL".equalsIgnoreCase(live.getKisEnvironment());}
     private static String error(JsonNode body){String code=body.path("msg_cd").asText("UNKNOWN");return ("KIS_"+code).substring(0,Math.min(1000,("KIS_"+code).length()));}

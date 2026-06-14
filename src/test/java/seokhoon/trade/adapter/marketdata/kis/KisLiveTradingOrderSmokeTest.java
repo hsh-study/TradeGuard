@@ -33,7 +33,6 @@ class KisLiveTradingOrderSmokeTest {
         LiveTradingProperties live=new LiveTradingProperties();
         live.setLiveTradingEnabled(true);live.setKisTradingEnabled(true);
         live.setKisEnvironment("DEMO");
-        live.setTradingBaseUrl("https://openapivts.koreainvestment.com:29443");
         live.setAccountNumber(account);live.setAccountProductCode(product);
         KisLiveTradingOrderAdapter adapter=new KisLiveTradingOrderAdapter(
                 client,new LiveKisAccessTokenProvider(client,kis,live),kis,live);

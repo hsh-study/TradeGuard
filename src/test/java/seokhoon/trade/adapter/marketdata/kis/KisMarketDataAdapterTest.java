@@ -162,25 +162,34 @@ class KisMarketDataAdapterTest {
     }
 
     @Test
-    void blocksNonVirtualInvestmentHost() {
+    void selectsOfficialRealHostFromEnvironment() {
         KisProperties properties = properties();
-        properties.setBaseUrl("https://openapi.koreainvestment.com:9443");
-        FakeKisHttpClient httpClient = new FakeKisHttpClient(json("{}"), json("{}"));
+        properties.setEnvironment(
+                seokhoon.trade.domain.kis.KisEnvironment.REAL);
+        FakeKisHttpClient httpClient = new FakeKisHttpClient(
+                json("""
+                        {"access_token":"token","token_type":"Bearer",
+                         "expires_in":3600}
+                        """),
+                json("""
+                        {"rt_cd":"0","output2":[]}
+                        """));
         KisMarketDataAdapter adapter = new KisMarketDataAdapter(
                 httpClient,
                 tokenProvider(httpClient, properties),
                 properties
         );
 
-        assertThatThrownBy(() -> adapter.fetchDailyPrices(
+        adapter.fetchDailyPrices(
                 "005930",
                 LocalDate.of(2026, 6, 1),
                 LocalDate.of(2026, 6, 7)
-        ))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Only the KIS virtual investment host is allowed");
-        assertThat(httpClient.postCount).isZero();
-        assertThat(httpClient.getCount).isZero();
+        );
+
+        assertThat(httpClient.lastPostUri.getHost())
+                .isEqualTo("openapi.koreainvestment.com");
+        assertThat(httpClient.lastGetUri.getHost())
+                .isEqualTo("openapi.koreainvestment.com");
     }
 
     private static KisAccessTokenProvider tokenProvider(FakeKisHttpClient httpClient, KisProperties properties) {
@@ -229,6 +238,7 @@ class KisMarketDataAdapterTest {
         private final List<JsonNode> dailyPriceResponses;
         private int postCount;
         private int getCount;
+        private URI lastPostUri;
         private URI lastGetUri;
         private Map<String, String> lastGetHeaders = Map.of();
         private final List<Object> postBodies = new ArrayList<>();
@@ -242,6 +252,7 @@ class KisMarketDataAdapterTest {
         @Override
         public KisHttpResponse postJson(URI uri, Map<String, String> headers, Object body) {
             postCount++;
+            lastPostUri = uri;
             postBodies.add(body);
             return new KisHttpResponse(200, tokenResponse);
         }
