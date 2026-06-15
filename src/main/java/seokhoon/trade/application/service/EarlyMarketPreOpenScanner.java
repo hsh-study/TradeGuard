@@ -60,6 +60,8 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
     private final OperationalMetricsPort operationalMetricsPort;
     private final EarlyMarketStrategyProperties strategyProperties;
     private final Clock clock;
+    private IndicatorStrategyWarmUpSupport warmUpSupport =
+            IndicatorStrategyWarmUpSupport.disabled();
 
     @Autowired
     public EarlyMarketPreOpenScanner(
@@ -71,7 +73,8 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
             TradingSignalQueryPort tradingSignalQueryPort,
             NotificationPort notificationPort,
             OperationalMetricsPort operationalMetricsPort,
-            EarlyMarketStrategyProperties strategyProperties
+            EarlyMarketStrategyProperties strategyProperties,
+            IndicatorStrategyWarmUpSupport warmUpSupport
     ) {
         this(
                 marketRankingPort,
@@ -85,6 +88,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 strategyProperties,
                 Clock.systemUTC()
         );
+        this.warmUpSupport = warmUpSupport;
     }
 
     EarlyMarketPreOpenScanner(
@@ -188,8 +192,11 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         validateLimit(limit);
 
         Map<String, CandidateSeed> seeds = collectSeeds(limit);
+        IndicatorStrategyWarmUpSupport.Session warmUp =
+                warmUpSupport.prepare(seeds.keySet(), tradeDate);
         List<ScoredCandidate> selections = seeds.values().stream()
-                .map(seed -> score(seed, tradeDate))
+                .map(seed -> score(seed, tradeDate, warmUp))
+                .filter(Objects::nonNull)
                 .sorted(Comparator.comparingInt(ScoredCandidate::score).reversed()
                         .thenComparing(candidate -> candidate.stock().stockCode()))
                 .limit(limit)
@@ -243,7 +250,11 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         });
     }
 
-    private ScoredCandidate score(CandidateSeed seed, LocalDate tradeDate) {
+    private ScoredCandidate score(
+            CandidateSeed seed,
+            LocalDate tradeDate,
+            IndicatorStrategyWarmUpSupport.Session warmUp
+    ) {
         int score = 30;
         List<String> reasons = new ArrayList<>();
         reasons.add("EARLY_MARKET_PRE_OPEN_08_30");
@@ -280,6 +291,14 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         if (aboveMovingAverages) {
             score += 15;
         }
+        IndicatorStrategyWarmUpSupport.Assessment assessment =
+                warmUp.assess(seed.stock().stockCode(),
+                        seed.stock().currentPrice());
+        if (assessment.excluded()) {
+            return null;
+        }
+        score += assessment.scoreAdjustment();
+        reasons.addAll(assessment.reasons());
         LocalDate afterHoursTradeDate =
                 marketCalendarPort.previousTradingDay(tradeDate);
         reasons.add("AFTER_HOURS_TRADE_DATE_" + afterHoursTradeDate);

@@ -46,15 +46,19 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final NotificationPort notificationPort;
     private final Clock clock;
+    private IndicatorStrategyWarmUpSupport warmUpSupport =
+            IndicatorStrategyWarmUpSupport.disabled();
 
     @Autowired
     public ClosingBetCandidateScanner(
             MarketRankingPort marketRankingPort,
             TradingSignalPort tradingSignalPort,
             TradingSignalQueryPort tradingSignalQueryPort,
-            NotificationPort notificationPort
+            NotificationPort notificationPort,
+            IndicatorStrategyWarmUpSupport warmUpSupport
     ) {
         this(marketRankingPort, tradingSignalPort, tradingSignalQueryPort, notificationPort, Clock.systemUTC());
+        this.warmUpSupport = warmUpSupport;
     }
 
     ClosingBetCandidateScanner(
@@ -79,11 +83,14 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
         }
 
         Map<String, CandidateSeed> seeds = collectSeeds(limit);
+        IndicatorStrategyWarmUpSupport.Session warmUp =
+                warmUpSupport.prepare(seeds.keySet(), tradeDate);
         List<ScoredCandidate> filtered = seeds.values().stream()
                 .filter(seed -> seed.stock().tradingValue().compareTo(MIN_TRADING_VALUE) >= 0)
                 .filter(seed -> seed.stock().changeRate().compareTo(MIN_CHANGE_RATE) >= 0)
                 .filter(seed -> seed.stock().changeRate().compareTo(MAX_CHANGE_RATE) <= 0)
-                .map(this::score)
+                .map(seed -> score(seed, warmUp))
+                .filter(Objects::nonNull)
                 .filter(candidate -> candidate.score() >= MIN_SCORE)
                 .sorted(Comparator.comparingInt(ScoredCandidate::score).reversed()
                         .thenComparing(candidate -> candidate.stock().stockCode()))
@@ -142,7 +149,10 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
         });
     }
 
-    private ScoredCandidate score(CandidateSeed seed) {
+    private ScoredCandidate score(
+            CandidateSeed seed,
+            IndicatorStrategyWarmUpSupport.Session warmUp
+    ) {
         int score = 40;
         List<String> reasons = new ArrayList<>();
         reasons.add("MARKET_SCAN_14_00");
@@ -167,7 +177,14 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
             score += 10;
             reasons.add("CHANGE_RATE_OVER_5PCT");
         }
-        // TODO: Add VWAP, intraday high location, MA5/MA20 checks when intraday and daily data are available.
+        IndicatorStrategyWarmUpSupport.Assessment assessment =
+                warmUp.assess(seed.stock().stockCode(),
+                        seed.stock().currentPrice());
+        if (assessment.excluded()) {
+            return null;
+        }
+        score += assessment.scoreAdjustment();
+        reasons.addAll(assessment.reasons());
         return new ScoredCandidate(seed.stock(), score, reasons);
     }
 

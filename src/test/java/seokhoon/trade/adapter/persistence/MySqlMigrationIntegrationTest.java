@@ -106,6 +106,10 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "kis_access_tokens"
             )).isTrue();
+            assertThat(tableExists(
+                    jdbcTemplate,
+                    "indicator_warmup_histories"
+            )).isTrue();
             assertThat(columnExists(jdbcTemplate,"kis_access_tokens",
                     "encrypted_access_token")).isTrue();
             assertThat(columnExists(jdbcTemplate,"live_order_requests",

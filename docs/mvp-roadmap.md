@@ -56,7 +56,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 운영 관측성 | 부분 완료 | Actuator health/info/metrics, liveness/readiness, dependency health, scheduler 실행 이력, 핵심 Micrometer counter, 구조화 로그와 X-Request-Id 구현. 감사 이력 및 scheduler 실행 이력 correlation 연결 완료. 외부 metrics backend는 미구현 |
 | 시장 calendar | 부분 완료 | V11 `market_calendar_days`, V12 보정 audit, MANUAL_OVERRIDE 우선 정책, DB 우선 scheduler skip/이전·다음 거래일/시간외 기준일/리포트 거래일 수, 연도 sync·조회·검증·보정·audit API, 04:00 누락 연도 scheduler, health/metrics 구현. 공식 provider client/parser는 분리했으나 안정적인 KRX 무인증 endpoint가 명확하지 않아 기본은 생성 fallback이며 `MARKET_CALENDAR_HOLIDAYS` runtime fallback 관리가 필요 |
 | KIS 실매매 1단계 | 부분 완료 | 수동 지정가 매수/매도, 체결·부분체결 reconciliation, 취소, 자동취소 opt-in, 포지션 exit, kill switch 구현. REAL/DEMO OAuth token MEMORY cache와 AES-256-GCM DB cache, DB refresh lease, refresh scheduler, token health/API, 실매매 readiness 및 credential rotation/배포 체크리스트를 추가함. 자동매수·시장가·신용·미수·공매도는 미지원 |
-| DB migration | 완료 | Flyway V1~V14 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
+| DB migration | 완료 | Flyway V1~V17 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
+| 일봉·지표 warmup | 완료 | 관심종목 등록 후 KIS 일봉 120거래일 upsert, MA5/20/60·RSI·MACD·Bollinger 저장, warmup 이력/API/metrics, 종베 14:00·15:00 및 장초반 08:30·09:05 후보 사전 보강과 strict 제외 정책 구현 |
 
 ## 4. 구현 단계
 
@@ -188,6 +189,7 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 1. KIS 주문 정정 API와 취소가능조회 모의환경 공식 TR ID 확인
 2. 로컬 encryption key 파일 권한과 백업·복구 절차 점검
 3. token invalidate를 포함한 수동 encryption key rotation 절차 검증
-4. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
-5. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
-6. scheduler 실행 이력과 metric의 로컬 보존 정책 수립
+4. indicator warmup 실패율과 종목별 일봉 누락 운영 점검
+5. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
+6. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
+7. scheduler 실행 이력 보관 기간과 자동 정리 정책 결정

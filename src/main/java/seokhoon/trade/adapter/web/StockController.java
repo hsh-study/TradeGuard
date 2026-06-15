@@ -9,6 +9,7 @@ import seokhoon.trade.application.port.in.FindStocksUseCase;
 import seokhoon.trade.application.port.in.RegisterStockUseCase;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.stock.Stock;
+import seokhoon.trade.domain.indicator.IndicatorWarmUpResult;
 
 import java.util.List;
 
@@ -24,8 +25,19 @@ public class StockController {
     }
 
     @PostMapping
-    void register(@RequestBody RegisterStockRequest request) {
-        registerStockUseCase.register(request.stockCode(), request.stockName(), request.market());
+    RegisterStockResponse register(
+            @RequestBody RegisterStockRequest request
+    ) {
+        IndicatorWarmUpResult warmUp = registerStockUseCase.register(
+                request.stockCode(),
+                request.stockName(),
+                request.market()
+        );
+        return new RegisterStockResponse(
+                request.stockCode(),
+                true,
+                IndicatorWarmUpController.WarmUpResponse.from(warmUp)
+        );
     }
 
     @GetMapping
@@ -36,6 +48,13 @@ public class StockController {
     }
 
     public record RegisterStockRequest(String stockCode, String stockName, Market market) {
+    }
+
+    public record RegisterStockResponse(
+            String stockCode,
+            boolean registered,
+            IndicatorWarmUpController.WarmUpResponse warmUp
+    ) {
     }
 
     public record StockResponse(String stockCode, String stockName, Market market, boolean active) {

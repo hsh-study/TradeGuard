@@ -68,6 +68,8 @@ public interface OperationalMetricsPort {
     void recordLiveOrderReconciliation(String result);
     void recordLiveOrderCancel(String result);
     void recordLiveTradingReadiness(String result);
+    void recordIndicatorWarmUp(String result);
+    void recordIndicatorDataSufficiency(String result);
 
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
@@ -201,6 +203,8 @@ public interface OperationalMetricsPort {
             @Override public void recordLiveOrderReconciliation(String result) {}
             @Override public void recordLiveOrderCancel(String result) {}
             @Override public void recordLiveTradingReadiness(String result) {}
+            @Override public void recordIndicatorWarmUp(String result) {}
+            @Override public void recordIndicatorDataSufficiency(String result) {}
         };
     }
 }

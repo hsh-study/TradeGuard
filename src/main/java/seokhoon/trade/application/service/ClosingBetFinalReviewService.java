@@ -45,13 +45,16 @@ public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesU
     private final MarketSnapshotPort marketSnapshotPort;
     private final NotificationPort notificationPort;
     private final Clock clock;
+    private IndicatorStrategyWarmUpSupport warmUpSupport =
+            IndicatorStrategyWarmUpSupport.disabled();
 
     @Autowired
     public ClosingBetFinalReviewService(
             TradingSignalQueryPort tradingSignalQueryPort,
             TradingSignalPort tradingSignalPort,
             MarketSnapshotPort marketSnapshotPort,
-            NotificationPort notificationPort
+            NotificationPort notificationPort,
+            IndicatorStrategyWarmUpSupport warmUpSupport
     ) {
         this(
                 tradingSignalQueryPort,
@@ -60,6 +63,7 @@ public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesU
                 notificationPort,
                 Clock.systemUTC()
         );
+        this.warmUpSupport = warmUpSupport;
     }
 
     ClosingBetFinalReviewService(
@@ -91,9 +95,16 @@ public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesU
                 null,
                 MIN_PRE_SCAN_SCORE
         ));
+        IndicatorStrategyWarmUpSupport.Session warmUp =
+                warmUpSupport.prepare(
+                preScanCandidates.stream()
+                        .map(TradingSignalRecord::stockCode)
+                        .toList(),
+                tradeDate
+        );
         List<FinalReviewSelection> selections = preScanCandidates.stream()
                 .filter(signal -> signal.riskReasons().isEmpty())
-                .map(this::reviewWithSnapshot)
+                .map(signal -> reviewWithSnapshot(signal, warmUp))
                 .flatMap(java.util.Optional::stream)
                 .filter(selection -> selection.finalScore() >= MIN_FINAL_SCORE)
                 .sorted(Comparator.comparingInt(FinalReviewSelection::finalScore).reversed()
@@ -126,7 +137,8 @@ public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesU
     }
 
     private java.util.Optional<FinalReviewSelection> reviewWithSnapshot(
-            TradingSignalRecord preScanSignal
+            TradingSignalRecord preScanSignal,
+            IndicatorStrategyWarmUpSupport.Session warmUp
     ) {
         java.util.Optional<IntradayMarketSnapshot> snapshot;
         try {
@@ -134,12 +146,13 @@ public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesU
         } catch (RuntimeException exception) {
             return java.util.Optional.empty();
         }
-        return snapshot.map(value -> review(preScanSignal, value));
+        return snapshot.map(value -> review(preScanSignal, value, warmUp));
     }
 
     private FinalReviewSelection review(
             TradingSignalRecord preScanSignal,
-            IntradayMarketSnapshot snapshot
+            IntradayMarketSnapshot snapshot,
+            IndicatorStrategyWarmUpSupport.Session warmUp
     ) {
         int score = BASE_FINAL_REVIEW_SCORE;
         List<String> reasons = new ArrayList<>();
@@ -169,6 +182,14 @@ public class ClosingBetFinalReviewService implements ReviewClosingBetCandidatesU
             score += 10;
             reasons.add("ACCUMULATED_TRADING_VALUE_OVER_50B_KRW");
         }
+        IndicatorStrategyWarmUpSupport.Assessment assessment =
+                warmUp.assess(preScanSignal.stockCode(),
+                        snapshot.currentPrice());
+        if (assessment.excluded()) {
+            return null;
+        }
+        score += assessment.scoreAdjustment();
+        reasons.addAll(assessment.reasons());
         return new FinalReviewSelection(preScanSignal, score, reasons);
     }
 

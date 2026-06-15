@@ -47,6 +47,8 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
     private final NotificationPort notificationPort;
     private final EarlyMarketStrategyProperties strategyProperties;
     private final Clock clock;
+    private IndicatorStrategyWarmUpSupport warmUpSupport =
+            IndicatorStrategyWarmUpSupport.disabled();
 
     @Autowired
     public EarlyMarketOpeningCompressor(
@@ -55,7 +57,8 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
             MarketSnapshotPort marketSnapshotPort,
             LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
             NotificationPort notificationPort,
-            EarlyMarketStrategyProperties strategyProperties
+            EarlyMarketStrategyProperties strategyProperties,
+            IndicatorStrategyWarmUpSupport warmUpSupport
     ) {
         this(
                 tradingSignalQueryPort,
@@ -66,6 +69,7 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
                 strategyProperties,
                 Clock.systemUTC()
         );
+        this.warmUpSupport = warmUpSupport;
     }
 
     EarlyMarketOpeningCompressor(
@@ -140,9 +144,16 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
                         null
                 )
         );
+        IndicatorStrategyWarmUpSupport.Session warmUp =
+                warmUpSupport.prepare(
+                preScanSignals.stream()
+                        .map(TradingSignalRecord::stockCode)
+                        .toList(),
+                tradeDate
+        );
         List<Selection> selections = preScanSignals.stream()
                 .filter(signal -> signal.riskReasons().isEmpty())
-                .map(this::withSnapshot)
+                .map(signal -> withSnapshot(signal, warmUp))
                 .flatMap(java.util.Optional::stream)
                 .filter(selection -> selection.score()
                         >= strategyProperties.getOpening().getEntryThreshold())
@@ -175,13 +186,17 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
         );
     }
 
-    private java.util.Optional<Selection> withSnapshot(TradingSignalRecord preScan) {
+    private java.util.Optional<Selection> withSnapshot(
+            TradingSignalRecord preScan,
+            IndicatorStrategyWarmUpSupport.Session warmUp
+    ) {
         try {
             return marketSnapshotPort.getSnapshot(preScan.stockCode())
                     .map(snapshot -> score(
                             preScan,
                             snapshot,
-                            loadPriceActionFeatures(preScan)
+                            loadPriceActionFeatures(preScan),
+                            warmUp
                     ));
         } catch (RuntimeException exception) {
             return java.util.Optional.empty();
@@ -207,9 +222,10 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
     }
 
     private Selection score(
-            TradingSignalRecord preScan,
-            IntradayMarketSnapshot snapshot,
-        EarlyMarketPriceActionFeatures features
+        TradingSignalRecord preScan,
+        IntradayMarketSnapshot snapshot,
+        EarlyMarketPriceActionFeatures features,
+        IndicatorStrategyWarmUpSupport.Session warmUp
     ) {
         EarlyMarketStrategyProperties.Opening opening =
                 strategyProperties.getOpening();
@@ -261,6 +277,14 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
             }
             reasons.addAll(features.reasons());
         }
+        IndicatorStrategyWarmUpSupport.Assessment assessment =
+                warmUp.assess(preScan.stockCode(),
+                        snapshot.currentPrice());
+        if (assessment.excluded()) {
+            return null;
+        }
+        score += assessment.scoreAdjustment();
+        reasons.addAll(assessment.reasons());
         return new Selection(preScan, score, reasons);
     }
 

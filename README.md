@@ -313,6 +313,48 @@ curl -X POST http://localhost:8080/api/stocks   -H 'Content-Type: application/js
 curl http://localhost:8080/api/stocks
 ```
 
+관심종목 등록 시 종목 저장을 먼저 완료한 뒤 KIS 읽기 전용 일봉 warmup을
+실행합니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/stocks' \
+  -H 'Content-Type: application/json' \
+  -d '{"stockCode":"005930","stockName":"삼성전자","market":"KOSPI"}'
+```
+
+기본적으로 등록일의 직전 거래일까지 완료된 최근 120거래일 일봉을
+`daily_prices`에 upsert하고, 60개 이상 확보되면 MA5/MA20/MA60, RSI(14),
+MACD, Bollinger Band를 계산해 `indicator_snapshots`에 저장합니다. KIS
+조회 실패나 데이터 부족은 `warmUp.status`, `warnings`와
+`indicator_warmup_histories`에 기록되며 관심종목 등록 자체는 성공합니다.
+
+수동 warmup 및 조회:
+
+```sh
+curl -X POST \
+  'http://localhost:8080/api/indicators/warm-up?stockCode=005930'
+curl -X POST \
+  'http://localhost:8080/api/indicators/warm-up/active-stocks'
+curl \
+  'http://localhost:8080/api/indicators/warm-up/histories?stockCode=005930'
+curl \
+  'http://localhost:8080/api/indicators/snapshots?stockCode=005930&tradeDate=2026-06-12'
+```
+
+warmup 설정:
+
+```text
+INDICATOR_WARMUP_ENABLED=true
+INDICATOR_WARMUP_LOOKBACK_TRADING_DAYS=120
+INDICATOR_WARMUP_MIN_REQUIRED_DAYS_FOR_MA60=60
+INDICATOR_WARMUP_FAIL_STRATEGY_WHEN_INSUFFICIENT=false
+INDICATOR_WARMUP_MAX_SYMBOLS_PER_RUN=100
+```
+
+MA20 충분성은 일봉 20개, MA60 및 전체 indicator snapshot 충분성은 기본
+일봉 60개로 판단합니다. 목표 120거래일이 이미 저장되어 있으면 KIS를 다시
+조회하지 않고 저장 데이터로 지표를 재계산합니다.
+
 특정 종목 분석 실행:
 
 ```sh
@@ -334,6 +376,21 @@ curl -X POST 'http://localhost:8080/api/scans/closing-bet?tradeDate=2026-06-05&l
 ```
 
 스캔은 관심종목 등록 여부와 무관한 시장 순위 후보군에서 `CLOSING_BET_PRE_SCAN` 신호를 저장합니다. 기본은 fake 순위 데이터이며 `MARKET_DATA_REALTIME_PROVIDER=kis` 설정 시 KIS 읽기 전용 순위 API를 사용합니다. 자동 주문은 생성하지 않으며, 거래일 14:00 Asia/Seoul 기준으로도 실행됩니다.
+
+14:00 예비 스캔은 ranking universe를 확보한 직후 후보 일봉과 지표를
+warmup합니다. 15:00 최종 리뷰는 저장된 예비 후보를 다시 확인합니다.
+장초반도 08:30 ranking 후보와 09:05 예비 후보에 같은 정책을 적용합니다.
+한 실행에서 처리하는 종목은 `INDICATOR_WARMUP_MAX_SYMBOLS_PER_RUN`으로
+제한합니다.
+
+기본 설정에서는 warmup 실패나 MA60 부족 시
+`INDICATOR_DATA_INSUFFICIENT` reason을 남기고 전략을 계속합니다.
+`INDICATOR_WARMUP_FAIL_STRATEGY_WHEN_INSUFFICIENT=true`일 때만 해당 종목을
+후보에서 제외합니다. MA20이 MA60보다 높으면
+`MA20_ABOVE_MA60_UPTREND`, 현재가가 MA60 아래면
+`RISK_CURRENT_PRICE_BELOW_MA60`, `MA5 < MA20 < MA60` 역배열이면
+`MA5_MA20_MA60_BEARISH_ALIGNMENT` reason과 10점 감점을 적용합니다.
+이 과정은 신호 분석만 수행하며 실매매나 자동 주문을 실행하지 않습니다.
 
 15:00 종가베팅 최종 후보 수동 리뷰:
 
