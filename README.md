@@ -155,6 +155,23 @@ Live trading은 기본 비활성입니다. 신규 주문은 아래 조건을 모
 - `LIMIT` 지정가 주문
 - 주문금액이 `LIVE_MAX_ALLOWED_ORDER_AMOUNT` 이하
 
+운영 종합 점검:
+
+```sh
+curl 'http://localhost:8080/api/live-trading/readiness'
+```
+
+응답은 feature flag, REAL/DEMO 환경, 계좌 설정 여부, token 만료 상태,
+kill switch, DB calendar, 현재 장 운영시간, 지정가/주문한도,
+세금·수수료와 자동취소 정책을 한 번에 확인합니다. 하나 이상의
+`blockingReasons`가 있으면 `ready=false`입니다. 장 종료와 자동취소
+비활성은 `warnings`로 반환됩니다. 계좌번호, app key/secret, access token
+원문은 응답에 포함되지 않습니다.
+
+실매매 배포 체크리스트와 credential rotation 절차는
+[`docs/live-trading-operations.md`](docs/live-trading-operations.md)를
+따릅니다.
+
 실전은 `KIS_TRADING_ENVIRONMENT=REAL`, 모의는 `DEMO`로 선택합니다. 환경에 따라 실전 `https://openapi.koreainvestment.com:9443` 또는 모의 `https://openapivts.koreainvestment.com:29443`가 자동 선택되며 운영 설정에서 별도 주문 base URL을 받지 않습니다. KIS 공식 현금주문 endpoint `/uapi/domestic-stock/v1/trading/order-cash`를 사용하며 실전 매수/매도 TR_ID는 `TTTC0012U`/`TTTC0011U`, 모의는 `VTTC0012U`/`VTTC0011U`입니다. KRX 직접 주문 API는 사용하지 않습니다.
 
 ### KIS OAuth tokenP

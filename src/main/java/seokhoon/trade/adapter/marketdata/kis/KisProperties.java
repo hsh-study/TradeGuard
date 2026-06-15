@@ -4,12 +4,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.domain.kis.KisEnvironment;
 import seokhoon.trade.domain.kis.KisTokenCacheMode;
+import seokhoon.trade.application.port.out.KisConfigurationPort;
 
 import java.time.LocalTime;
 
 @Component
 @ConfigurationProperties(prefix = "tradeguard.kis")
-public class KisProperties {
+public class KisProperties implements KisConfigurationPort {
     public static final String REAL_BASE_URL =
             "https://openapi.koreainvestment.com:9443";
     public static final String DEMO_BASE_URL =
@@ -102,5 +103,21 @@ public class KisProperties {
     public String tokenRefreshCron() {
         return "0 " + tokenIssueTimeKst.getMinute()
                 + " " + tokenIssueTimeKst.getHour() + " * * *";
+    }
+
+    @Override
+    public KisEnvironment readOnlyEnvironment() {
+        return environment;
+    }
+
+    @Override
+    public boolean credentialsConfigured() {
+        return appKey != null && !appKey.isBlank()
+                && appSecret != null && !appSecret.isBlank();
+    }
+
+    @Override
+    public int tokenRefreshBeforeSeconds() {
+        return tokenRefreshBeforeSeconds;
     }
 }
