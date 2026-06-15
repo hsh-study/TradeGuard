@@ -55,7 +55,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | KIS 연동 | 부분 완료 | 모의투자 OAuth, 일봉/순위/current price read-only 조회와 opt-in smoke test 구현. 계좌/주문 연동은 의도적으로 제외 |
 | 운영 관측성 | 부분 완료 | Actuator health/info/metrics, liveness/readiness, dependency health, scheduler 실행 이력, 핵심 Micrometer counter, 구조화 로그와 X-Request-Id 구현. 감사 이력 및 scheduler 실행 이력 correlation 연결 완료. 외부 metrics backend는 미구현 |
 | 시장 calendar | 부분 완료 | V11 `market_calendar_days`, V12 보정 audit, MANUAL_OVERRIDE 우선 정책, DB 우선 scheduler skip/이전·다음 거래일/시간외 기준일/리포트 거래일 수, 연도 sync·조회·검증·보정·audit API, 04:00 누락 연도 scheduler, health/metrics 구현. 공식 provider client/parser는 분리했으나 안정적인 KRX 무인증 endpoint가 명확하지 않아 기본은 생성 fallback이며 `MARKET_CALENDAR_HOLIDAYS` runtime fallback 관리가 필요 |
-| KIS 실매매 1단계 | 부분 완료 | 수동 지정가 매수/매도, 체결·부분체결 reconciliation, 취소, 자동취소 opt-in, 포지션 exit, kill switch 구현. REAL/DEMO OAuth token cache와 refresh scheduler, token health/API, 실매매 readiness API 및 credential rotation/배포 체크리스트를 추가함. 자동매수·시장가·신용·미수·공매도는 미지원 |
+| KIS 실매매 1단계 | 부분 완료 | 수동 지정가 매수/매도, 체결·부분체결 reconciliation, 취소, 자동취소 opt-in, 포지션 exit, kill switch 구현. REAL/DEMO OAuth token MEMORY cache와 AES-256-GCM DB cache, DB refresh lease, refresh scheduler, token health/API, 실매매 readiness 및 credential rotation/배포 체크리스트를 추가함. 자동매수·시장가·신용·미수·공매도는 미지원 |
 | DB migration | 완료 | Flyway V1~V14 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
 
 ## 4. 구현 단계
@@ -181,11 +181,13 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 가장 가까운 작업 순서는 다음과 같다.
 
 KIS OAuth tokenP는 실전/모의 환경별 MEMORY cache, 만료 전 갱신,
-KST 일별 갱신, scheduler, health/API/metrics까지 구현했다.
-다중 인스턴스 공유용 DB token cache는 아직 구현하지 않았다.
+KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
+구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
+로컬 실행을 기준으로 한다.
 
 1. KIS 주문 정정 API와 취소가능조회 모의환경 공식 TR ID 확인
-2. 운영 secret store 및 다중 인스턴스 DB token cache 설계
-3. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
-4. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
-5. scheduler 실행 이력과 metric의 보존/외부 수집 정책 수립
+2. 로컬 encryption key 파일 권한과 백업·복구 절차 점검
+3. token invalidate를 포함한 수동 encryption key rotation 절차 검증
+4. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
+5. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
+6. scheduler 실행 이력과 metric의 로컬 보존 정책 수립

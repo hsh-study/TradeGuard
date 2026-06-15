@@ -39,14 +39,23 @@ public class KisTokenManagementService implements ManageKisTokenUseCase {
         return status(environment);
     }
 
+    @Override
+    public KisTokenStatus invalidate(KisEnvironment environment) {
+        provider.invalidate(environment);
+        return status(environment);
+    }
+
     private KisTokenStatus status(KisEnvironment environment) {
         Instant now=clock.instant();
         return provider.findTokenMetadata(environment)
-                .map(token->new KisTokenStatus(environment,true,
+                .map(token->new KisTokenStatus(provider.cacheMode(),
+                        environment,true,
                         token.expiresAt(),
                         Duration.between(now,token.expiresAt()).getSeconds(),
-                        LocalDate.ofInstant(token.issuedAt(),SEOUL)))
-                .orElseGet(()->new KisTokenStatus(environment,false,
-                        null,0,null));
+                        LocalDate.ofInstant(token.issuedAt(),SEOUL),
+                        provider.refreshInProgress(environment)))
+                .orElseGet(()->new KisTokenStatus(provider.cacheMode(),
+                        environment,false,null,0,null,
+                        provider.refreshInProgress(environment)));
     }
 }

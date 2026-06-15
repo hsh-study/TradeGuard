@@ -80,6 +80,10 @@ public class LiveTradingReadinessService
         if (!kis.credentialsConfigured()) {
             blocking.add("KIS_CREDENTIALS_NOT_CONFIGURED");
         }
+        if (kis.tokenCacheMode() == KisTokenCacheMode.DB
+                && !kis.tokenEncryptionConfigured()) {
+            blocking.add("KIS_TOKEN_ENCRYPTION_KEY_NOT_CONFIGURED");
+        }
 
         LiveTradingRuntimeState state=runtime.get();
         if (state.killSwitchEnabled()) {

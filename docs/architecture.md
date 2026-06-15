@@ -203,7 +203,11 @@ KIS 시장 순위와 current price adapter도 같은 인증 정보를 사용하�
 | `trading_signal_reasons` | signal FK | 점수 근거 목록 |
 | `order_requests` | 생성 ID | 모의 주문 이력 |
 
-운영 DB 모델은 MySQL을 기준으로 하며 로컬 기본 실행과 테스트는 H2 MySQL mode를 사용한다. 운영에서는 `JPA_DDL_AUTO=validate`와 명시적인 DB migration 도구 사용을 목표로 한다.
+운영 DB 모델과 로컬 기본 실행은 MySQL을 사용한다. 일반 테스트만
+`test` profile의 `src/test/resources/application-test.properties`에서 H2
+MySQL mode를 사용한다.
+로컬 실행과 운영 모두 `JPA_DDL_AUTO=validate`와 Flyway migration을
+사용한다.
 
 ## 7. 트랜잭션과 일관성
 

@@ -27,6 +27,9 @@ public class KisProperties implements KisConfigurationPort {
     private LocalTime tokenIssueTimeKst = LocalTime.of(7, 30);
     private KisTokenCacheMode tokenCacheMode = KisTokenCacheMode.MEMORY;
     private String baseUrlOverride = "";
+    private String tokenEncryptionKey = "";
+    private int tokenRefreshLockTimeoutSeconds = 120;
+    private int tokenRefreshLockWaitSeconds = 10;
 
     public String getBaseUrl() {
         return baseUrl(environment);
@@ -67,9 +70,16 @@ public class KisProperties implements KisConfigurationPort {
             throw new IllegalStateException(
                     "tokenRefreshBeforeSeconds must be non-negative");
         }
-        if (tokenCacheMode != KisTokenCacheMode.MEMORY) {
+        if (tokenCacheMode == KisTokenCacheMode.DB
+                && (tokenEncryptionKey == null
+                || tokenEncryptionKey.isBlank())) {
             throw new IllegalStateException(
-                    "Only MEMORY KIS token cache is currently supported");
+                    "KIS token encryption key is required for DB cache");
+        }
+        if (tokenRefreshLockTimeoutSeconds <= 0
+                || tokenRefreshLockWaitSeconds < 0) {
+            throw new IllegalStateException(
+                    "KIS token refresh lock settings are invalid");
         }
         baseUrl(requestedEnvironment);
     }
@@ -100,6 +110,12 @@ public class KisProperties implements KisConfigurationPort {
     public void setTokenCacheMode(KisTokenCacheMode value) { tokenCacheMode = value; }
     public String getBaseUrlOverride() { return baseUrlOverride; }
     public void setBaseUrlOverride(String value) { baseUrlOverride = value; }
+    public String getTokenEncryptionKey() { return tokenEncryptionKey; }
+    public void setTokenEncryptionKey(String value) { tokenEncryptionKey = value; }
+    public int getTokenRefreshLockTimeoutSeconds() { return tokenRefreshLockTimeoutSeconds; }
+    public void setTokenRefreshLockTimeoutSeconds(int value) { tokenRefreshLockTimeoutSeconds = value; }
+    public int getTokenRefreshLockWaitSeconds() { return tokenRefreshLockWaitSeconds; }
+    public void setTokenRefreshLockWaitSeconds(int value) { tokenRefreshLockWaitSeconds = value; }
     public String tokenRefreshCron() {
         return "0 " + tokenIssueTimeKst.getMinute()
                 + " " + tokenIssueTimeKst.getHour() + " * * *";
@@ -119,5 +135,15 @@ public class KisProperties implements KisConfigurationPort {
     @Override
     public int tokenRefreshBeforeSeconds() {
         return tokenRefreshBeforeSeconds;
+    }
+
+    @Override
+    public KisTokenCacheMode tokenCacheMode() {
+        return tokenCacheMode;
+    }
+
+    @Override
+    public boolean tokenEncryptionConfigured() {
+        return tokenEncryptionKey != null && !tokenEncryptionKey.isBlank();
     }
 }

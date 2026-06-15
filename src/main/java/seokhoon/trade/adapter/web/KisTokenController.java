@@ -24,4 +24,9 @@ public class KisTokenController {
     KisTokenStatus refresh(@RequestParam KisEnvironment environment) {
         return useCase.refresh(environment);
     }
+
+    @DeleteMapping
+    KisTokenStatus invalidate(@RequestParam KisEnvironment environment) {
+        return useCase.invalidate(environment);
+    }
 }

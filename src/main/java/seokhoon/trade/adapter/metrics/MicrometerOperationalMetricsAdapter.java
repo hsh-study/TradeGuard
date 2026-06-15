@@ -113,6 +113,15 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordKisTokenStore(String cacheMode, String result) {
+        meterRegistry.counter(
+                "tradeguard.kis.token.store.count",
+                "cacheMode",cacheMode,
+                "result",result
+        ).increment();
+    }
+
+    @Override
     public void recordAfterHoursLookup(String result) {
         meterRegistry.counter(
                 "tradeguard.after_hours.lookup.count",

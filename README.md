@@ -14,11 +14,20 @@ Spring Boot 기반 한국 주식 자동매매 보조 시스템입니다. MVP 1�
 
 ## 실행
 
+로컬 운영은 MySQL을 기본으로 사용합니다. 먼저 MySQL에 `tradeguard`
+database와 애플리케이션 계정을 만들고 `.env.example`을 참고해 `.env`를
+설정합니다.
+
 ```sh
+set -a
+source .env
+set +a
 ./gradlew bootRun
 ```
 
-기본 실행은 H2 인메모리 DB를 사용합니다. MySQL을 사용할 때는 `.env.example`을 참고해 환경변수를 지정합니다.
+환경변수를 지정하지 않으면 `localhost:3306/tradeguard`, 사용자
+`tradeguard`를 사용합니다. 실제 비밀번호는 반드시 `.env`의
+`DB_PASSWORD`로 설정합니다. `.env`는 Git에 포함되지 않습니다.
 
 DB 스키마는 Flyway migration으로 생성합니다. Hibernate는 기본적으로 `ddl-auto=validate`로 동작하므로 JPA가 테이블을 자동 생성하지 않습니다.
 
@@ -42,7 +51,11 @@ KIS 분봉 adapter는 공식 `주식당일분봉조회[v1_국내주식-022]`의 
 ./gradlew test
 ```
 
-테스트는 H2 MySQL mode에서 Flyway migration과 Hibernate schema validation을 검증합니다. Docker가 사용 가능하면 `MySqlMigrationIntegrationTest`가 MySQL Testcontainers로 V1~V12 migration과 핵심 unique constraint도 검증합니다.
+일반 테스트는 `test` profile과
+`src/test/resources/application-test.properties`의 H2 MySQL mode에서 Flyway
+migration과 Hibernate schema validation을 검증합니다. Docker가 사용
+가능하면 `MySqlMigrationIntegrationTest`가 MySQL Testcontainers로 전체
+migration과 핵심 unique constraint도 검증합니다.
 
 로컬 자격증명으로 KIS 읽기 전용 smoke test를 실행하려면:
 
@@ -194,7 +207,33 @@ curl -X POST \
 
 응답에는 `environment`, `tokenPresent`, `expiresAt`, `secondsToExpire`, `dailyIssuedDate`만 포함되며 access token 원문은 반환하지 않습니다. `kisOAuthToken` health도 동일하게 만료 정보만 노출합니다.
 
-현재 `KIS_TOKEN_CACHE_MODE=MEMORY`만 지원합니다. 따라서 서버 재시작 시 token을 다시 발급하고, 다중 서버 인스턴스끼리 cache를 공유하지 않습니다. DB cache는 후속 범위입니다. `KIS_BASE_URL_OVERRIDE`는 테스트 전용이며 운영에서는 비워 둡니다.
+Token cache mode:
+
+- `KIS_TOKEN_CACHE_MODE=MEMORY`: 기본값. 인스턴스별 메모리에 token을 저장하며 재시작 시 재발급합니다.
+- `KIS_TOKEN_CACHE_MODE=DB`: REAL/DEMO별 암호화 token을 `kis_access_tokens`에 저장해 로컬 애플리케이션 재시작 후에도 유효한 token을 재사용합니다. DB lease lock은 scheduler와 요청이 겹칠 때 중복 tokenP 발급을 막습니다.
+
+DB 모드는 Base64로 인코딩된 32바이트 AES key가 반드시 필요합니다.
+
+```sh
+openssl rand -base64 32
+```
+
+```text
+KIS_TOKEN_CACHE_MODE=DB
+KIS_TOKEN_ENCRYPTION_KEY=<base64-encoded-32-byte-key>
+KIS_TOKEN_REFRESH_LOCK_TIMEOUT_SECONDS=120
+KIS_TOKEN_REFRESH_LOCK_WAIT_SECONDS=10
+```
+
+Token은 AES-256-GCM으로 암호화되고 nonce와 authentication tag가 ciphertext에 포함됩니다. 평문 token은 DB, API, health, log, metric에 저장하거나 노출하지 않습니다. 동일 환경 refresh lock이 이미 점유 중이면 유효한 기존 token을 재사용합니다. 비정상 종료로 남은 오래된 lock은 timeout 이후 회수할 수 있습니다.
+
+```sh
+curl 'http://localhost:8080/api/kis/token/status'
+curl -X DELETE \
+  'http://localhost:8080/api/kis/token?environment=REAL'
+```
+
+Status 응답에는 `cacheMode`와 `refreshInProgress`가 추가되며 token 원문은 포함되지 않습니다. `KIS_BASE_URL_OVERRIDE`는 테스트 전용이며 운영에서는 비워 둡니다.
 
 수동 지정가 매수:
 

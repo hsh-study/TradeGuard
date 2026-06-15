@@ -26,7 +26,8 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
    `REAL`은 실전 도메인, `DEMO`는 모의 도메인을 사용한다.
    두 환경의 access token cache는 서로 분리된다.
 
-3. 다음 secret이 배포 환경의 secret store에 설정됐는지 확인한다.
+3. 다음 secret이 로컬 환경변수 또는 저장소에서 추적하지 않는 설정 파일에
+   설정됐는지 확인한다.
 
    ```text
    KIS_APP_KEY
@@ -105,15 +106,27 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 2. 미체결 주문을 조회하고 필요하면 취소한다.
 3. `LIVE_TRADING_ENABLED=false` 또는 배포 플랫폼의 traffic 차단 정책으로
    신규 요청을 중지한다.
-4. secret store에서 `KIS_APP_KEY`, `KIS_APP_SECRET`을 교체한다.
+4. 로컬 환경변수 또는 비추적 설정 파일에서 `KIS_APP_KEY`,
+   `KIS_APP_SECRET`을 교체한다.
 5. 필요하면 계좌번호와 계좌상품코드도 같은 절차로 교체한다.
 6. 애플리케이션을 재시작한다.
 
-   현재 token cache는 MEMORY 방식이므로 재시작하면 REAL/DEMO cache가
-   모두 무효화된다. 다중 인스턴스 환경에서는 각 인스턴스를 순차적으로
-   재시작해야 하며 token cache는 공유되지 않는다.
+   MEMORY 모드는 재시작하면 REAL/DEMO cache가 모두 무효화된다.
+   DB 모드는 재시작 후에도 암호화 token이 유지된다.
 
-7. 새 credential로 환경별 token을 발급한다.
+7. 기존 환경별 token을 명시적으로 제거한다.
+
+   ```sh
+   curl -X DELETE \
+     'http://localhost:8080/api/kis/token?environment=DEMO'
+   curl -X DELETE \
+     'http://localhost:8080/api/kis/token?environment=REAL'
+   ```
+
+   실제 사용하는 환경만 제거한다. DB 모드에서는 해당 row의 ciphertext,
+   만료정보와 refresh lease가 함께 초기화된다.
+
+8. 새 credential로 환경별 token을 발급한다.
 
    ```sh
    curl -X POST \
@@ -125,15 +138,15 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
    실제로 사용하는 환경만 호출한다. 수동 refresh는 기존 cache를 새
    token으로 교체한다.
 
-8. token status와 readiness를 확인한다.
+9. token status와 readiness를 확인한다.
 
    ```sh
    curl 'http://localhost:8080/api/kis/token/status'
    curl 'http://localhost:8080/api/live-trading/readiness'
    ```
 
-9. 모의환경에서 read-only 및 주문 smoke test를 수행한다.
-10. 운영 승인 후 feature flag와 kill switch를 단계적으로 변경한다.
+10. 모의환경에서 read-only 및 주문 smoke test를 수행한다.
+11. 운영 승인 후 feature flag와 kill switch를 단계적으로 변경한다.
 
 ## When Token Invalidation Is Required
 
@@ -145,8 +158,30 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 - KIS에서 token이 강제 폐기됐다는 응답 수신
 
 credential 교체는 런타임 환경변수 변경만으로 반영되지 않으므로 서버를
-재시작해 cache를 비운다. 단순 만료 임박은 재시작 대신 수동 refresh 또는
-`KIS_TOKEN_REFRESH` scheduler로 처리한다.
+재시작하고 환경별 invalidate API를 호출한다. 단순 만료 임박은 재시작이나
+invalidate 대신 수동 refresh 또는 `KIS_TOKEN_REFRESH` scheduler로 처리한다.
+
+## Local DB Token Cache
+
+단일 로컬 인스턴스에서 재시작 후에도 유효한 token을 재사용하려면 다음
+설정을 적용한다.
+
+```text
+KIS_TOKEN_CACHE_MODE=DB
+KIS_TOKEN_ENCRYPTION_KEY=<base64 32-byte key>
+KIS_TOKEN_REFRESH_LOCK_TIMEOUT_SECONDS=120
+KIS_TOKEN_REFRESH_LOCK_WAIT_SECONDS=10
+```
+
+- REAL/DEMO는 서로 다른 DB row를 사용한다.
+- refresh lease는 scheduler와 API 요청이 겹칠 때 중복 tokenP 호출을 막는다.
+- 비정상 종료로 `refresh_started_at`이 남으면 timeout 이후 lock을 회수한다.
+- lock owner, ciphertext 또는 token 원문을 운영 로그에 출력하지 않는다.
+- encryption key rotation은 기존 ciphertext를 새 key로 복호화할 수 없으므로
+  kill switch 활성화, token invalidate, key 교체, 애플리케이션 재시작,
+  token refresh 순서로 수행한다.
+- `.env` 또는 로컬 실행 설정 파일은 저장소에 커밋하지 않고 소유자만 읽을
+  수 있도록 파일 권한을 제한한다.
 
 ## Incident Response
 

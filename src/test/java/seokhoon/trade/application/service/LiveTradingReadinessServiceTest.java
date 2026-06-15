@@ -37,6 +37,7 @@ class LiveTradingReadinessServiceTest {
         when(kis.credentialsConfigured()).thenReturn(true);
         when(kis.readOnlyEnvironment()).thenReturn(KisEnvironment.DEMO);
         when(kis.tokenRefreshBeforeSeconds()).thenReturn(600);
+        when(kis.tokenCacheMode()).thenReturn(KisTokenCacheMode.MEMORY);
         tokens=mock(KisAccessTokenProvider.class);
         runtime=mock(LiveTradingRuntimeStatePort.class);
         calendar=mock(MarketCalendarPort.class);
@@ -129,6 +130,15 @@ class LiveTradingReadinessServiceTest {
         assertThat(report.ready()).isTrue();
         assertThat(report.marketOpenNow()).isFalse();
         assertThat(report.warnings()).contains("MARKET_CLOSED_NOW");
+    }
+
+    @Test
+    void dbModeRequiresEncryptionKey() {
+        when(kis.tokenCacheMode()).thenReturn(KisTokenCacheMode.DB);
+        when(kis.tokenEncryptionConfigured()).thenReturn(false);
+
+        assertThat(service(OPEN_TIME).checkReadiness().blockingReasons())
+                .contains("KIS_TOKEN_ENCRYPTION_KEY_NOT_CONFIGURED");
     }
 
     private LiveTradingReadinessService service(Instant instant) {

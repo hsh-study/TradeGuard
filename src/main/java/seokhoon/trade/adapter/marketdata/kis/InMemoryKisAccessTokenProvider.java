@@ -1,6 +1,7 @@
 package seokhoon.trade.adapter.marketdata.kis;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.KisAccessTokenProvider;
 import seokhoon.trade.application.port.out.KisTokenClient;
@@ -15,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Component
+@ConditionalOnProperty(name="tradeguard.kis.token-cache-mode",
+        havingValue="MEMORY",matchIfMissing=true)
 public class InMemoryKisAccessTokenProvider
         implements KisAccessTokenProvider {
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
@@ -113,6 +116,16 @@ public class InMemoryKisAccessTokenProvider
     @Override
     public void invalidate(KisEnvironment environment) {
         tokens.remove(environment);
+    }
+
+    @Override
+    public seokhoon.trade.domain.kis.KisTokenCacheMode cacheMode() {
+        return seokhoon.trade.domain.kis.KisTokenCacheMode.MEMORY;
+    }
+
+    @Override
+    public boolean refreshInProgress(KisEnvironment environment) {
+        return locks.get(environment).isLocked();
     }
 
     private KisAccessToken issue(KisEnvironment environment) {
