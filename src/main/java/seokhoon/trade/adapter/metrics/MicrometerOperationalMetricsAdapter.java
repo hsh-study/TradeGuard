@@ -304,4 +304,22 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
                 "tradeguard.indicator.data_sufficiency.count",
                 "result", result).increment();
     }
+
+    @Override
+    public void recordResearchThesis(String status) {
+        meterRegistry.counter("tradeguard.research.thesis.count",
+                "status", status).increment();
+    }
+
+    @Override
+    public void recordResearchCatalyst(String status) {
+        meterRegistry.counter("tradeguard.research.catalyst.count",
+                "status", status).increment();
+    }
+
+    @Override
+    public void recordResearchMorningNote(String result) {
+        meterRegistry.counter("tradeguard.research.morning_note.count",
+                "result", result).increment();
+    }
 }

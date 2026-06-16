@@ -70,6 +70,9 @@ public interface OperationalMetricsPort {
     void recordLiveTradingReadiness(String result);
     void recordIndicatorWarmUp(String result);
     void recordIndicatorDataSufficiency(String result);
+    void recordResearchThesis(String status);
+    void recordResearchCatalyst(String status);
+    void recordResearchMorningNote(String result);
 
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
@@ -205,6 +208,9 @@ public interface OperationalMetricsPort {
             @Override public void recordLiveTradingReadiness(String result) {}
             @Override public void recordIndicatorWarmUp(String result) {}
             @Override public void recordIndicatorDataSufficiency(String result) {}
+            @Override public void recordResearchThesis(String status) {}
+            @Override public void recordResearchCatalyst(String status) {}
+            @Override public void recordResearchMorningNote(String result) {}
         };
     }
 }

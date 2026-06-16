@@ -1,0 +1,138 @@
+package seokhoon.trade.application.service;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import seokhoon.trade.application.port.out.*;
+import seokhoon.trade.domain.indicator.IndicatorSnapshot;
+import seokhoon.trade.domain.market.DailyPrice;
+import seokhoon.trade.domain.research.*;
+import seokhoon.trade.domain.stock.Market;
+import seokhoon.trade.domain.stock.Stock;
+
+import java.math.BigDecimal;
+import java.time.*;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+class MorningNoteServiceTest {
+    private static final LocalDate TRADE_DATE = LocalDate.of(2026, 6, 15);
+    private static final Instant NOW = Instant.parse("2026-06-14T23:10:00Z");
+
+    private MorningNotePort notes;
+    private StockPort stocks;
+    private DailyPricePort prices;
+    private IndicatorSnapshotPort indicators;
+    private TradingSignalQueryPort signals;
+    private LivePositionPort positions;
+    private InvestmentThesisPort theses;
+    private InvestmentCatalystPort catalysts;
+    private MorningNoteService service;
+
+    @BeforeEach
+    void setUp() {
+        notes = mock(MorningNotePort.class);
+        stocks = mock(StockPort.class);
+        prices = mock(DailyPricePort.class);
+        indicators = mock(IndicatorSnapshotPort.class);
+        signals = mock(TradingSignalQueryPort.class);
+        positions = mock(LivePositionPort.class);
+        theses = mock(InvestmentThesisPort.class);
+        catalysts = mock(InvestmentCatalystPort.class);
+        when(notes.save(any())).thenAnswer(invocation -> {
+            MorningNote note = invocation.getArgument(0);
+            return new MorningNote(1L, note.tradeDate(), note.marketSummary(), note.sectorSummary(),
+                    note.portfolioImpactSummary(), note.watchlistSummary(), note.actionItems(), note.createdAt());
+        });
+        when(stocks.findAll()).thenReturn(List.of());
+        when(positions.findOpenPositions()).thenReturn(List.of());
+        when(signals.find(any())).thenReturn(List.of());
+        when(theses.find(null, ThesisStatus.BROKEN)).thenReturn(List.of());
+        when(catalysts.find(eq(null), any(), any(), eq(CatalystStatus.UPCOMING))).thenReturn(List.of());
+        service = new MorningNoteService(
+                notes, stocks, prices, indicators, signals, positions, theses, catalysts,
+                date -> !date.getDayOfWeek().equals(DayOfWeek.SATURDAY)
+                        && !date.getDayOfWeek().equals(DayOfWeek.SUNDAY),
+                OperationalMetricsPort.noop(),
+                Clock.fixed(NOW, ZoneOffset.UTC)
+        );
+    }
+
+    @Test
+    void generatesMorningNoteWithUpcomingCatalystAndBrokenThesis() {
+        when(catalysts.find(eq(null), any(), any(), eq(CatalystStatus.UPCOMING)))
+                .thenReturn(List.of(catalyst()));
+        when(theses.find(null, ThesisStatus.BROKEN)).thenReturn(List.of(brokenThesis()));
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.actionItems()).contains("UPCOMING_CATALYST", "2Q earnings");
+        assertThat(note.actionItems()).contains("BROKEN_THESIS", "margin declines");
+    }
+
+    @Test
+    void includesIndicatorStatesForWatchlist() {
+        when(stocks.findAll()).thenReturn(List.of(new Stock("005930", "Samsung", Market.KOSPI, true)));
+        when(prices.findByStockCodeAndTradeDateBetween(eq("005930"), any(), eq(TRADE_DATE)))
+                .thenReturn(List.of(price()));
+        when(indicators.findByStockCodeAndTradeDateBetween(eq("005930"), any(), eq(TRADE_DATE)))
+                .thenReturn(List.of(indicator()));
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.watchlistSummary())
+                .contains("vsMA20=ABOVE", "vsMA60=ABOVE", "ma20>ma60=true")
+                .contains("RSI=NEUTRAL", "MACD=BULLISH", "Bollinger=INSIDE");
+    }
+
+    @Test
+    void warnsWhenIndicatorDataIsInsufficient() {
+        when(stocks.findAll()).thenReturn(List.of(new Stock("005930", "Samsung", Market.KOSPI, true)));
+        when(prices.findByStockCodeAndTradeDateBetween(any(), any(), any())).thenReturn(List.of(price()));
+        when(indicators.findByStockCodeAndTradeDateBetween(any(), any(), any())).thenReturn(List.of());
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.watchlistSummary()).contains("DATA_INSUFFICIENT");
+        assertThat(note.actionItems()).contains("일봉/지표 보강 확인");
+    }
+
+    @Test
+    void hasNoBrokerOrOrderDependencySoGenerationCannotExecuteOrders() {
+        assertThat(List.of(MorningNoteService.class.getDeclaredConstructors())
+                .stream()
+                .flatMap(constructor -> List.of(constructor.getParameterTypes()).stream())
+                .map(Class::getName))
+                .noneMatch(name -> name.contains("Broker") || name.contains("Order"));
+    }
+
+    private static DailyPrice price() {
+        return new DailyPrice("005930", TRADE_DATE.minusDays(1),
+                bd("100"), bd("115"), bd("95"), bd("110"), 1000, bd("100000"));
+    }
+
+    private static IndicatorSnapshot indicator() {
+        return new IndicatorSnapshot("005930", TRADE_DATE.minusDays(1),
+                bd("108"), bd("105"), bd("100"), bd("55"),
+                bd("2"), bd("1"), bd("1"), bd("120"), bd("105"), bd("90"));
+    }
+
+    private static InvestmentCatalyst catalyst() {
+        return new InvestmentCatalyst(1L, "005930", "2Q earnings", CatalystType.EARNINGS,
+                TRADE_DATE.plusDays(5), CatalystImportance.HIGH, CatalystStatus.UPCOMING,
+                null, null, NOW, NOW);
+    }
+
+    private static InvestmentThesis brokenThesis() {
+        return new InvestmentThesis(1L, "005930", "memory recovery", "cycle improves",
+                "margin declines", bd("90000"), "close below MA60", 70,
+                ThesisStatus.BROKEN, NOW, NOW);
+    }
+
+    private static BigDecimal bd(String value) {
+        return new BigDecimal(value);
+    }
+}

@@ -110,6 +110,9 @@ class MySqlMigrationIntegrationTest {
                     jdbcTemplate,
                     "indicator_warmup_histories"
             )).isTrue();
+            assertThat(tableExists(jdbcTemplate, "investment_theses")).isTrue();
+            assertThat(tableExists(jdbcTemplate, "investment_catalysts")).isTrue();
+            assertThat(tableExists(jdbcTemplate, "morning_notes")).isTrue();
             assertThat(columnExists(jdbcTemplate,"kis_access_tokens",
                     "encrypted_access_token")).isTrue();
             assertThat(columnExists(jdbcTemplate,"live_order_requests",

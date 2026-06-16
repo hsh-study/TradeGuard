@@ -11,6 +11,7 @@ Spring Boot 기반 한국 주식 자동매매 보조 시스템입니다. MVP 1�
 - 기본 RiskManager 정책
 - FakeBrokerAdapter 기반 모의 주문 요청
 - 중복 주문 방지와 신호/주문 요청 이력 저장 구조
+- Thesis, Catalyst, Morning Note 기반 1인 투자 하우스형 리서치 워크플로우
 
 ## 실행
 
@@ -155,6 +156,100 @@ curl 'http://localhost:8080/api/market-calendar/trading-days?date=2026-02-19'
 응답에는 요청일의 `tradingDay`, 입력일을 제외한 `previousTradingDay`와 `nextTradingDay`가 포함됩니다.
 
 ## API
+
+### Research workflow
+
+Research API는 관심종목과 보유종목에 대한 투자 가설, 무효화 조건,
+예정 catalyst와 매일 아침의 수동 점검 항목을 관리합니다. 이 경로는
+`BrokerPort`, 실매매 주문 서비스와 연결되지 않으며 thesis가 `BROKEN`이거나
+catalyst가 발생해도 자동매수/자동매도를 실행하지 않습니다.
+
+Thesis 등록과 상태 변경:
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/theses' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "stockCode": "005930",
+    "title": "HBM 경쟁력 회복",
+    "coreAssumption": "고부가 메모리 믹스와 수익성이 개선된다",
+    "invalidationCondition": "2개 분기 연속 메모리 마진이 하락한다",
+    "targetPrice": 90000,
+    "stopLossCondition": "종가가 MA60 아래에서 3거래일 유지된다",
+    "confidence": 75,
+    "status": "WATCH"
+  }'
+
+curl 'http://localhost:8080/api/research/theses?stockCode=005930'
+
+curl -X PATCH 'http://localhost:8080/api/research/theses/1' \
+  -H 'Content-Type: application/json' \
+  -d '{"confidence":85,"status":"ACTIVE"}'
+
+curl -X POST 'http://localhost:8080/api/research/theses/1/close'
+```
+
+Catalyst 등록과 조회:
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/catalysts' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "stockCode": "005930",
+    "title": "2분기 실적 발표",
+    "catalystType": "EARNINGS",
+    "expectedDate": "2026-07-31",
+    "importance": "HIGH",
+    "status": "UPCOMING",
+    "sourceUrl": "https://example.com/disclosure",
+    "memo": "메모리 영업이익률과 HBM 출하량 확인"
+  }'
+
+curl 'http://localhost:8080/api/research/catalysts?from=2026-07-01&to=2026-08-15'
+curl 'http://localhost:8080/api/research/catalysts?stockCode=005930'
+```
+
+Morning Note 생성과 조회:
+
+```sh
+curl -X POST \
+  'http://localhost:8080/api/research/morning-note?tradeDate=2026-06-15'
+curl \
+  'http://localhost:8080/api/research/morning-note?tradeDate=2026-06-15'
+```
+
+`RESEARCH_MORNING_NOTE` scheduler는 거래일 08:10 Asia/Seoul에 실행됩니다.
+Discord 전송은 기본 비활성이며 아래 설정으로만 활성화됩니다.
+
+```text
+RESEARCH_MORNING_NOTE_DISCORD_ENABLED=true
+DISCORD_WEBHOOK_URL=...
+```
+
+Morning Note 예시:
+
+```text
+marketSummary:
+전 거래일 2026-06-12 저장 후보 2건
+- CLOSING_BET 005930 score=80 status=CREATED
+- EARLY_MARKET 000660 score=74 status=RISK_APPROVED
+시장 지수 당일 변화는 데이터 소스 미연결로 제공하지 않습니다.
+
+watchlistSummary:
+활성 관심종목 1개
+- 005930 삼성전자 close=71000 vsMA20=ABOVE vsMA60=ABOVE
+  ma20>ma60=true RSI=NEUTRAL(58.2) MACD=BULLISH Bollinger=INSIDE
+
+actionItems:
+자동 주문 없음. 수동 리서치 체크리스트
+- UPCOMING_CATALYST 2026-06-19 005930 [HIGH] 실적 사전 전망
+- BROKEN_THESIS 000660 수요 회복: 고객사 재고가 재상승
+- DATA_INSUFFICIENT 035420 일봉/지표 보강 확인
+```
+
+시장 지수, 섹터 분류/지수, 뉴스와 실적 원문 수집은 이번 범위에 포함되지
+않습니다. 해당 데이터가 없으면 `SECTOR_DATA_UNAVAILABLE` 또는
+`DATA_INSUFFICIENT`를 명시합니다.
 
 ### KIS 수동 승인형 실매매
 
