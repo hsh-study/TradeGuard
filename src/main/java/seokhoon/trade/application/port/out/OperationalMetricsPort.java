@@ -74,6 +74,9 @@ public interface OperationalMetricsPort {
     void recordResearchCatalyst(String status);
     void recordResearchMorningNote(String result);
     void recordResearchSectorSnapshot(String result);
+    void recordResearchEarningsAnalysis(String result);
+    void recordResearchFinancialImport(String result);
+    void recordResearchValuationImport(String result);
 
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
@@ -213,6 +216,9 @@ public interface OperationalMetricsPort {
             @Override public void recordResearchCatalyst(String status) {}
             @Override public void recordResearchMorningNote(String result) {}
             @Override public void recordResearchSectorSnapshot(String result) {}
+            @Override public void recordResearchEarningsAnalysis(String result) {}
+            @Override public void recordResearchFinancialImport(String result) {}
+            @Override public void recordResearchValuationImport(String result) {}
         };
     }
 }

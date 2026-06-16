@@ -202,6 +202,9 @@ KIS 시장 순위와 current price adapter도 같은 인증 정보를 사용하�
 | `trading_signals` | 생성 ID, 전략+종목+일자+유형 unique | 전략 신호와 상태 |
 | `trading_signal_reasons` | signal FK | 점수 근거 목록 |
 | `order_requests` | 생성 ID | 모의 주문 이력 |
+| `quarterly_financials` | `stock_code + fiscal_year + fiscal_quarter` | 운영자 입력 분기 재무 |
+| `valuation_snapshots` | `stock_code + trade_date` | 운영자 입력 valuation snapshot |
+| `earnings_analysis_snapshots` | `stock_code + base_date` | 실적 품질/valuation 점수와 상태 |
 
 운영 DB 모델과 로컬 기본 실행은 MySQL을 사용한다. 일반 테스트만
 `test` profile의 `src/test/resources/application-test.properties`에서 H2
@@ -240,3 +243,32 @@ MySQL mode를 사용한다.
 - 관측성 구성이 없다.
 
 새 기능은 이 부채를 확대하지 않고 port 중심으로 구현한다.
+
+## 10. Earnings Analysis v1
+
+```text
+POST /api/research/financials/quarterly
+  -> EarningsDataUseCase
+  -> QuarterlyFinancialPort
+  -> quarterly_financials
+
+POST /api/research/valuations
+  -> EarningsDataUseCase
+  -> ValuationSnapshotPort
+  -> valuation_snapshots
+
+POST /api/research/earnings-analysis
+  -> AnalyzeEarningsUseCase
+  -> QuarterlyFinancialPort + ValuationSnapshotPort
+  -> EarningsAnalysisPort
+  -> earnings_analysis_snapshots
+```
+
+Earnings Analysis는 최근 분기와 전년 동기 재무를 비교해 성장률, 마진,
+부채비율, 현금흐름, PER/PBR/PSR 점수를 저장한다. 외부 뉴스, 공시,
+컨센서스 provider는 아직 연결하지 않는다.
+
+`ClosingBetCandidateScanner`와 `EarlyMarketPreOpenScanner`는 최신
+`EarningsAnalysisSnapshot`을 읽어 STRONG 가점, WEAK 감점 또는 선택적 제외,
+DATA_INSUFFICIENT reason만 반영한다. 이 경로는 `OrderService`,
+`BrokerPort`, KIS 주문 adapter를 호출하지 않는다.

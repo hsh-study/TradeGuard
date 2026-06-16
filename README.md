@@ -218,6 +218,42 @@ curl \
   'http://localhost:8080/api/research/morning-note?tradeDate=2026-06-15'
 ```
 
+Earnings Analysis v1은 뉴스/공시/컨센서스 자동 수집 없이 운영자가 입력한
+분기 재무와 valuation snapshot만 사용합니다. 분석 결과는 Morning Note와
+종가베팅/장초반 후보 reason에 반영되지만 자동매수/자동매도는 실행하지 않습니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/financials/quarterly' \
+  -H 'Content-Type: application/json' \
+  -d '[{
+    "stockCode": "005930",
+    "fiscalYear": 2026,
+    "fiscalQuarter": 1,
+    "revenue": 79000000000000,
+    "operatingIncome": 6600000000000,
+    "netIncome": 5900000000000,
+    "totalAssets": 470000000000000,
+    "totalLiabilities": 90000000000000,
+    "totalEquity": 380000000000000,
+    "operatingCashFlow": 11000000000000,
+    "freeCashFlow": 4000000000000
+  }]'
+
+curl -X POST 'http://localhost:8080/api/research/valuations' \
+  -H 'Content-Type: application/json' \
+  -d '{"stockCode":"005930","tradeDate":"2026-06-15","marketCap":500000000000000,"per":12,"pbr":1.2,"psr":1.8}'
+
+curl -X POST \
+  'http://localhost:8080/api/research/earnings-analysis?stockCode=005930&baseDate=2026-06-15'
+
+curl -X POST 'http://localhost:8080/api/research/earnings-analysis/batch?baseDate=2026-06-15' \
+  -H 'Content-Type: application/json' \
+  -d '{"stockCodes":["005930","000660"]}'
+
+curl 'http://localhost:8080/api/research/earnings-analysis?stockCode=005930'
+curl 'http://localhost:8080/api/research/earnings-analysis?baseDate=2026-06-15'
+```
+
 Sector master와 snapshot:
 
 ```sh
@@ -987,6 +1023,9 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.market_calendar.lookup.count`: `result=db|fallback|not_found`, `market`
 - `tradeguard.market_calendar.override.count`: `result=success|failure`
 - `tradeguard.market_calendar.validation.count`: `result=success|failure`
+- `tradeguard.research.earnings_analysis.count`: `result=success|insufficient|failure`
+- `tradeguard.research.financial_import.count`: `result=saved|failure`
+- `tradeguard.research.valuation_import.count`: `result=saved|failure`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
 
@@ -1033,6 +1072,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - 시장가 주문은 지원하지 않습니다.
 - 자동매수, 공매도, 신용, 미수 주문은 지원하지 않습니다.
 - 08:30/09:05 장초반 후보 생성, 전일 고가/시초가 지지 feature, 09:20 follow-up과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
+- Earnings Analysis는 재무 품질 평가와 후보 reason/점수 보강만 수행하며 자동 주문을 실행하지 않습니다.
 - 09:20 follow-up 결과 저장과 조회는 분석 데이터만 다루며 자동 주문을 실행하지 않습니다.
 - 장초반 전략 성과 리포트는 조회와 집계만 수행하며 신호 또는 주문을 생성하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.

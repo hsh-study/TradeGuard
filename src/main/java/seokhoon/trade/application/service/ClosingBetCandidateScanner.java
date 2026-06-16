@@ -45,6 +45,7 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
     private final TradingSignalPort tradingSignalPort;
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final NotificationPort notificationPort;
+    private final EarningsStrategyAdjustment earningsAdjustment;
     private final Clock clock;
     private IndicatorStrategyWarmUpSupport warmUpSupport =
             IndicatorStrategyWarmUpSupport.disabled();
@@ -55,9 +56,11 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
             TradingSignalPort tradingSignalPort,
             TradingSignalQueryPort tradingSignalQueryPort,
             NotificationPort notificationPort,
+            EarningsStrategyAdjustment earningsAdjustment,
             IndicatorStrategyWarmUpSupport warmUpSupport
     ) {
-        this(marketRankingPort, tradingSignalPort, tradingSignalQueryPort, notificationPort, Clock.systemUTC());
+        this(marketRankingPort, tradingSignalPort, tradingSignalQueryPort,
+                notificationPort, earningsAdjustment, Clock.systemUTC());
         this.warmUpSupport = warmUpSupport;
     }
 
@@ -68,10 +71,22 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
             NotificationPort notificationPort,
             Clock clock
     ) {
+        this(marketRankingPort, tradingSignalPort, tradingSignalQueryPort, notificationPort, null, clock);
+    }
+
+    ClosingBetCandidateScanner(
+            MarketRankingPort marketRankingPort,
+            TradingSignalPort tradingSignalPort,
+            TradingSignalQueryPort tradingSignalQueryPort,
+            NotificationPort notificationPort,
+            EarningsStrategyAdjustment earningsAdjustment,
+            Clock clock
+    ) {
         this.marketRankingPort = marketRankingPort;
         this.tradingSignalPort = tradingSignalPort;
         this.tradingSignalQueryPort = tradingSignalQueryPort;
         this.notificationPort = notificationPort;
+        this.earningsAdjustment = earningsAdjustment;
         this.clock = clock;
     }
 
@@ -185,7 +200,20 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
         }
         score += assessment.scoreAdjustment();
         reasons.addAll(assessment.reasons());
+        EarningsStrategyAdjustment.Assessment earningsAssessment = assessEarnings(seed.stock().stockCode());
+        if (earningsAssessment.excluded()) {
+            return null;
+        }
+        score += earningsAssessment.scoreAdjustment();
+        reasons.addAll(earningsAssessment.reasons());
         return new ScoredCandidate(seed.stock(), score, reasons);
+    }
+
+    private EarningsStrategyAdjustment.Assessment assessEarnings(String stockCode) {
+        if (earningsAdjustment == null) {
+            return new EarningsStrategyAdjustment.Assessment(0, false, List.of());
+        }
+        return earningsAdjustment.assess(stockCode);
     }
 
     private List<ClosingBetPreScanCandidate> restoreSavedCandidates(

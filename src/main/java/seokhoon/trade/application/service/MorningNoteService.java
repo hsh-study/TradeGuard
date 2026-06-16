@@ -44,6 +44,7 @@ public class MorningNoteService implements MorningNoteUseCase {
     private final SectorPort sectorPort;
     private final StockSectorMappingPort stockSectorMappingPort;
     private final SectorDailySnapshotPort sectorSnapshotPort;
+    private final EarningsAnalysisPort earningsAnalysisPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -62,11 +63,12 @@ public class MorningNoteService implements MorningNoteUseCase {
             SectorPort sectorPort,
             StockSectorMappingPort stockSectorMappingPort,
             SectorDailySnapshotPort sectorSnapshotPort,
+            EarningsAnalysisPort earningsAnalysisPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
                 thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
-                stockSectorMappingPort, sectorSnapshotPort, metrics, Clock.systemUTC());
+                stockSectorMappingPort, sectorSnapshotPort, earningsAnalysisPort, metrics, Clock.systemUTC());
     }
 
     MorningNoteService(
@@ -86,6 +88,29 @@ public class MorningNoteService implements MorningNoteUseCase {
             OperationalMetricsPort metrics,
             Clock clock
     ) {
+        this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
+                thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
+                stockSectorMappingPort, sectorSnapshotPort, null, metrics, clock);
+    }
+
+    MorningNoteService(
+            MorningNotePort notePort,
+            StockPort stockPort,
+            DailyPricePort dailyPricePort,
+            IndicatorSnapshotPort indicatorPort,
+            TradingSignalQueryPort signalPort,
+            LivePositionPort positionPort,
+            InvestmentThesisPort thesisPort,
+            InvestmentCatalystPort catalystPort,
+            MarketCalendarPort calendarPort,
+            MarketIndexPort marketIndexPort,
+            SectorPort sectorPort,
+            StockSectorMappingPort stockSectorMappingPort,
+            SectorDailySnapshotPort sectorSnapshotPort,
+            EarningsAnalysisPort earningsAnalysisPort,
+            OperationalMetricsPort metrics,
+            Clock clock
+    ) {
         this.notePort = notePort;
         this.stockPort = stockPort;
         this.dailyPricePort = dailyPricePort;
@@ -99,6 +124,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.sectorPort = sectorPort;
         this.stockSectorMappingPort = stockSectorMappingPort;
         this.sectorSnapshotPort = sectorSnapshotPort;
+        this.earningsAnalysisPort = earningsAnalysisPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -123,7 +149,7 @@ public class MorningNoteService implements MorningNoteUseCase {
                     sectorSummary(previousTradingDay),
                     portfolioSummary(tradeDate, positions),
                     watchlistSummary(tradeDate, stocks),
-                    actionItems(catalysts, brokenTheses, stocks, tradeDate),
+                    actionItems(catalysts, brokenTheses, stocks, signals, tradeDate),
                     clock.instant()
             ));
             boolean noData = stocks.isEmpty() && positions.isEmpty() && signals.isEmpty()
@@ -230,7 +256,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             Optional<DailyPrice> price = latestPrice(position.stockCode(), tradeDate);
             result.append("\n- ").append(position.stockCode())
                     .append(" qty=").append(position.quantity())
-                    .append(" avg=").append(position.averageBuyPrice());
+                    .append(" avg=").append(position.averageBuyPrice())
+                    .append(" earnings=").append(earningsStatus(position.stockCode()));
             if (price.isPresent() && position.averageBuyPrice().signum() > 0) {
                 BigDecimal change = price.get().closePrice()
                         .subtract(position.averageBuyPrice())
@@ -280,13 +307,15 @@ public class MorningNoteService implements MorningNoteUseCase {
                 + " ma20>ma60=" + (value.ma20().compareTo(value.ma60()) > 0)
                 + " RSI=" + rsiState(value.rsi14())
                 + " MACD=" + macdState(value)
-                + " Bollinger=" + bollingerState(close, value);
+                + " Bollinger=" + bollingerState(close, value)
+                + " earnings=" + earningsStatus(stock.stockCode());
     }
 
     private String actionItems(
             List<InvestmentCatalyst> catalysts,
             List<InvestmentThesis> brokenTheses,
             List<Stock> stocks,
+            List<TradingSignalRecord> signals,
             LocalDate tradeDate
     ) {
         StringBuilder result = new StringBuilder("자동 주문 없음. 수동 리서치 체크리스트");
@@ -304,10 +333,58 @@ public class MorningNoteService implements MorningNoteUseCase {
                         || latestIndicator(stock.stockCode(), tradeDate).filter(i -> !incomplete(i)).isEmpty())
                 .forEach(stock -> result.append("\n- DATA_INSUFFICIENT ")
                         .append(stock.stockCode()).append(" 일봉/지표 보강 확인"));
+        stocks.forEach(stock -> latestEarnings(stock.stockCode()).ifPresentOrElse(earnings -> {
+            switch (earnings.status()) {
+                case DATA_INSUFFICIENT -> result.append("\n- EARNINGS_DATA_INSUFFICIENT ")
+                        .append(stock.stockCode()).append(" 최근 4분기 미만");
+                case STRONG -> {
+                    if (technicallyFavorable(stock.stockCode(), tradeDate)) {
+                        result.append("\n- EARNINGS_STRONG ")
+                                .append(stock.stockCode())
+                                .append(" overallScore=").append(earnings.overallScore())
+                                .append(" revenueYoY=").append(earnings.revenueYoyGrowth())
+                                .append(" operatingMargin=").append(earnings.operatingMargin());
+                    }
+                }
+                case WEAK -> {
+                }
+                case NEUTRAL -> {
+                }
+            }
+        }, () -> result.append("\n- EARNINGS_DATA_INSUFFICIENT ")
+                .append(stock.stockCode()).append(" earnings analysis 없음")));
+        signals.stream()
+                .filter(signal -> latestEarnings(signal.stockCode())
+                        .filter(earnings -> earnings.status() == EarningsAnalysisStatus.WEAK)
+                        .isPresent())
+                .forEach(signal -> result.append("\n- EARNINGS_WEAK_BUT_SIGNAL ")
+                        .append(signal.stockCode()).append(" ")
+                        .append(signal.strategyName()).append(" 후보지만 실적 품질 약함"));
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
         return result.toString();
+    }
+
+    private String earningsStatus(String stockCode) {
+        return latestEarnings(stockCode)
+                .map(value -> value.status() + "(overallScore=" + value.overallScore() + ")")
+                .orElse("DATA_INSUFFICIENT");
+    }
+
+    private Optional<EarningsAnalysisSnapshot> latestEarnings(String stockCode) {
+        if (earningsAnalysisPort == null) {
+            return Optional.empty();
+        }
+        return earningsAnalysisPort.findLatestByStockCode(stockCode);
+    }
+
+    private boolean technicallyFavorable(String stockCode, LocalDate tradeDate) {
+        Optional<DailyPrice> price = latestPrice(stockCode, tradeDate);
+        Optional<IndicatorSnapshot> indicator = latestIndicator(stockCode, tradeDate);
+        return price.isPresent() && indicator.isPresent() && !incomplete(indicator.get())
+                && price.get().closePrice().compareTo(indicator.get().ma20()) > 0
+                && indicator.get().ma20().compareTo(indicator.get().ma60()) > 0;
     }
 
     private Optional<DailyPrice> latestPrice(String stockCode, LocalDate tradeDate) {

@@ -59,6 +59,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
     private final NotificationPort notificationPort;
     private final OperationalMetricsPort operationalMetricsPort;
     private final EarlyMarketStrategyProperties strategyProperties;
+    private final EarningsStrategyAdjustment earningsAdjustment;
     private final Clock clock;
     private IndicatorStrategyWarmUpSupport warmUpSupport =
             IndicatorStrategyWarmUpSupport.disabled();
@@ -74,6 +75,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
             NotificationPort notificationPort,
             OperationalMetricsPort operationalMetricsPort,
             EarlyMarketStrategyProperties strategyProperties,
+            EarningsStrategyAdjustment earningsAdjustment,
             IndicatorStrategyWarmUpSupport warmUpSupport
     ) {
         this(
@@ -86,6 +88,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 notificationPort,
                 operationalMetricsPort,
                 strategyProperties,
+                earningsAdjustment,
                 Clock.systemUTC()
         );
         this.warmUpSupport = warmUpSupport;
@@ -109,6 +112,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 notificationPort,
                 OperationalMetricsPort.noop(),
                 new EarlyMarketStrategyProperties(),
+                null,
                 clock
         );
     }
@@ -133,6 +137,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 notificationPort,
                 operationalMetricsPort,
                 new EarlyMarketStrategyProperties(),
+                null,
                 clock
         );
     }
@@ -158,6 +163,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 notificationPort,
                 operationalMetricsPort,
                 new EarlyMarketStrategyProperties(),
+                null,
                 clock
         );
     }
@@ -174,6 +180,24 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
             EarlyMarketStrategyProperties strategyProperties,
             Clock clock
     ) {
+        this(marketRankingPort, indicatorSnapshotPort, afterHoursMarketDataPort, marketCalendarPort,
+                tradingSignalPort, tradingSignalQueryPort, notificationPort, operationalMetricsPort,
+                strategyProperties, null, clock);
+    }
+
+    EarlyMarketPreOpenScanner(
+            MarketRankingPort marketRankingPort,
+            IndicatorSnapshotPort indicatorSnapshotPort,
+            AfterHoursMarketDataPort afterHoursMarketDataPort,
+            MarketCalendarPort marketCalendarPort,
+            TradingSignalPort tradingSignalPort,
+            TradingSignalQueryPort tradingSignalQueryPort,
+            NotificationPort notificationPort,
+            OperationalMetricsPort operationalMetricsPort,
+            EarlyMarketStrategyProperties strategyProperties,
+            EarningsStrategyAdjustment earningsAdjustment,
+            Clock clock
+    ) {
         this.marketRankingPort = marketRankingPort;
         this.indicatorSnapshotPort = indicatorSnapshotPort;
         this.afterHoursMarketDataPort = afterHoursMarketDataPort;
@@ -183,6 +207,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         this.notificationPort = notificationPort;
         this.operationalMetricsPort = operationalMetricsPort;
         this.strategyProperties = strategyProperties;
+        this.earningsAdjustment = earningsAdjustment;
         this.clock = clock;
     }
 
@@ -308,7 +333,20 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         );
         score += afterHoursScore.scoreAdjustment();
         reasons.addAll(afterHoursScore.reasons());
+        EarningsStrategyAdjustment.Assessment earningsAssessment = assessEarnings(seed.stock().stockCode());
+        if (earningsAssessment.excluded()) {
+            return null;
+        }
+        score += earningsAssessment.scoreAdjustment();
+        reasons.addAll(earningsAssessment.reasons());
         return new ScoredCandidate(seed.stock(), score, reasons);
+    }
+
+    private EarningsStrategyAdjustment.Assessment assessEarnings(String stockCode) {
+        if (earningsAdjustment == null) {
+            return new EarningsStrategyAdjustment.Assessment(0, false, List.of());
+        }
+        return earningsAdjustment.assess(stockCode);
     }
 
     private AfterHoursScore scoreAfterHours(String stockCode, LocalDate afterHoursTradeDate) {

@@ -3,6 +3,7 @@ package seokhoon.trade.adapter.web;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
@@ -28,7 +29,10 @@ class ResearchControllerTest {
                 new StubThesisUseCase(),
                 new StubCatalystUseCase(),
                 new StubMorningNoteUseCase(),
-                new StubSectorUseCase()
+                new StubSectorUseCase(),
+                new StubEarningsDataUseCase(),
+                new StubAnalyzeEarningsUseCase(),
+                new StubEarningsAnalysisQueryUseCase()
         )).setControllerAdvice(new GlobalExceptionHandler()).build();
 
         mvc.perform(post("/api/research/theses")
@@ -122,6 +126,61 @@ class ResearchControllerTest {
                         .param("tradeDate", "2026-06-12"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.generatedCount").value(1));
+
+        mvc.perform(post("/api/research/financials/quarterly")
+                        .contentType("application/json")
+                        .content("""
+                                [{
+                                  "stockCode":"005930",
+                                  "fiscalYear":2026,
+                                  "fiscalQuarter":1,
+                                  "revenue":1000,
+                                  "operatingIncome":150,
+                                  "netIncome":100,
+                                  "totalAssets":5000,
+                                  "totalLiabilities":2000,
+                                  "totalEquity":3000,
+                                  "operatingCashFlow":120,
+                                  "freeCashFlow":80
+                                }]
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].stockCode").value("005930"));
+        mvc.perform(post("/api/research/valuations")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "stockCode":"005930",
+                                  "tradeDate":"2026-06-15",
+                                  "marketCap":500000000000000,
+                                  "per":12,
+                                  "pbr":1.2,
+                                  "psr":1.8
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.per").value(12));
+        mvc.perform(post("/api/research/earnings-analysis")
+                        .param("stockCode", "005930")
+                        .param("baseDate", "2026-06-15"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("STRONG"));
+        mvc.perform(post("/api/research/earnings-analysis/batch")
+                        .param("baseDate", "2026-06-15")
+                        .contentType("application/json")
+                        .content("""
+                                {"stockCodes":["005930"]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].stockCode").value("005930"));
+        mvc.perform(get("/api/research/earnings-analysis")
+                        .param("stockCode", "005930"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.overallScore").value(65));
+        mvc.perform(get("/api/research/earnings-analysis")
+                        .param("baseDate", "2026-06-15"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("STRONG"));
     }
 
     private static class StubThesisUseCase implements ResearchUseCases.ThesisUseCase {
@@ -203,6 +262,44 @@ class ResearchControllerTest {
         }
     }
 
+    private static class StubEarningsDataUseCase implements ResearchUseCases.EarningsDataUseCase {
+        @Override
+        public List<QuarterlyFinancial> saveQuarterly(
+                List<ResearchUseCases.CreateQuarterlyFinancialCommand> commands
+        ) {
+            return List.of(financial());
+        }
+
+        @Override
+        public ValuationSnapshot saveValuation(ResearchUseCases.CreateValuationSnapshotCommand command) {
+            return valuation();
+        }
+    }
+
+    private static class StubAnalyzeEarningsUseCase implements AnalyzeEarningsUseCase {
+        @Override
+        public EarningsAnalysisSnapshot analyzeStock(String stockCode, LocalDate baseDate) {
+            return earnings();
+        }
+
+        @Override
+        public List<EarningsAnalysisSnapshot> analyzeStocks(List<String> stockCodes, LocalDate baseDate) {
+            return List.of(earnings());
+        }
+    }
+
+    private static class StubEarningsAnalysisQueryUseCase implements ResearchUseCases.EarningsAnalysisQueryUseCase {
+        @Override
+        public EarningsAnalysisSnapshot findLatestByStockCode(String stockCode) {
+            return earnings();
+        }
+
+        @Override
+        public List<EarningsAnalysisSnapshot> findByBaseDate(LocalDate baseDate) {
+            return List.of(earnings());
+        }
+    }
+
     private static InvestmentThesis thesis(ThesisStatus status) {
         return new InvestmentThesis(1L, "005930", "HBM recovery",
                 "memory margin improves", "margin declines",
@@ -225,5 +322,29 @@ class ResearchControllerTest {
                 new BigDecimal("2.5000"), new BigDecimal("2.5000"),
                 new BigDecimal("100000000"), 1, 0, "005930",
                 new BigDecimal("2.5000"), NOW, NOW);
+    }
+
+    private static QuarterlyFinancial financial() {
+        return new QuarterlyFinancial(1L, "005930", 2026, 1,
+                new BigDecimal("1000"), new BigDecimal("150"), new BigDecimal("100"),
+                new BigDecimal("5000"), new BigDecimal("2000"), new BigDecimal("3000"),
+                new BigDecimal("120"), new BigDecimal("80"), NOW, NOW);
+    }
+
+    private static ValuationSnapshot valuation() {
+        return new ValuationSnapshot(1L, "005930", LocalDate.of(2026, 6, 15),
+                new BigDecimal("500000000000000"), new BigDecimal("12"),
+                new BigDecimal("1.2"), new BigDecimal("1.8"),
+                null, null, null, NOW, NOW);
+    }
+
+    private static EarningsAnalysisSnapshot earnings() {
+        return new EarningsAnalysisSnapshot(1L, "005930", LocalDate.of(2026, 6, 15),
+                new BigDecimal("0.1230"), new BigDecimal("0.2000"), new BigDecimal("0.1000"),
+                new BigDecimal("0.1500"), new BigDecimal("0.1000"), new BigDecimal("0.6667"),
+                new BigDecimal("120"), new BigDecimal("80"),
+                new BigDecimal("12"), new BigDecimal("1.2"), new BigDecimal("1.8"),
+                30, 35, 65, EarningsAnalysisStatus.STRONG,
+                List.of("REVENUE_YOY_OVER_10PCT"), NOW, NOW);
     }
 }

@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
+import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases.*;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
@@ -22,17 +23,26 @@ public class ResearchController {
     private final CatalystUseCase catalystUseCase;
     private final MorningNoteUseCase morningNoteUseCase;
     private final SectorUseCase sectorUseCase;
+    private final EarningsDataUseCase earningsDataUseCase;
+    private final AnalyzeEarningsUseCase analyzeEarningsUseCase;
+    private final EarningsAnalysisQueryUseCase earningsAnalysisQueryUseCase;
 
     public ResearchController(
             ThesisUseCase thesisUseCase,
             CatalystUseCase catalystUseCase,
             MorningNoteUseCase morningNoteUseCase,
-            SectorUseCase sectorUseCase
+            SectorUseCase sectorUseCase,
+            EarningsDataUseCase earningsDataUseCase,
+            AnalyzeEarningsUseCase analyzeEarningsUseCase,
+            EarningsAnalysisQueryUseCase earningsAnalysisQueryUseCase
     ) {
         this.thesisUseCase = thesisUseCase;
         this.catalystUseCase = catalystUseCase;
         this.morningNoteUseCase = morningNoteUseCase;
         this.sectorUseCase = sectorUseCase;
+        this.earningsDataUseCase = earningsDataUseCase;
+        this.analyzeEarningsUseCase = analyzeEarningsUseCase;
+        this.earningsAnalysisQueryUseCase = earningsAnalysisQueryUseCase;
     }
 
     @PostMapping("/theses")
@@ -127,6 +137,46 @@ public class ResearchController {
         return sectorUseCase.generateSnapshots(tradeDate);
     }
 
+    @PostMapping("/financials/quarterly")
+    List<QuarterlyFinancial> saveQuarterlyFinancials(@Valid @RequestBody List<QuarterlyFinancialRequest> requests) {
+        return earningsDataUseCase.saveQuarterly(requests.stream()
+                .map(QuarterlyFinancialRequest::toCommand)
+                .toList());
+    }
+
+    @PostMapping("/valuations")
+    ValuationSnapshot saveValuation(@Valid @RequestBody ValuationSnapshotRequest request) {
+        return earningsDataUseCase.saveValuation(request.toCommand());
+    }
+
+    @PostMapping("/earnings-analysis")
+    EarningsAnalysisSnapshot analyzeEarnings(
+            @RequestParam String stockCode,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate baseDate
+    ) {
+        return analyzeEarningsUseCase.analyzeStock(stockCode, baseDate);
+    }
+
+    @PostMapping("/earnings-analysis/batch")
+    List<EarningsAnalysisSnapshot> analyzeEarningsBatch(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate baseDate,
+            @Valid @RequestBody EarningsAnalysisBatchRequest request
+    ) {
+        return analyzeEarningsUseCase.analyzeStocks(request.stockCodes(), baseDate);
+    }
+
+    @GetMapping(value = "/earnings-analysis", params = "stockCode")
+    EarningsAnalysisSnapshot loadLatestEarningsAnalysis(@RequestParam String stockCode) {
+        return earningsAnalysisQueryUseCase.findLatestByStockCode(stockCode);
+    }
+
+    @GetMapping(value = "/earnings-analysis", params = "baseDate")
+    List<EarningsAnalysisSnapshot> loadEarningsAnalysisByDate(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate baseDate
+    ) {
+        return earningsAnalysisQueryUseCase.findByBaseDate(baseDate);
+    }
+
     public record ThesisRequest(
             @NotBlank String stockCode,
             @NotBlank String title,
@@ -207,5 +257,47 @@ public class ResearchController {
         AddSectorStockCommand toCommand() {
             return new AddSectorStockCommand(stockCode, source);
         }
+    }
+
+    public record QuarterlyFinancialRequest(
+            @NotBlank String stockCode,
+            @Min(1900) int fiscalYear,
+            @Min(1) @Max(4) int fiscalQuarter,
+            @NotNull BigDecimal revenue,
+            @NotNull BigDecimal operatingIncome,
+            @NotNull BigDecimal netIncome,
+            @NotNull BigDecimal totalAssets,
+            @NotNull BigDecimal totalLiabilities,
+            @NotNull BigDecimal totalEquity,
+            @NotNull BigDecimal operatingCashFlow,
+            @NotNull BigDecimal freeCashFlow
+    ) {
+        CreateQuarterlyFinancialCommand toCommand() {
+            return new CreateQuarterlyFinancialCommand(stockCode, fiscalYear, fiscalQuarter,
+                    revenue, operatingIncome, netIncome, totalAssets, totalLiabilities,
+                    totalEquity, operatingCashFlow, freeCashFlow);
+        }
+    }
+
+    public record ValuationSnapshotRequest(
+            @NotBlank String stockCode,
+            @NotNull LocalDate tradeDate,
+            @NotNull BigDecimal marketCap,
+            BigDecimal per,
+            BigDecimal pbr,
+            BigDecimal psr,
+            BigDecimal eps,
+            BigDecimal bps,
+            BigDecimal salesPerShare
+    ) {
+        CreateValuationSnapshotCommand toCommand() {
+            return new CreateValuationSnapshotCommand(stockCode, tradeDate, marketCap,
+                    per, pbr, psr, eps, bps, salesPerShare);
+        }
+    }
+
+    public record EarningsAnalysisBatchRequest(
+            @NotEmpty List<@NotBlank String> stockCodes
+    ) {
     }
 }

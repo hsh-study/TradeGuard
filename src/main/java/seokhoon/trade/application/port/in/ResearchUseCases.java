@@ -107,4 +107,42 @@ public final class ResearchUseCases {
         SectorDailySnapshot loadSnapshot(String sectorCode, LocalDate tradeDate);
         SectorSnapshotGenerationResult generateSnapshots(LocalDate tradeDate);
     }
+
+    public record CreateQuarterlyFinancialCommand(
+            String stockCode,
+            int fiscalYear,
+            int fiscalQuarter,
+            BigDecimal revenue,
+            BigDecimal operatingIncome,
+            BigDecimal netIncome,
+            BigDecimal totalAssets,
+            BigDecimal totalLiabilities,
+            BigDecimal totalEquity,
+            BigDecimal operatingCashFlow,
+            BigDecimal freeCashFlow
+    ) {
+    }
+
+    public record CreateValuationSnapshotCommand(
+            String stockCode,
+            LocalDate tradeDate,
+            BigDecimal marketCap,
+            BigDecimal per,
+            BigDecimal pbr,
+            BigDecimal psr,
+            BigDecimal eps,
+            BigDecimal bps,
+            BigDecimal salesPerShare
+    ) {
+    }
+
+    public interface EarningsDataUseCase {
+        List<QuarterlyFinancial> saveQuarterly(List<CreateQuarterlyFinancialCommand> commands);
+        ValuationSnapshot saveValuation(CreateValuationSnapshotCommand command);
+    }
+
+    public interface EarningsAnalysisQueryUseCase {
+        EarningsAnalysisSnapshot findLatestByStockCode(String stockCode);
+        List<EarningsAnalysisSnapshot> findByBaseDate(LocalDate baseDate);
+    }
 }

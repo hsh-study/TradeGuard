@@ -1,6 +1,7 @@
 package seokhoon.trade.adapter.persistence;
 
 import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,19 +14,29 @@ import java.util.Optional;
 
 @Component
 public class ResearchPersistenceAdapter implements InvestmentThesisPort,
-        InvestmentCatalystPort, MorningNotePort {
+        InvestmentCatalystPort, MorningNotePort, QuarterlyFinancialPort,
+        ValuationSnapshotPort, EarningsAnalysisPort {
     private final InvestmentThesisJpaRepository theses;
     private final InvestmentCatalystJpaRepository catalysts;
     private final MorningNoteJpaRepository notes;
+    private final QuarterlyFinancialJpaRepository financials;
+    private final ValuationSnapshotJpaRepository valuations;
+    private final EarningsAnalysisSnapshotJpaRepository earningsAnalyses;
 
     public ResearchPersistenceAdapter(
             InvestmentThesisJpaRepository theses,
             InvestmentCatalystJpaRepository catalysts,
-            MorningNoteJpaRepository notes
+            MorningNoteJpaRepository notes,
+            QuarterlyFinancialJpaRepository financials,
+            ValuationSnapshotJpaRepository valuations,
+            EarningsAnalysisSnapshotJpaRepository earningsAnalyses
     ) {
         this.theses = theses;
         this.catalysts = catalysts;
         this.notes = notes;
+        this.financials = financials;
+        this.valuations = valuations;
+        this.earningsAnalyses = earningsAnalyses;
     }
 
     @Override
@@ -115,5 +126,91 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     @Transactional(readOnly = true)
     public Optional<MorningNote> findByTradeDate(LocalDate tradeDate) {
         return notes.findByTradeDate(tradeDate).map(MorningNoteEntity::toDomain);
+    }
+
+    @Override
+    @Transactional
+    public List<QuarterlyFinancial> saveAll(List<QuarterlyFinancial> values) {
+        return values.stream()
+                .map(value -> {
+                    QuarterlyFinancialEntity entity = financials
+                            .findByStockCodeAndFiscalYearAndFiscalQuarter(
+                                    value.stockCode(), value.fiscalYear(), value.fiscalQuarter())
+                            .orElseGet(() -> QuarterlyFinancialEntity.from(value));
+                    entity.update(value);
+                    return financials.save(entity).toDomain();
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<QuarterlyFinancial> findRecentQuarters(String stockCode, int limit) {
+        return financials.findByStockCode(stockCode, PageRequest.of(
+                        0,
+                        limit,
+                        Sort.by(Sort.Order.desc("fiscalYear"), Sort.Order.desc("fiscalQuarter"))
+                ))
+                .stream().map(QuarterlyFinancialEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<QuarterlyFinancial> findByStockCodeAndQuarter(
+            String stockCode,
+            int fiscalYear,
+            int fiscalQuarter
+    ) {
+        return financials.findByStockCodeAndFiscalYearAndFiscalQuarter(stockCode, fiscalYear, fiscalQuarter)
+                .map(QuarterlyFinancialEntity::toDomain);
+    }
+
+    @Override
+    @Transactional
+    public ValuationSnapshot save(ValuationSnapshot value) {
+        ValuationSnapshotEntity entity = valuations.findByStockCodeAndTradeDate(
+                        value.stockCode(), value.tradeDate())
+                .orElseGet(() -> ValuationSnapshotEntity.from(value));
+        entity.update(value);
+        return valuations.save(entity).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<ValuationSnapshot> findLatestByStockCode(String stockCode, LocalDate baseDate) {
+        return valuations.findFirstByStockCodeAndTradeDateLessThanEqualOrderByTradeDateDesc(stockCode, baseDate)
+                .map(ValuationSnapshotEntity::toDomain);
+    }
+
+    @Override
+    @Transactional
+    public EarningsAnalysisSnapshot save(EarningsAnalysisSnapshot value) {
+        EarningsAnalysisSnapshotEntity entity = earningsAnalyses.findByStockCodeAndBaseDate(
+                        value.stockCode(), value.baseDate())
+                .orElseGet(() -> EarningsAnalysisSnapshotEntity.from(value));
+        entity.update(value);
+        return earningsAnalyses.save(entity).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<EarningsAnalysisSnapshot> findByStockCodeAndBaseDate(String stockCode, LocalDate baseDate) {
+        return earningsAnalyses.findByStockCodeAndBaseDate(stockCode, baseDate)
+                .map(EarningsAnalysisSnapshotEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<EarningsAnalysisSnapshot> findLatestByStockCode(String stockCode) {
+        return earningsAnalyses.findFirstByStockCodeOrderByBaseDateDesc(stockCode)
+                .map(EarningsAnalysisSnapshotEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<EarningsAnalysisSnapshot> findByBaseDate(LocalDate baseDate) {
+        return earningsAnalyses.findByBaseDate(baseDate).stream()
+                .map(EarningsAnalysisSnapshotEntity::toDomain)
+                .toList();
     }
 }
