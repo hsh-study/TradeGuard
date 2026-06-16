@@ -322,4 +322,10 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
         meterRegistry.counter("tradeguard.research.morning_note.count",
                 "result", result).increment();
     }
+
+    @Override
+    public void recordResearchSectorSnapshot(String result) {
+        meterRegistry.counter("tradeguard.research.sector_snapshot.count",
+                "result", result).increment();
+    }
 }

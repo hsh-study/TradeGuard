@@ -218,7 +218,37 @@ curl \
   'http://localhost:8080/api/research/morning-note?tradeDate=2026-06-15'
 ```
 
+Sector master와 snapshot:
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/sectors' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "sectorCode": "SEMICONDUCTOR",
+    "sectorName": "반도체",
+    "sectorType": "THEME"
+  }'
+
+curl -X POST 'http://localhost:8080/api/research/sectors/SEMICONDUCTOR/stocks' \
+  -H 'Content-Type: application/json' \
+  -d '{"stockCode":"005930","source":"MANUAL"}'
+
+curl 'http://localhost:8080/api/research/sectors'
+curl -X POST \
+  'http://localhost:8080/api/research/sectors/snapshots?tradeDate=2026-06-12'
+curl \
+  'http://localhost:8080/api/research/sectors/SEMICONDUCTOR/snapshot?tradeDate=2026-06-12'
+```
+
+Sector snapshot은 섹터에 매핑된 종목의 기준일 종가와 직전 거래일 종가로
+등락률을 계산하고 평균, 중앙값, 총 거래대금, 상승/하락 종목 수, 가장 강한
+leading stock을 저장합니다. 계산 가능한 종목이 없으면 스냅샷은
+`DATA_INSUFFICIENT` 상태로 Morning Note에 노출됩니다. 자동 주문은 실행하지
+않습니다.
+
 `RESEARCH_MORNING_NOTE` scheduler는 거래일 08:10 Asia/Seoul에 실행됩니다.
+`SECTOR_DAILY_SNAPSHOT` scheduler는 거래일 08:05 Asia/Seoul에 먼저 실행되어
+전 거래일 기준 섹터 snapshot을 생성합니다.
 Discord 전송은 기본 비활성이며 아래 설정으로만 활성화됩니다.
 
 ```text
@@ -231,14 +261,22 @@ Morning Note 예시:
 ```text
 marketSummary:
 전 거래일 2026-06-12 저장 후보 2건
+시장 지수
+- KOSPI(KOSPI) close=2800.0000 changeRate=1.2500% tradingValue=9000000000000.0000
 - CLOSING_BET 005930 score=80 status=CREATED
 - EARLY_MARKET 000660 score=74 status=RISK_APPROVED
-시장 지수 당일 변화는 데이터 소스 미연결로 제공하지 않습니다.
+
+sectorSummary:
+섹터 가격/거래대금 요약 기준일 2026-06-12
+상위 섹터
+- 반도체(SEMICONDUCTOR) avg=2.5000% median=2.3000% value=90000000000.0000 up/down=2/1 leader=005930(4.1000%)
+하위 섹터
+- 바이오(BIO) avg=-1.1000% median=-0.8000% value=30000000000.0000 up/down=1/2 leader=068270(1.0000%)
 
 watchlistSummary:
 활성 관심종목 1개
 - 005930 삼성전자 close=71000 vsMA20=ABOVE vsMA60=ABOVE
-  ma20>ma60=true RSI=NEUTRAL(58.2) MACD=BULLISH Bollinger=INSIDE
+  ma20>ma60=true RSI=NEUTRAL(58.2) MACD=BULLISH Bollinger=INSIDE sectors=반도체(SEMICONDUCTOR)
 
 actionItems:
 자동 주문 없음. 수동 리서치 체크리스트
@@ -247,9 +285,10 @@ actionItems:
 - DATA_INSUFFICIENT 035420 일봉/지표 보강 확인
 ```
 
-시장 지수, 섹터 분류/지수, 뉴스와 실적 원문 수집은 이번 범위에 포함되지
-않습니다. 해당 데이터가 없으면 `SECTOR_DATA_UNAVAILABLE` 또는
-`DATA_INSUFFICIENT`를 명시합니다.
+뉴스와 실적 원문 수집은 이번 범위에 포함되지 않습니다. 시장지수는
+`market_indices` 저장 데이터가 있을 때 Morning Note에 반영되며, 섹터
+snapshot이 없으면 `SECTOR_DATA_UNAVAILABLE`, 섹터 구성 종목의 일봉이
+부족하면 `DATA_INSUFFICIENT`를 명시합니다.
 
 ### KIS 수동 승인형 실매매
 

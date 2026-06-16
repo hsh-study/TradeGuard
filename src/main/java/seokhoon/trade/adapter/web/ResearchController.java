@@ -5,6 +5,10 @@ import jakarta.validation.constraints.*;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import seokhoon.trade.application.port.in.ResearchUseCases.*;
+import seokhoon.trade.domain.market.Sector;
+import seokhoon.trade.domain.market.SectorDailySnapshot;
+import seokhoon.trade.domain.market.SectorType;
+import seokhoon.trade.domain.market.StockSectorMapping;
 import seokhoon.trade.domain.research.*;
 
 import java.math.BigDecimal;
@@ -17,15 +21,18 @@ public class ResearchController {
     private final ThesisUseCase thesisUseCase;
     private final CatalystUseCase catalystUseCase;
     private final MorningNoteUseCase morningNoteUseCase;
+    private final SectorUseCase sectorUseCase;
 
     public ResearchController(
             ThesisUseCase thesisUseCase,
             CatalystUseCase catalystUseCase,
-            MorningNoteUseCase morningNoteUseCase
+            MorningNoteUseCase morningNoteUseCase,
+            SectorUseCase sectorUseCase
     ) {
         this.thesisUseCase = thesisUseCase;
         this.catalystUseCase = catalystUseCase;
         this.morningNoteUseCase = morningNoteUseCase;
+        this.sectorUseCase = sectorUseCase;
     }
 
     @PostMapping("/theses")
@@ -85,6 +92,39 @@ public class ResearchController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradeDate
     ) {
         return morningNoteUseCase.load(tradeDate);
+    }
+
+    @PostMapping("/sectors")
+    Sector createSector(@Valid @RequestBody SectorRequest request) {
+        return sectorUseCase.create(request.toCommand());
+    }
+
+    @PostMapping("/sectors/{sectorCode}/stocks")
+    StockSectorMapping addSectorStock(
+            @PathVariable String sectorCode,
+            @Valid @RequestBody SectorStockRequest request
+    ) {
+        return sectorUseCase.addStock(sectorCode, request.toCommand());
+    }
+
+    @GetMapping("/sectors")
+    List<Sector> findSectors() {
+        return sectorUseCase.findAll();
+    }
+
+    @GetMapping("/sectors/{sectorCode}/snapshot")
+    SectorDailySnapshot loadSectorSnapshot(
+            @PathVariable String sectorCode,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradeDate
+    ) {
+        return sectorUseCase.loadSnapshot(sectorCode, tradeDate);
+    }
+
+    @PostMapping("/sectors/snapshots")
+    SectorSnapshotGenerationResult generateSectorSnapshots(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradeDate
+    ) {
+        return sectorUseCase.generateSnapshots(tradeDate);
     }
 
     public record ThesisRequest(
@@ -147,6 +187,25 @@ public class ResearchController {
         UpdateCatalystCommand toCommand() {
             return new UpdateCatalystCommand(stockCode, title, catalystType, expectedDate,
                     importance, status, sourceUrl, memo);
+        }
+    }
+
+    public record SectorRequest(
+            @NotBlank String sectorCode,
+            @NotBlank String sectorName,
+            SectorType sectorType
+    ) {
+        CreateSectorCommand toCommand() {
+            return new CreateSectorCommand(sectorCode, sectorName, sectorType);
+        }
+    }
+
+    public record SectorStockRequest(
+            @NotBlank String stockCode,
+            String source
+    ) {
+        AddSectorStockCommand toCommand() {
+            return new AddSectorStockCommand(stockCode, source);
         }
     }
 }

@@ -7,6 +7,9 @@ import seokhoon.trade.application.port.in.TradingSignalSearchCriteria;
 import seokhoon.trade.application.port.out.*;
 import seokhoon.trade.domain.indicator.IndicatorSnapshot;
 import seokhoon.trade.domain.market.DailyPrice;
+import seokhoon.trade.domain.market.MarketIndex;
+import seokhoon.trade.domain.market.Sector;
+import seokhoon.trade.domain.market.SectorDailySnapshot;
 import seokhoon.trade.domain.position.LivePosition;
 import seokhoon.trade.domain.research.*;
 import seokhoon.trade.domain.stock.Stock;
@@ -17,8 +20,11 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class MorningNoteService implements MorningNoteUseCase {
@@ -34,6 +40,10 @@ public class MorningNoteService implements MorningNoteUseCase {
     private final InvestmentThesisPort thesisPort;
     private final InvestmentCatalystPort catalystPort;
     private final MarketCalendarPort calendarPort;
+    private final MarketIndexPort marketIndexPort;
+    private final SectorPort sectorPort;
+    private final StockSectorMappingPort stockSectorMappingPort;
+    private final SectorDailySnapshotPort sectorSnapshotPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -48,10 +58,15 @@ public class MorningNoteService implements MorningNoteUseCase {
             InvestmentThesisPort thesisPort,
             InvestmentCatalystPort catalystPort,
             MarketCalendarPort calendarPort,
+            MarketIndexPort marketIndexPort,
+            SectorPort sectorPort,
+            StockSectorMappingPort stockSectorMappingPort,
+            SectorDailySnapshotPort sectorSnapshotPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
-                thesisPort, catalystPort, calendarPort, metrics, Clock.systemUTC());
+                thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
+                stockSectorMappingPort, sectorSnapshotPort, metrics, Clock.systemUTC());
     }
 
     MorningNoteService(
@@ -64,6 +79,10 @@ public class MorningNoteService implements MorningNoteUseCase {
             InvestmentThesisPort thesisPort,
             InvestmentCatalystPort catalystPort,
             MarketCalendarPort calendarPort,
+            MarketIndexPort marketIndexPort,
+            SectorPort sectorPort,
+            StockSectorMappingPort stockSectorMappingPort,
+            SectorDailySnapshotPort sectorSnapshotPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
@@ -76,6 +95,10 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.thesisPort = thesisPort;
         this.catalystPort = catalystPort;
         this.calendarPort = calendarPort;
+        this.marketIndexPort = marketIndexPort;
+        this.sectorPort = sectorPort;
+        this.stockSectorMappingPort = stockSectorMappingPort;
+        this.sectorSnapshotPort = sectorSnapshotPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -96,8 +119,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             MorningNote saved = notePort.save(new MorningNote(
                     null,
                     tradeDate,
-                    marketSummary(previousTradingDay, signals),
-                    "SECTOR_DATA_UNAVAILABLE: 섹터 분류/지수 데이터 소스가 아직 연결되지 않았습니다.",
+                    marketSummary(previousTradingDay, signals, marketIndexPort.findByTradeDate(previousTradingDay)),
+                    sectorSummary(previousTradingDay),
                     portfolioSummary(tradeDate, positions),
                     watchlistSummary(tradeDate, stocks),
                     actionItems(catalysts, brokenTheses, stocks, tradeDate),
@@ -120,10 +143,24 @@ public class MorningNoteService implements MorningNoteUseCase {
                 .orElseThrow(() -> new ResearchNotFoundException("Morning note not found: " + tradeDate));
     }
 
-    private static String marketSummary(LocalDate previousTradingDay, List<TradingSignalRecord> signals) {
+    private static String marketSummary(
+            LocalDate previousTradingDay,
+            List<TradingSignalRecord> signals,
+            List<MarketIndex> indices
+    ) {
         StringBuilder result = new StringBuilder()
                 .append("전 거래일 ").append(previousTradingDay)
                 .append(" 저장 후보 ").append(signals.size()).append("건");
+        if (indices.isEmpty()) {
+            result.append("\n시장 지수 당일 변화는 데이터 소스 미연결로 제공하지 않습니다.");
+        } else {
+            result.append("\n시장 지수");
+            indices.forEach(index -> result.append("\n- ")
+                    .append(index.indexName()).append("(").append(index.indexCode()).append(")")
+                    .append(" close=").append(index.closePrice())
+                    .append(" changeRate=").append(index.changeRate()).append("%")
+                    .append(" tradingValue=").append(index.tradingValue()));
+        }
         signals.stream()
                 .sorted(Comparator.comparingInt(TradingSignalRecord::score).reversed())
                 .limit(5)
@@ -131,8 +168,57 @@ public class MorningNoteService implements MorningNoteUseCase {
                         .append(signal.strategyName()).append(" ")
                         .append(signal.stockCode()).append(" score=")
                         .append(signal.score()).append(" status=").append(signal.status()));
-        result.append("\n시장 지수 당일 변화는 데이터 소스 미연결로 제공하지 않습니다.");
         return result.toString();
+    }
+
+    private String sectorSummary(LocalDate previousTradingDay) {
+        List<SectorDailySnapshot> snapshots = sectorSnapshotPort.findByTradeDate(previousTradingDay);
+        if (snapshots.isEmpty()) {
+            return "SECTOR_DATA_UNAVAILABLE: 섹터 스냅샷 데이터가 아직 생성되지 않았습니다.";
+        }
+        Map<String, Sector> sectors = sectorPort.findAll().stream()
+                .collect(Collectors.toMap(Sector::sectorCode, Function.identity(), (left, right) -> left));
+        List<SectorDailySnapshot> valid = snapshots.stream()
+                .filter(snapshot -> !snapshot.dataInsufficient())
+                .toList();
+        if (valid.isEmpty()) {
+            return "SECTOR_DATA_UNAVAILABLE: 섹터 구성 종목의 일봉 데이터가 부족합니다.";
+        }
+        StringBuilder result = new StringBuilder("섹터 가격/거래대금 요약 기준일 ").append(previousTradingDay);
+        appendSectorBlock(result, "상위 섹터", valid.stream()
+                .sorted(Comparator.comparing(SectorDailySnapshot::averageChangeRate).reversed())
+                .limit(5).toList(), sectors);
+        appendSectorBlock(result, "하위 섹터", valid.stream()
+                .sorted(Comparator.comparing(SectorDailySnapshot::averageChangeRate))
+                .limit(5).toList(), sectors);
+        snapshots.stream()
+                .filter(SectorDailySnapshot::dataInsufficient)
+                .forEach(snapshot -> result.append("\n- DATA_INSUFFICIENT ")
+                        .append(sectorLabel(snapshot.sectorCode(), sectors)));
+        return result.toString();
+    }
+
+    private static void appendSectorBlock(
+            StringBuilder result,
+            String title,
+            List<SectorDailySnapshot> snapshots,
+            Map<String, Sector> sectors
+    ) {
+        result.append("\n").append(title);
+        snapshots.forEach(snapshot -> result.append("\n- ")
+                .append(sectorLabel(snapshot.sectorCode(), sectors))
+                .append(" avg=").append(snapshot.averageChangeRate()).append("%")
+                .append(" median=").append(snapshot.medianChangeRate()).append("%")
+                .append(" value=").append(snapshot.totalTradingValue())
+                .append(" up/down=").append(snapshot.risingStockCount())
+                .append("/").append(snapshot.fallingStockCount())
+                .append(" leader=").append(snapshot.leadingStockCode())
+                .append("(").append(snapshot.leadingStockChangeRate()).append("%)"));
+    }
+
+    private static String sectorLabel(String sectorCode, Map<String, Sector> sectors) {
+        Sector sector = sectors.get(sectorCode);
+        return sector == null ? sectorCode : sector.sectorName() + "(" + sector.sectorCode() + ")";
     }
 
     private String portfolioSummary(LocalDate tradeDate, List<LivePosition> positions) {
@@ -164,8 +250,19 @@ public class MorningNoteService implements MorningNoteUseCase {
             return "활성 관심종목 없음";
         }
         StringBuilder result = new StringBuilder("활성 관심종목 ").append(stocks.size()).append("개");
-        stocks.forEach(stock -> result.append("\n- ").append(indicatorLine(stock, tradeDate)));
+        Map<String, Sector> sectors = sectorPort.findAll().stream()
+                .collect(Collectors.toMap(Sector::sectorCode, Function.identity(), (left, right) -> left));
+        stocks.forEach(stock -> result.append("\n- ")
+                .append(indicatorLine(stock, tradeDate))
+                .append(" sectors=").append(stockSectorLabels(stock.stockCode(), sectors)));
         return result.toString();
+    }
+
+    private String stockSectorLabels(String stockCode, Map<String, Sector> sectors) {
+        List<String> labels = stockSectorMappingPort.findByStockCode(stockCode).stream()
+                .map(mapping -> sectorLabel(mapping.sectorCode(), sectors))
+                .toList();
+        return labels.isEmpty() ? "UNMAPPED" : String.join(",", labels);
     }
 
     private String indicatorLine(Stock stock, LocalDate tradeDate) {

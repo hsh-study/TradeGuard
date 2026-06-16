@@ -5,6 +5,11 @@ import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.out.*;
 import seokhoon.trade.domain.indicator.IndicatorSnapshot;
 import seokhoon.trade.domain.market.DailyPrice;
+import seokhoon.trade.domain.market.MarketIndex;
+import seokhoon.trade.domain.market.Sector;
+import seokhoon.trade.domain.market.SectorDailySnapshot;
+import seokhoon.trade.domain.market.SectorType;
+import seokhoon.trade.domain.market.StockSectorMapping;
 import seokhoon.trade.domain.research.*;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.stock.Stock;
@@ -30,6 +35,10 @@ class MorningNoteServiceTest {
     private LivePositionPort positions;
     private InvestmentThesisPort theses;
     private InvestmentCatalystPort catalysts;
+    private MarketIndexPort marketIndices;
+    private SectorPort sectors;
+    private StockSectorMappingPort mappings;
+    private SectorDailySnapshotPort sectorSnapshots;
     private MorningNoteService service;
 
     @BeforeEach
@@ -42,6 +51,10 @@ class MorningNoteServiceTest {
         positions = mock(LivePositionPort.class);
         theses = mock(InvestmentThesisPort.class);
         catalysts = mock(InvestmentCatalystPort.class);
+        marketIndices = mock(MarketIndexPort.class);
+        sectors = mock(SectorPort.class);
+        mappings = mock(StockSectorMappingPort.class);
+        sectorSnapshots = mock(SectorDailySnapshotPort.class);
         when(notes.save(any())).thenAnswer(invocation -> {
             MorningNote note = invocation.getArgument(0);
             return new MorningNote(1L, note.tradeDate(), note.marketSummary(), note.sectorSummary(),
@@ -52,10 +65,15 @@ class MorningNoteServiceTest {
         when(signals.find(any())).thenReturn(List.of());
         when(theses.find(null, ThesisStatus.BROKEN)).thenReturn(List.of());
         when(catalysts.find(eq(null), any(), any(), eq(CatalystStatus.UPCOMING))).thenReturn(List.of());
+        when(marketIndices.findByTradeDate(any())).thenReturn(List.of());
+        when(sectors.findAll()).thenReturn(List.of());
+        when(mappings.findByStockCode(any())).thenReturn(List.of());
+        when(sectorSnapshots.findByTradeDate(any())).thenReturn(List.of());
         service = new MorningNoteService(
                 notes, stocks, prices, indicators, signals, positions, theses, catalysts,
                 date -> !date.getDayOfWeek().equals(DayOfWeek.SATURDAY)
                         && !date.getDayOfWeek().equals(DayOfWeek.SUNDAY),
+                marketIndices, sectors, mappings, sectorSnapshots,
                 OperationalMetricsPort.noop(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
@@ -80,12 +98,40 @@ class MorningNoteServiceTest {
                 .thenReturn(List.of(price()));
         when(indicators.findByStockCodeAndTradeDateBetween(eq("005930"), any(), eq(TRADE_DATE)))
                 .thenReturn(List.of(indicator()));
+        when(sectors.findAll()).thenReturn(List.of(sector()));
+        when(mappings.findByStockCode("005930")).thenReturn(List.of(mapping()));
 
         MorningNote note = service.generate(TRADE_DATE);
 
         assertThat(note.watchlistSummary())
                 .contains("vsMA20=ABOVE", "vsMA60=ABOVE", "ma20>ma60=true")
-                .contains("RSI=NEUTRAL", "MACD=BULLISH", "Bollinger=INSIDE");
+                .contains("RSI=NEUTRAL", "MACD=BULLISH", "Bollinger=INSIDE")
+                .contains("반도체(SEMICONDUCTOR)");
+    }
+
+    @Test
+    void includesMarketIndexAndSectorSummary() {
+        LocalDate previousTradingDay = LocalDate.of(2026, 6, 12);
+        when(marketIndices.findByTradeDate(previousTradingDay))
+                .thenReturn(List.of(index()));
+        when(sectors.findAll()).thenReturn(List.of(sector(), new Sector(2L, "BIO", "바이오",
+                SectorType.THEME, NOW, NOW)));
+        when(sectorSnapshots.findByTradeDate(previousTradingDay))
+                .thenReturn(List.of(
+                        new SectorDailySnapshot(1L, "SEMICONDUCTOR", previousTradingDay,
+                                bd("2.5000"), bd("2.3000"), bd("90000000000"),
+                                2, 1, "005930", bd("4.1000"), NOW, NOW),
+                        new SectorDailySnapshot(2L, "BIO", previousTradingDay,
+                                bd("-1.1000"), bd("-0.8000"), bd("30000000000"),
+                                1, 2, "068270", bd("1.0000"), NOW, NOW)
+                ));
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.marketSummary()).contains("KOSPI", "changeRate=1.2500%");
+        assertThat(note.sectorSummary())
+                .contains("상위 섹터", "하위 섹터")
+                .contains("반도체(SEMICONDUCTOR)", "leader=005930");
     }
 
     @Test
@@ -118,6 +164,19 @@ class MorningNoteServiceTest {
         return new IndicatorSnapshot("005930", TRADE_DATE.minusDays(1),
                 bd("108"), bd("105"), bd("100"), bd("55"),
                 bd("2"), bd("1"), bd("1"), bd("120"), bd("105"), bd("90"));
+    }
+
+    private static MarketIndex index() {
+        return new MarketIndex(1L, "KOSPI", "KOSPI", LocalDate.of(2026, 6, 12),
+                bd("2800"), bd("1.2500"), bd("9000000000000"), NOW, NOW);
+    }
+
+    private static Sector sector() {
+        return new Sector(1L, "SEMICONDUCTOR", "반도체", SectorType.THEME, NOW, NOW);
+    }
+
+    private static StockSectorMapping mapping() {
+        return new StockSectorMapping(1L, "005930", "SEMICONDUCTOR", "MANUAL", NOW, NOW);
     }
 
     private static InvestmentCatalyst catalyst() {

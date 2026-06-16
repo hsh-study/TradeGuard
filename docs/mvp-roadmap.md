@@ -60,7 +60,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 일봉·지표 warmup | 완료 | 관심종목 등록 후 KIS 일봉 120거래일 upsert, MA5/20/60·RSI·MACD·Bollinger 저장, warmup 이력/API/metrics, 종베 14:00·15:00 및 장초반 08:30·09:05 후보 사전 보강과 strict 제외 정책 구현 |
 | Action 1: Thesis | 완료 | `investment_theses`와 등록/종목별 조회/부분 수정/종료 API 구현. 핵심 가정, 무효화 조건, 목표가, 손절 조건, confidence, ACTIVE/WATCH/BROKEN/CLOSED 상태를 저장. BROKEN은 Morning Note action item만 만들고 자동매도하지 않음 |
 | Action 2: Catalyst | 완료 | `investment_catalysts`와 종목/기간 조회, 등록/부분 수정 API 구현. 실적·정책·수주·제품·섹터·공시·매크로 catalyst, 중요도와 진행 상태를 관리. UPCOMING 항목은 Morning Note에 포함되며 자동매수하지 않음 |
-| Action 3: Morning Note | 부분 완료 | 거래일 08:10 생성 scheduler와 수동 생성/조회 API 구현. 전 거래일 저장 후보, 보유 포지션, 관심종목 지표, upcoming catalyst, broken thesis, 데이터 부족 경고와 action item을 저장. Discord는 opt-in. 시장지수/섹터 master·뉴스·실적 원문 데이터 소스는 미연결 |
+| Action 3: Morning Note | 부분 완료 | 거래일 08:10 생성 scheduler와 수동 생성/조회 API 구현. 전 거래일 저장 후보, 보유 포지션, 관심종목 지표와 sector, market index 저장 데이터, 상위/하위 sector snapshot, upcoming catalyst, broken thesis, 데이터 부족 경고와 action item을 저장. Discord는 opt-in. 뉴스·공시·실적 원문 데이터 소스는 미연결 |
+| Action 1 /sector: Market/Sector Master | 부분 완료 | `market_indices`, `sectors`, `stock_sector_mappings`, `sector_daily_snapshots` schema와 sector 등록/조회/매핑/snapshot 생성 API 구현. 08:05 `SECTOR_DAILY_SNAPSHOT` scheduler가 전 거래일 기준 가격·거래대금 흐름과 leading stock을 계산해 Morning Note 기반으로 사용. 시장지수 원천 수집 port/provider와 뉴스 연결은 미구현 |
 
 ## 4. 구현 단계
 
@@ -196,6 +197,6 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 5. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
 6. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
 7. scheduler 실행 이력 보관 기간과 자동 정리 정책 결정
-8. 시장지수와 업종/테마 master를 위한 읽기 전용 데이터 port 설계
+8. 시장지수 원천 수집 provider와 sector master seed/import 방식 결정
 9. 실적 surprise, consensus revision을 구조화하는 earnings analysis 추가
 10. 뉴스 크롤링 없이 운영자가 입력하거나 검증된 provider가 공급하는 catalyst evidence 연결

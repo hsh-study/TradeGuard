@@ -4,6 +4,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import seokhoon.trade.application.port.in.ResearchUseCases;
+import seokhoon.trade.domain.market.Sector;
+import seokhoon.trade.domain.market.SectorDailySnapshot;
+import seokhoon.trade.domain.market.SectorType;
+import seokhoon.trade.domain.market.StockSectorMapping;
 import seokhoon.trade.domain.research.*;
 
 import java.math.BigDecimal;
@@ -23,7 +27,8 @@ class ResearchControllerTest {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new ResearchController(
                 new StubThesisUseCase(),
                 new StubCatalystUseCase(),
-                new StubMorningNoteUseCase()
+                new StubMorningNoteUseCase(),
+                new StubSectorUseCase()
         )).setControllerAdvice(new GlobalExceptionHandler()).build();
 
         mvc.perform(post("/api/research/theses")
@@ -91,6 +96,32 @@ class ResearchControllerTest {
                         .param("tradeDate", "2026-06-15"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.marketSummary").value("market"));
+
+        mvc.perform(post("/api/research/sectors")
+                        .contentType("application/json")
+                        .content("""
+                                {"sectorCode":"SEMICONDUCTOR","sectorName":"반도체","sectorType":"THEME"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sectorCode").value("SEMICONDUCTOR"));
+        mvc.perform(post("/api/research/sectors/SEMICONDUCTOR/stocks")
+                        .contentType("application/json")
+                        .content("""
+                                {"stockCode":"005930","source":"MANUAL"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stockCode").value("005930"));
+        mvc.perform(get("/api/research/sectors"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].sectorName").value("반도체"));
+        mvc.perform(get("/api/research/sectors/SEMICONDUCTOR/snapshot")
+                        .param("tradeDate", "2026-06-12"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.leadingStockCode").value("005930"));
+        mvc.perform(post("/api/research/sectors/snapshots")
+                        .param("tradeDate", "2026-06-12"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.generatedCount").value(1));
     }
 
     private static class StubThesisUseCase implements ResearchUseCases.ThesisUseCase {
@@ -145,6 +176,33 @@ class ResearchControllerTest {
         }
     }
 
+    private static class StubSectorUseCase implements ResearchUseCases.SectorUseCase {
+        @Override
+        public Sector create(ResearchUseCases.CreateSectorCommand command) {
+            return sector();
+        }
+
+        @Override
+        public StockSectorMapping addStock(String sectorCode, ResearchUseCases.AddSectorStockCommand command) {
+            return new StockSectorMapping(1L, command.stockCode(), sectorCode, command.source(), NOW, NOW);
+        }
+
+        @Override
+        public List<Sector> findAll() {
+            return List.of(sector());
+        }
+
+        @Override
+        public SectorDailySnapshot loadSnapshot(String sectorCode, LocalDate tradeDate) {
+            return snapshot();
+        }
+
+        @Override
+        public ResearchUseCases.SectorSnapshotGenerationResult generateSnapshots(LocalDate tradeDate) {
+            return new ResearchUseCases.SectorSnapshotGenerationResult(tradeDate, 1, 1, 0);
+        }
+    }
+
     private static InvestmentThesis thesis(ThesisStatus status) {
         return new InvestmentThesis(1L, "005930", "HBM recovery",
                 "memory margin improves", "margin declines",
@@ -156,5 +214,16 @@ class ResearchControllerTest {
         return new InvestmentCatalyst(1L, "005930", "2Q earnings",
                 CatalystType.EARNINGS, LocalDate.of(2026, 7, 31),
                 CatalystImportance.HIGH, status, null, null, NOW, NOW);
+    }
+
+    private static Sector sector() {
+        return new Sector(1L, "SEMICONDUCTOR", "반도체", SectorType.THEME, NOW, NOW);
+    }
+
+    private static SectorDailySnapshot snapshot() {
+        return new SectorDailySnapshot(1L, "SEMICONDUCTOR", LocalDate.of(2026, 6, 12),
+                new BigDecimal("2.5000"), new BigDecimal("2.5000"),
+                new BigDecimal("100000000"), 1, 0, "005930",
+                new BigDecimal("2.5000"), NOW, NOW);
     }
 }
