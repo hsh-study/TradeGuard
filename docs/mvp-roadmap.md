@@ -69,6 +69,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | Valuation Auto Snapshot | 완료 | `shares_outstanding_snapshots`와 valuation 자동 생성 API/scheduler 구현. 저장된 일봉 종가, 최신 분기 재무, 최신 발행주식수로 PER/PBR/PSR과 EPS/BPS/SPS를 계산하고 선택적으로 Earnings Analysis를 재실행. 후보 생성 중 외부 호출과 자동 주문은 없음 |
 | DART Corp Mapping Import | 완료 | 공식 OpenDART corpCode zip/XML 파싱 port/provider, import history, 상장사 stock_code 기반 `dart_corp_mappings` upsert 구현. 기존 market 보존, 신규 mapping `UNKNOWN`, 원본 zip/xml DB 저장 없음, 기본 외부 호출 disabled |
 | Shares Outstanding Import | 완료 | 발행주식수 CSV import API/history와 optional valuation generate 연동 구현. DART 사업보고서/합법 provider 자동 수집은 후속 작업으로 분리하고 자동 주문은 연결하지 않음 |
+| Disclosure Evidence Provider | 완료 | `catalyst_evidences`와 disclosure import history/API 구현. 수동 evidence, DART/KRX/provider metadata evidence port, earnings event/preview/post review 자동 evidence, Morning Note evidence action item 추가. 뉴스 크롤링과 공시 원문 전체 저장, 자동 주문은 없음 |
 
 ## 4. 구현 단계
 
@@ -197,9 +198,9 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. disclosure evidence provider 범위와 DART/KRX 공시 원문 수집 정책 결정
-2. market index provider와 sector master seed/import 방식 결정
-3. consensus provider 범위와 합법적인 라이선스/입력 경로 결정
+1. market index provider와 sector master seed/import 방식 결정
+2. consensus provider 범위와 합법적인 라이선스/입력 경로 결정
+3. disclosure evidence DART/KRX 실제 provider adapter와 rate limit 정책 구현
 4. shares outstanding provider 자동 수집 범위와 DART 사업보고서 parsing 정책 결정
 5. indicator warmup 실패율과 종목별 일봉 누락 운영 점검
 6. 장초반 원천 데이터 축적량과 누락률 운영 모니터링

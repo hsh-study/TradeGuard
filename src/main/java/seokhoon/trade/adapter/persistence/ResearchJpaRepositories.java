@@ -16,6 +16,33 @@ interface InvestmentCatalystJpaRepository extends JpaRepository<InvestmentCataly
         JpaSpecificationExecutor<InvestmentCatalystEntity> {
 }
 
+interface CatalystEvidenceJpaRepository extends JpaRepository<CatalystEvidenceEntity, Long> {
+    List<CatalystEvidenceEntity> findByCatalystIdAndStatus(
+            Long catalystId,
+            seokhoon.trade.domain.research.EvidenceStatus status,
+            Sort sort
+    );
+
+    List<CatalystEvidenceEntity> findByStockCodeAndStatus(
+            String stockCode,
+            seokhoon.trade.domain.research.EvidenceStatus status,
+            Sort sort
+    );
+
+    List<CatalystEvidenceEntity> findByStatus(
+            seokhoon.trade.domain.research.EvidenceStatus status,
+            org.springframework.data.domain.Pageable pageable
+    );
+
+    Optional<CatalystEvidenceEntity> findFirstByStockCodeAndTitleAndSourcePublishedAtAndSourceNameAndStatus(
+            String stockCode,
+            String title,
+            java.time.Instant sourcePublishedAt,
+            String sourceName,
+            seokhoon.trade.domain.research.EvidenceStatus status
+    );
+}
+
 interface MorningNoteJpaRepository extends JpaRepository<MorningNoteEntity, Long> {
     Optional<MorningNoteEntity> findByTradeDate(LocalDate tradeDate);
 }
@@ -113,4 +140,11 @@ interface DartCorpCodeImportHistoryJpaRepository extends JpaRepository<DartCorpC
 
 interface SharesOutstandingImportHistoryJpaRepository extends JpaRepository<SharesOutstandingImportHistoryEntity, Long> {
     List<SharesOutstandingImportHistoryEntity> findAllBy(Sort sort);
+}
+
+interface DisclosureEvidenceImportHistoryJpaRepository
+        extends JpaRepository<DisclosureEvidenceImportHistoryEntity, Long> {
+    List<DisclosureEvidenceImportHistoryEntity> findAllBy(
+            org.springframework.data.domain.Pageable pageable
+    );
 }

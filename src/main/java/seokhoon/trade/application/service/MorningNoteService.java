@@ -54,6 +54,8 @@ public class MorningNoteService implements MorningNoteUseCase {
     private final SharesOutstandingSnapshotPort sharesOutstandingSnapshotPort;
     private final DartCorpCodeImportHistoryPort dartCorpCodeImportHistoryPort;
     private final SharesOutstandingImportHistoryPort sharesOutstandingImportHistoryPort;
+    private final CatalystEvidencePort catalystEvidencePort;
+    private final DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistoryPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -82,6 +84,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             SharesOutstandingSnapshotPort sharesOutstandingSnapshotPort,
             DartCorpCodeImportHistoryPort dartCorpCodeImportHistoryPort,
             SharesOutstandingImportHistoryPort sharesOutstandingImportHistoryPort,
+            CatalystEvidencePort catalystEvidencePort,
+            DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistoryPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
@@ -91,6 +95,7 @@ public class MorningNoteService implements MorningNoteUseCase {
                 dartCorpMappingPort, dartFinancialImportHistoryPort,
                 valuationSnapshotPort, sharesOutstandingSnapshotPort,
                 dartCorpCodeImportHistoryPort, sharesOutstandingImportHistoryPort,
+                catalystEvidencePort, disclosureEvidenceImportHistoryPort,
                 metrics, Clock.systemUTC());
     }
 
@@ -114,7 +119,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
                 thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
                 stockSectorMappingPort, sectorSnapshotPort, null, null, null, null,
-                null, null, null, null, null, null, metrics, clock);
+                null, null, null, null, null, null, null, null, metrics, clock);
     }
 
     MorningNoteService(
@@ -141,6 +146,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             SharesOutstandingSnapshotPort sharesOutstandingSnapshotPort,
             DartCorpCodeImportHistoryPort dartCorpCodeImportHistoryPort,
             SharesOutstandingImportHistoryPort sharesOutstandingImportHistoryPort,
+            CatalystEvidencePort catalystEvidencePort,
+            DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistoryPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
@@ -167,6 +174,8 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.sharesOutstandingSnapshotPort = sharesOutstandingSnapshotPort;
         this.dartCorpCodeImportHistoryPort = dartCorpCodeImportHistoryPort;
         this.sharesOutstandingImportHistoryPort = sharesOutstandingImportHistoryPort;
+        this.catalystEvidencePort = catalystEvidencePort;
+        this.disclosureEvidenceImportHistoryPort = disclosureEvidenceImportHistoryPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -426,6 +435,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         appendDartItems(result, stocks);
         appendValuationItems(result, stocks, tradeDate);
         appendImportHistoryItems(result);
+        appendEvidenceItems(result, catalysts);
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
@@ -502,6 +512,37 @@ public class MorningNoteService implements MorningNoteUseCase {
                                     .append(history.failureReason());
                         }
                     });
+        }
+    }
+
+    private void appendEvidenceItems(StringBuilder result, List<InvestmentCatalyst> catalysts) {
+        if (catalystEvidencePort != null) {
+            catalystEvidencePort.findRecent(10).forEach(evidence -> {
+                result.append("\n- NEW_DISCLOSURE_EVIDENCE ")
+                        .append(evidence.stockCode() == null ? "MARKET" : evidence.stockCode())
+                        .append(" ").append(evidence.evidenceType())
+                        .append(" ").append(evidence.title());
+                if (evidence.confidence() == EvidenceConfidence.HIGH) {
+                    result.append("\n- HIGH_CONFIDENCE_CATALYST_EVIDENCE ")
+                            .append(evidence.stockCode() == null ? "MARKET" : evidence.stockCode())
+                            .append(" ").append(evidence.title());
+                }
+                if (evidence.evidenceType() == CatalystEvidenceType.POST_EARNINGS_REVIEW) {
+                    result.append("\n- POST_EARNINGS_REVIEW_EVIDENCE ")
+                            .append(evidence.stockCode()).append(" ").append(evidence.title());
+                }
+            });
+            catalysts.stream()
+                    .filter(catalyst -> catalyst.importance() == CatalystImportance.HIGH)
+                    .filter(catalyst -> catalystEvidencePort.findByCatalystId(catalyst.id()).isEmpty())
+                    .forEach(catalyst -> result.append("\n- HIGH_IMPORTANCE_CATALYST_WITHOUT_EVIDENCE ")
+                            .append(catalyst.stockCode()).append(" ").append(catalyst.title()));
+        }
+        if (disclosureEvidenceImportHistoryPort != null) {
+            disclosureEvidenceImportHistoryPort.findRecentDisclosureImports(10).stream()
+                    .filter(history -> history.status() == DisclosureEvidenceImportStatus.FAILED)
+                    .forEach(history -> result.append("\n- DISCLOSURE_IMPORT_FAILED ")
+                            .append(history.provider()).append(" ").append(history.failureReason()));
         }
     }
 

@@ -11,6 +11,7 @@ import seokhoon.trade.domain.research.*;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.time.Instant;
 
 @Component
 public class ResearchPersistenceAdapter implements InvestmentThesisPort,
@@ -18,9 +19,11 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         ValuationSnapshotPort, EarningsAnalysisPort, EarningsEventPort,
         EarningsPreviewPort, PostEarningsReviewPort, DartCorpMappingPort,
         DartFinancialImportHistoryPort, SharesOutstandingSnapshotPort,
-        DartCorpCodeImportHistoryPort, SharesOutstandingImportHistoryPort {
+        DartCorpCodeImportHistoryPort, SharesOutstandingImportHistoryPort,
+        CatalystEvidencePort, DisclosureEvidenceImportHistoryPort {
     private final InvestmentThesisJpaRepository theses;
     private final InvestmentCatalystJpaRepository catalysts;
+    private final CatalystEvidenceJpaRepository evidences;
     private final MorningNoteJpaRepository notes;
     private final QuarterlyFinancialJpaRepository financials;
     private final ValuationSnapshotJpaRepository valuations;
@@ -33,10 +36,12 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     private final DartFinancialImportHistoryJpaRepository dartImportHistories;
     private final DartCorpCodeImportHistoryJpaRepository dartCorpCodeImportHistories;
     private final SharesOutstandingImportHistoryJpaRepository sharesOutstandingImportHistories;
+    private final DisclosureEvidenceImportHistoryJpaRepository disclosureEvidenceImportHistories;
 
     public ResearchPersistenceAdapter(
             InvestmentThesisJpaRepository theses,
             InvestmentCatalystJpaRepository catalysts,
+            CatalystEvidenceJpaRepository evidences,
             MorningNoteJpaRepository notes,
             QuarterlyFinancialJpaRepository financials,
             ValuationSnapshotJpaRepository valuations,
@@ -48,10 +53,12 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
             DartCorpMappingJpaRepository dartCorpMappings,
             DartFinancialImportHistoryJpaRepository dartImportHistories,
             DartCorpCodeImportHistoryJpaRepository dartCorpCodeImportHistories,
-            SharesOutstandingImportHistoryJpaRepository sharesOutstandingImportHistories
+            SharesOutstandingImportHistoryJpaRepository sharesOutstandingImportHistories,
+            DisclosureEvidenceImportHistoryJpaRepository disclosureEvidenceImportHistories
     ) {
         this.theses = theses;
         this.catalysts = catalysts;
+        this.evidences = evidences;
         this.notes = notes;
         this.financials = financials;
         this.valuations = valuations;
@@ -64,6 +71,7 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         this.dartImportHistories = dartImportHistories;
         this.dartCorpCodeImportHistories = dartCorpCodeImportHistories;
         this.sharesOutstandingImportHistories = sharesOutstandingImportHistories;
+        this.disclosureEvidenceImportHistories = disclosureEvidenceImportHistories;
     }
 
     @Override
@@ -138,6 +146,59 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         return catalysts.findAll(specification,
                         Sort.by(Sort.Order.asc("expectedDate"), Sort.Order.desc("importance")))
                 .stream().map(InvestmentCatalystEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public CatalystEvidence save(CatalystEvidence value) {
+        CatalystEvidenceEntity entity = value.id() == null
+                ? CatalystEvidenceEntity.from(value)
+                : evidences.findById(value.id()).orElseGet(() -> CatalystEvidenceEntity.from(value));
+        entity.update(value);
+        return evidences.save(entity).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<CatalystEvidence> findEvidenceById(long id) {
+        return evidences.findById(id).map(CatalystEvidenceEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CatalystEvidence> findByCatalystId(long catalystId) {
+        return evidences.findByCatalystIdAndStatus(
+                        catalystId, EvidenceStatus.ACTIVE, Sort.by(Sort.Order.desc("sourcePublishedAt")))
+                .stream().map(CatalystEvidenceEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CatalystEvidence> findEvidenceByStockCode(String stockCode) {
+        return evidences.findByStockCodeAndStatus(
+                        stockCode, EvidenceStatus.ACTIVE, Sort.by(Sort.Order.desc("sourcePublishedAt")))
+                .stream().map(CatalystEvidenceEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CatalystEvidence> findRecent(int limit) {
+        return evidences.findByStatus(EvidenceStatus.ACTIVE, PageRequest.of(
+                        0, limit, Sort.by(Sort.Order.desc("createdAt"))))
+                .stream().map(CatalystEvidenceEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<CatalystEvidence> findDuplicate(
+            String stockCode,
+            String title,
+            Instant sourcePublishedAt,
+            String sourceName
+    ) {
+        return evidences.findFirstByStockCodeAndTitleAndSourcePublishedAtAndSourceNameAndStatus(
+                        stockCode, title, sourcePublishedAt, sourceName, EvidenceStatus.ACTIVE)
+                .map(CatalystEvidenceEntity::toDomain);
     }
 
     @Override
@@ -465,5 +526,20 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     public List<SharesOutstandingImportHistory> findAllSharesOutstandingImports() {
         return sharesOutstandingImportHistories.findAllBy(Sort.by(Sort.Order.desc("requestedAt")))
                 .stream().map(SharesOutstandingImportHistoryEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public DisclosureEvidenceImportHistory save(DisclosureEvidenceImportHistory value) {
+        return disclosureEvidenceImportHistories.save(
+                DisclosureEvidenceImportHistoryEntity.from(value)).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DisclosureEvidenceImportHistory> findRecentDisclosureImports(int limit) {
+        return disclosureEvidenceImportHistories.findAllBy(PageRequest.of(
+                        0, limit, Sort.by(Sort.Order.desc("requestedAt"))))
+                .stream().map(DisclosureEvidenceImportHistoryEntity::toDomain).toList();
     }
 }

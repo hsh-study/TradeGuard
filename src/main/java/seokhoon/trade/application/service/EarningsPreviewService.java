@@ -26,6 +26,7 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
     private final ValuationSnapshotPort valuationPort;
     private final IndicatorSnapshotPort indicatorPort;
     private final InvestmentCatalystPort catalystPort;
+    private final CatalystEvidenceService evidenceService;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -38,10 +39,35 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
             ValuationSnapshotPort valuationPort,
             IndicatorSnapshotPort indicatorPort,
             InvestmentCatalystPort catalystPort,
+            CatalystEvidenceService evidenceService,
             OperationalMetricsPort metrics
     ) {
         this(previewPort, eventPort, thesisPort, analysisPort, valuationPort,
-                indicatorPort, catalystPort, metrics, Clock.systemUTC());
+                indicatorPort, catalystPort, evidenceService, metrics, Clock.systemUTC());
+    }
+
+    EarningsPreviewService(
+            EarningsPreviewPort previewPort,
+            EarningsEventPort eventPort,
+            InvestmentThesisPort thesisPort,
+            EarningsAnalysisPort analysisPort,
+            ValuationSnapshotPort valuationPort,
+            IndicatorSnapshotPort indicatorPort,
+            InvestmentCatalystPort catalystPort,
+            CatalystEvidenceService evidenceService,
+            OperationalMetricsPort metrics,
+            Clock clock
+    ) {
+        this.previewPort = previewPort;
+        this.eventPort = eventPort;
+        this.thesisPort = thesisPort;
+        this.analysisPort = analysisPort;
+        this.valuationPort = valuationPort;
+        this.indicatorPort = indicatorPort;
+        this.catalystPort = catalystPort;
+        this.evidenceService = evidenceService;
+        this.metrics = metrics;
+        this.clock = clock;
     }
 
     EarningsPreviewService(
@@ -55,15 +81,10 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
             OperationalMetricsPort metrics,
             Clock clock
     ) {
-        this.previewPort = previewPort;
-        this.eventPort = eventPort;
-        this.thesisPort = thesisPort;
-        this.analysisPort = analysisPort;
-        this.valuationPort = valuationPort;
-        this.indicatorPort = indicatorPort;
-        this.catalystPort = catalystPort;
-        this.metrics = metrics;
-        this.clock = clock;
+        this(previewPort, eventPort, thesisPort, analysisPort, valuationPort,
+                indicatorPort, catalystPort,
+                new CatalystEvidenceService(new NoopCatalystEvidencePort(), OperationalMetricsPort.noop(), clock),
+                metrics, clock);
     }
 
     @Override
@@ -86,6 +107,13 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
                 now,
                 now
         ));
+        if (saved.status() == EarningsPreviewStatus.READY) {
+            evidenceService.saveSystemEvidence(null, saved.stockCode(), CatalystEvidenceType.EARNINGS_PREVIEW,
+                    "Earnings preview " + saved.earningsEventId(),
+                    "READY earnings preview checkpoints=" + saved.keyCheckpoints(),
+                    "TradeGuard", null, saved.previewDate().atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                    EvidenceConfidence.MEDIUM);
+        }
         metrics.recordResearchEarningsPreview(saved.status() == EarningsPreviewStatus.READY ? "ready" : "created");
         return saved;
     }

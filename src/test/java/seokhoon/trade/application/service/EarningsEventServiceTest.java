@@ -25,13 +25,17 @@ class EarningsEventServiceTest {
     void createsEventAndEarningsCatalystWhenAbsent() {
         InMemoryEventPort events = new InMemoryEventPort();
         InMemoryCatalystPort catalysts = new InMemoryCatalystPort();
-        EarningsEventService service = service(events, catalysts);
+        CatalystEvidenceServiceTest.InMemoryEvidencePort evidences =
+                new CatalystEvidenceServiceTest.InMemoryEvidencePort();
+        EarningsEventService service = service(events, catalysts, evidences);
 
         EarningsEvent saved = service.create(command());
 
         assertThat(saved.status()).isEqualTo(EarningsEventStatus.SCHEDULED);
         assertThat(catalysts.values).hasSize(1);
         assertThat(catalysts.values.get(0).catalystType()).isEqualTo(CatalystType.EARNINGS);
+        assertThat(evidences.findEvidenceByStockCode("005930"))
+                .anyMatch(evidence -> evidence.evidenceType() == CatalystEvidenceType.EARNINGS_EVENT);
     }
 
     @Test
@@ -49,10 +53,20 @@ class EarningsEventServiceTest {
     }
 
     private static EarningsEventService service(InMemoryEventPort events, InMemoryCatalystPort catalysts) {
+        return service(events, catalysts, new CatalystEvidenceServiceTest.InMemoryEvidencePort());
+    }
+
+    private static EarningsEventService service(
+            InMemoryEventPort events,
+            InMemoryCatalystPort catalysts,
+            CatalystEvidenceServiceTest.InMemoryEvidencePort evidences
+    ) {
         ResearchProperties properties = new ResearchProperties();
         properties.setEarningsEventAutoCreateCatalyst(true);
-        return new EarningsEventService(events, catalysts, properties, OperationalMetricsPort.noop(),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        return new EarningsEventService(events, catalysts,
+                new CatalystEvidenceService(evidences, OperationalMetricsPort.noop(), clock),
+                properties, OperationalMetricsPort.noop(), clock);
     }
 
     private static CreateEarningsEventCommand command() {

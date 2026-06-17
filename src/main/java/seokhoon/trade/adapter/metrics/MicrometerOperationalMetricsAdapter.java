@@ -354,6 +354,24 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordCatalystEvidence(String type, String confidence) {
+        meterRegistry.counter(
+                "tradeguard.research.catalyst_evidence.count",
+                "type", type,
+                "confidence", confidence
+        ).increment();
+    }
+
+    @Override
+    public void recordDisclosureEvidenceImport(String provider, String result) {
+        meterRegistry.counter(
+                "tradeguard.research.disclosure_evidence_import.count",
+                "provider", provider,
+                "result", result
+        ).increment();
+    }
+
+    @Override
     public void recordLiveOrderRequest(String side, String status) {
         meterRegistry.counter("tradeguard.live_order.request.count",
                 "side", side, "status", status).increment();

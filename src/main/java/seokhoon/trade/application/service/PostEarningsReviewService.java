@@ -26,6 +26,7 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
     private final EarningsEventPort eventPort;
     private final EarningsPreviewPort previewPort;
     private final AnalyzeEarningsUseCase analyzeEarningsUseCase;
+    private final CatalystEvidenceService evidenceService;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -35,9 +36,29 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
             EarningsEventPort eventPort,
             EarningsPreviewPort previewPort,
             AnalyzeEarningsUseCase analyzeEarningsUseCase,
+            CatalystEvidenceService evidenceService,
             OperationalMetricsPort metrics
     ) {
-        this(reviewPort, eventPort, previewPort, analyzeEarningsUseCase, metrics, Clock.systemUTC());
+        this(reviewPort, eventPort, previewPort, analyzeEarningsUseCase,
+                evidenceService, metrics, Clock.systemUTC());
+    }
+
+    PostEarningsReviewService(
+            PostEarningsReviewPort reviewPort,
+            EarningsEventPort eventPort,
+            EarningsPreviewPort previewPort,
+            AnalyzeEarningsUseCase analyzeEarningsUseCase,
+            CatalystEvidenceService evidenceService,
+            OperationalMetricsPort metrics,
+            Clock clock
+    ) {
+        this.reviewPort = reviewPort;
+        this.eventPort = eventPort;
+        this.previewPort = previewPort;
+        this.analyzeEarningsUseCase = analyzeEarningsUseCase;
+        this.evidenceService = evidenceService;
+        this.metrics = metrics;
+        this.clock = clock;
     }
 
     PostEarningsReviewService(
@@ -48,12 +69,9 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
             OperationalMetricsPort metrics,
             Clock clock
     ) {
-        this.reviewPort = reviewPort;
-        this.eventPort = eventPort;
-        this.previewPort = previewPort;
-        this.analyzeEarningsUseCase = analyzeEarningsUseCase;
-        this.metrics = metrics;
-        this.clock = clock;
+        this(reviewPort, eventPort, previewPort, analyzeEarningsUseCase,
+                new CatalystEvidenceService(new NoopCatalystEvidencePort(), OperationalMetricsPort.noop(), clock),
+                metrics, clock);
     }
 
     @Override
@@ -110,6 +128,11 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
         if (command.rerunEarningsAnalysis()) {
             analyzeEarningsUseCase.analyzeStock(command.stockCode(), command.reviewDate());
         }
+        evidenceService.saveSystemEvidence(null, saved.stockCode(), CatalystEvidenceType.POST_EARNINGS_REVIEW,
+                "Post earnings review " + saved.earningsEventId(),
+                saved.reviewSummary(),
+                "TradeGuard", null, saved.reviewDate().atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                EvidenceConfidence.HIGH);
         metrics.recordResearchPostEarningsReview(saved.thesisImpact().name());
         return saved;
     }

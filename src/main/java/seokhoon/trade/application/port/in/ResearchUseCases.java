@@ -75,6 +75,41 @@ public final class ResearchUseCases {
         InvestmentCatalyst update(long id, UpdateCatalystCommand command);
     }
 
+    public record CreateEvidenceCommand(
+            Long catalystId,
+            String stockCode,
+            CatalystEvidenceType evidenceType,
+            String title,
+            String summary,
+            String sourceName,
+            String sourceUrl,
+            java.time.Instant sourcePublishedAt,
+            EvidenceConfidence confidence,
+            EvidenceCreatedBy createdBy
+    ) {
+    }
+
+    public record UpdateEvidenceCommand(
+            Long catalystId,
+            String stockCode,
+            CatalystEvidenceType evidenceType,
+            String title,
+            String summary,
+            String sourceName,
+            String sourceUrl,
+            java.time.Instant sourcePublishedAt,
+            EvidenceConfidence confidence
+    ) {
+    }
+
+    public interface CatalystEvidenceUseCase {
+        CatalystEvidence create(CreateEvidenceCommand command);
+        List<CatalystEvidence> findByCatalystId(long catalystId);
+        List<CatalystEvidence> findByStockCode(String stockCode);
+        CatalystEvidence update(long id, UpdateEvidenceCommand command);
+        void delete(long id);
+    }
+
     public interface MorningNoteUseCase {
         MorningNote generate(LocalDate tradeDate);
         MorningNote load(LocalDate tradeDate);

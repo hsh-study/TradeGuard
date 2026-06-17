@@ -8,6 +8,7 @@ import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.DartCorpCodeImportUseCase;
 import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
 import seokhoon.trade.application.port.in.GenerateValuationSnapshotUseCase;
+import seokhoon.trade.application.port.in.ImportDisclosureEvidenceUseCase;
 import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
 import seokhoon.trade.application.port.in.ImportSharesOutstandingUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases.*;
@@ -27,6 +28,7 @@ import java.util.List;
 public class ResearchController {
     private final ThesisUseCase thesisUseCase;
     private final CatalystUseCase catalystUseCase;
+    private final CatalystEvidenceUseCase catalystEvidenceUseCase;
     private final MorningNoteUseCase morningNoteUseCase;
     private final SectorUseCase sectorUseCase;
     private final EarningsDataUseCase earningsDataUseCase;
@@ -42,10 +44,12 @@ public class ResearchController {
     private final ImportDartFinancialsUseCase importDartFinancialsUseCase;
     private final DartFinancialImportHistoryQueryUseCase dartHistoryQueryUseCase;
     private final ImportSharesOutstandingUseCase importSharesOutstandingUseCase;
+    private final ImportDisclosureEvidenceUseCase importDisclosureEvidenceUseCase;
 
     public ResearchController(
             ThesisUseCase thesisUseCase,
             CatalystUseCase catalystUseCase,
+            CatalystEvidenceUseCase catalystEvidenceUseCase,
             MorningNoteUseCase morningNoteUseCase,
             SectorUseCase sectorUseCase,
             EarningsDataUseCase earningsDataUseCase,
@@ -60,10 +64,12 @@ public class ResearchController {
             DartCorpCodeImportUseCase dartCorpCodeImportUseCase,
             ImportDartFinancialsUseCase importDartFinancialsUseCase,
             DartFinancialImportHistoryQueryUseCase dartHistoryQueryUseCase,
-            ImportSharesOutstandingUseCase importSharesOutstandingUseCase
+            ImportSharesOutstandingUseCase importSharesOutstandingUseCase,
+            ImportDisclosureEvidenceUseCase importDisclosureEvidenceUseCase
     ) {
         this.thesisUseCase = thesisUseCase;
         this.catalystUseCase = catalystUseCase;
+        this.catalystEvidenceUseCase = catalystEvidenceUseCase;
         this.morningNoteUseCase = morningNoteUseCase;
         this.sectorUseCase = sectorUseCase;
         this.earningsDataUseCase = earningsDataUseCase;
@@ -79,6 +85,7 @@ public class ResearchController {
         this.importDartFinancialsUseCase = importDartFinancialsUseCase;
         this.dartHistoryQueryUseCase = dartHistoryQueryUseCase;
         this.importSharesOutstandingUseCase = importSharesOutstandingUseCase;
+        this.importDisclosureEvidenceUseCase = importDisclosureEvidenceUseCase;
     }
 
     @PostMapping("/theses")
@@ -124,6 +131,34 @@ public class ResearchController {
             @RequestBody CatalystPatchRequest request
     ) {
         return catalystUseCase.update(id, request.toCommand());
+    }
+
+    @PostMapping("/evidences")
+    CatalystEvidence createEvidence(@Valid @RequestBody EvidenceRequest request) {
+        return catalystEvidenceUseCase.create(request.toCreateCommand());
+    }
+
+    @GetMapping("/catalysts/{catalystId}/evidences")
+    List<CatalystEvidence> findCatalystEvidences(@PathVariable long catalystId) {
+        return catalystEvidenceUseCase.findByCatalystId(catalystId);
+    }
+
+    @GetMapping(value = "/evidences", params = "stockCode")
+    List<CatalystEvidence> findEvidencesByStock(@RequestParam String stockCode) {
+        return catalystEvidenceUseCase.findByStockCode(stockCode);
+    }
+
+    @PatchMapping("/evidences/{id}")
+    CatalystEvidence updateEvidence(
+            @PathVariable long id,
+            @RequestBody EvidencePatchRequest request
+    ) {
+        return catalystEvidenceUseCase.update(id, request.toCommand());
+    }
+
+    @DeleteMapping("/evidences/{id}")
+    void deleteEvidence(@PathVariable long id) {
+        catalystEvidenceUseCase.delete(id);
     }
 
     @PostMapping("/morning-note")
@@ -374,6 +409,20 @@ public class ResearchController {
         return dartHistoryQueryUseCase.findByStockCode(stockCode);
     }
 
+    @PostMapping("/disclosures/evidences/import")
+    DisclosureEvidenceImportHistory importDisclosureEvidences(
+            @RequestParam String stockCode,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return importDisclosureEvidenceUseCase.importDisclosures(stockCode, from, to);
+    }
+
+    @GetMapping("/disclosures/evidences/import-histories")
+    List<DisclosureEvidenceImportHistory> findDisclosureEvidenceImportHistories() {
+        return importDisclosureEvidenceUseCase.findDisclosureImportHistories();
+    }
+
     public record ThesisRequest(
             @NotBlank String stockCode,
             @NotBlank String title,
@@ -434,6 +483,41 @@ public class ResearchController {
         UpdateCatalystCommand toCommand() {
             return new UpdateCatalystCommand(stockCode, title, catalystType, expectedDate,
                     importance, status, sourceUrl, memo);
+        }
+    }
+
+    public record EvidenceRequest(
+            Long catalystId,
+            String stockCode,
+            CatalystEvidenceType evidenceType,
+            @NotBlank String title,
+            @NotBlank String summary,
+            String sourceName,
+            String sourceUrl,
+            java.time.Instant sourcePublishedAt,
+            EvidenceConfidence confidence,
+            EvidenceCreatedBy createdBy
+    ) {
+        CreateEvidenceCommand toCreateCommand() {
+            return new CreateEvidenceCommand(catalystId, stockCode, evidenceType, title,
+                    summary, sourceName, sourceUrl, sourcePublishedAt, confidence, createdBy);
+        }
+    }
+
+    public record EvidencePatchRequest(
+            Long catalystId,
+            String stockCode,
+            CatalystEvidenceType evidenceType,
+            String title,
+            String summary,
+            String sourceName,
+            String sourceUrl,
+            java.time.Instant sourcePublishedAt,
+            EvidenceConfidence confidence
+    ) {
+        UpdateEvidenceCommand toCommand() {
+            return new UpdateEvidenceCommand(catalystId, stockCode, evidenceType, title,
+                    summary, sourceName, sourceUrl, sourcePublishedAt, confidence);
         }
     }
 

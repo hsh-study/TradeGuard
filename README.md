@@ -385,6 +385,62 @@ Morning Note에는 `UPCOMING_EARNINGS`, `EARNINGS_PREVIEW_READY`,
 earnings event 생성 시 `EARNINGS_EVENT_AUTO_CREATE_CATALYST=true`이면 같은
 종목·발표일·분기의 `EARNINGS` catalyst를 중복 없이 자동 생성합니다.
 
+Catalyst Evidence v1은 catalyst와 thesis 판단에 붙일 공식 공시 기반 근거를
+저장합니다. 뉴스 크롤링을 하지 않으며, 공시 원문 전체를 DB에 저장하지 않고
+제목, 요약, source name, source URL, 게시 시각 같은 메타데이터와 링크 중심으로
+관리합니다. earnings event, READY preview, post earnings review는 각각
+`EARNINGS_EVENT`, `EARNINGS_PREVIEW`, `POST_EARNINGS_REVIEW` evidence를
+중복 없이 자동 생성합니다. 자동 주문은 실행하지 않습니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/evidences' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "catalystId": 1,
+    "stockCode": "005930",
+    "evidenceType": "DART_DISCLOSURE",
+    "title": "단일판매ㆍ공급계약체결",
+    "summary": "공식 DART 공시 메타데이터 기반 요약",
+    "sourceName": "DART",
+    "sourceUrl": "https://dart.fss.or.kr/...",
+    "sourcePublishedAt": "2026-06-15T00:00:00Z",
+    "confidence": "HIGH"
+  }'
+
+curl 'http://localhost:8080/api/research/catalysts/1/evidences'
+curl 'http://localhost:8080/api/research/evidences?stockCode=005930'
+
+curl -X PATCH 'http://localhost:8080/api/research/evidences/1' \
+  -H 'Content-Type: application/json' \
+  -d '{"summary":"요약 보강","confidence":"MEDIUM"}'
+
+curl -X DELETE 'http://localhost:8080/api/research/evidences/1'
+```
+
+동일 `stockCode`, `title`, `sourcePublishedAt`, `sourceName` 조합은 중복
+evidence로 보고 기존 ACTIVE evidence를 재사용합니다. `catalystId` 없이
+evidence를 먼저 저장할 수 있고, 이후 같은 종목의 catalyst와 수동 연결할 수
+있습니다. HIGH importance catalyst에 evidence가 없으면 Morning Note에
+`HIGH_IMPORTANCE_CATALYST_WITHOUT_EVIDENCE`가 표시됩니다.
+
+Disclosure Evidence Provider v1은 기본 disabled adapter로 구성되어 있으며,
+추후 DART/KRX 공시 목록 API 또는 합법 provider를 연결할 수 있는 port를
+분리했습니다. provider가 비활성일 때 import API는 `SKIPPED` history를 남깁니다.
+API key, source URL, raw response 전체는 로그/응답/metric tag에 남기지 않습니다.
+
+```text
+DISCLOSURE_PROVIDER_ENABLED=false
+DISCLOSURE_PROVIDER_TYPE=DART
+DISCLOSURE_PROVIDER_TIMEOUT_SECONDS=10
+```
+
+```sh
+curl -X POST \
+  'http://localhost:8080/api/research/disclosures/evidences/import?stockCode=005930&from=2026-06-01&to=2026-06-30'
+
+curl 'http://localhost:8080/api/research/disclosures/evidences/import-histories'
+```
+
 DART Financial Import v1은 운영자가 `quarterly_financials`를 매번 수동
 입력하지 않아도 되도록 공식 OpenDART 재무제표 API에서 분기 재무를 가져오는
 구조입니다. 뉴스 크롤링, 공시 원문 저장, 컨센서스 무단 수집은 하지 않습니다.
@@ -497,6 +553,11 @@ curl 'http://localhost:8080/api/research/valuations/shares-outstanding/import-hi
 않습니다. Morning Note에는 `DART_CORP_MAPPING_IMPORTED`,
 `DART_CORP_MAPPING_IMPORT_FAILED`, `SHARES_OUTSTANDING_IMPORT_REQUIRED`,
 `SHARES_OUTSTANDING_IMPORT_FAILED`, `SHARES_OUTSTANDING_IMPORTED`가 추가됩니다.
+
+Evidence 관련해서는 Morning Note에 `NEW_DISCLOSURE_EVIDENCE`,
+`HIGH_CONFIDENCE_CATALYST_EVIDENCE`,
+`HIGH_IMPORTANCE_CATALYST_WITHOUT_EVIDENCE`,
+`POST_EARNINGS_REVIEW_EVIDENCE`, `DISCLOSURE_IMPORT_FAILED`가 추가됩니다.
 
 Sector master와 snapshot:
 
@@ -1274,6 +1335,8 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.research.shares_outstanding.count`: `result=saved|failure`
 - `tradeguard.research.dart_corp_code_import.count`: `result=success|partial|failure|skipped`
 - `tradeguard.research.shares_outstanding_import.count`: `result=success|partial|failure`
+- `tradeguard.research.catalyst_evidence.count`: `type`, `confidence`
+- `tradeguard.research.disclosure_evidence_import.count`: `provider`, `result=success|partial|failure|skipped`
 - `tradeguard.research.earnings_event.count`: `status`
 - `tradeguard.research.earnings_preview.count`: `result=created|ready|failure`
 - `tradeguard.research.post_earnings_review.count`: `thesisImpact`

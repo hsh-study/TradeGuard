@@ -7,6 +7,7 @@ import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.DartCorpCodeImportUseCase;
 import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
 import seokhoon.trade.application.port.in.GenerateValuationSnapshotUseCase;
+import seokhoon.trade.application.port.in.ImportDisclosureEvidenceUseCase;
 import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
 import seokhoon.trade.application.port.in.ImportSharesOutstandingUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases;
@@ -34,6 +35,7 @@ class ResearchControllerTest {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new ResearchController(
                 new StubThesisUseCase(),
                 new StubCatalystUseCase(),
+                new StubCatalystEvidenceUseCase(),
                 new StubMorningNoteUseCase(),
                 new StubSectorUseCase(),
                 new StubEarningsDataUseCase(),
@@ -48,7 +50,8 @@ class ResearchControllerTest {
                 new StubDartCorpCodeImportUseCase(),
                 new StubImportDartFinancialsUseCase(),
                 new StubDartFinancialImportHistoryQueryUseCase(),
-                new StubImportSharesOutstandingUseCase()
+                new StubImportSharesOutstandingUseCase(),
+                new StubImportDisclosureEvidenceUseCase()
         )).setControllerAdvice(new GlobalExceptionHandler()).build();
 
         mvc.perform(post("/api/research/theses")
@@ -107,6 +110,28 @@ class ResearchControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("OCCURRED"));
+        mvc.perform(post("/api/research/evidences")
+                        .contentType("application/json")
+                        .content("""
+                                {"catalystId":1,"stockCode":"005930","evidenceType":"MANUAL_NOTE","title":"공시 확인","summary":"공식 공시 링크 확인","confidence":"HIGH"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("공시 확인"));
+        mvc.perform(get("/api/research/catalysts/1/evidences"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].confidence").value("HIGH"));
+        mvc.perform(get("/api/research/evidences").param("stockCode", "005930"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].evidenceType").value("MANUAL_NOTE"));
+        mvc.perform(patch("/api/research/evidences/1")
+                        .contentType("application/json")
+                        .content("""
+                                {"summary":"updated"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary").value("updated"));
+        mvc.perform(delete("/api/research/evidences/1"))
+                .andExpect(status().isOk());
 
         mvc.perform(post("/api/research/morning-note")
                         .param("tradeDate", "2026-06-15"))
@@ -319,6 +344,15 @@ class ResearchControllerTest {
                         .param("stockCode", "005930"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].status").value("SUCCESS"));
+        mvc.perform(post("/api/research/disclosures/evidences/import")
+                        .param("stockCode", "005930")
+                        .param("from", "2026-06-01")
+                        .param("to", "2026-06-30"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SKIPPED"));
+        mvc.perform(get("/api/research/disclosures/evidences/import-histories"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].provider").value("DART"));
         mvc.perform(post("/api/research/dart/corp-codes/import"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.matchedStockCount").value(1));
@@ -371,6 +405,32 @@ class ResearchControllerTest {
         @Override
         public InvestmentCatalyst update(long id, ResearchUseCases.UpdateCatalystCommand command) {
             return catalyst(command.status());
+        }
+    }
+
+    private static class StubCatalystEvidenceUseCase implements ResearchUseCases.CatalystEvidenceUseCase {
+        @Override
+        public CatalystEvidence create(ResearchUseCases.CreateEvidenceCommand command) {
+            return evidence(command.summary());
+        }
+
+        @Override
+        public List<CatalystEvidence> findByCatalystId(long catalystId) {
+            return List.of(evidence("공식 공시 링크 확인"));
+        }
+
+        @Override
+        public List<CatalystEvidence> findByStockCode(String stockCode) {
+            return List.of(evidence("공식 공시 링크 확인"));
+        }
+
+        @Override
+        public CatalystEvidence update(long id, ResearchUseCases.UpdateEvidenceCommand command) {
+            return evidence(command.summary() == null ? "공식 공시 링크 확인" : command.summary());
+        }
+
+        @Override
+        public void delete(long id) {
         }
     }
 
@@ -606,6 +666,18 @@ class ResearchControllerTest {
         }
     }
 
+    private static class StubImportDisclosureEvidenceUseCase implements ImportDisclosureEvidenceUseCase {
+        @Override
+        public DisclosureEvidenceImportHistory importDisclosures(String stockCode, LocalDate from, LocalDate to) {
+            return disclosureHistory(DisclosureEvidenceImportStatus.SKIPPED);
+        }
+
+        @Override
+        public List<DisclosureEvidenceImportHistory> findDisclosureImportHistories() {
+            return List.of(disclosureHistory(DisclosureEvidenceImportStatus.SKIPPED));
+        }
+    }
+
     private static InvestmentThesis thesis(ThesisStatus status) {
         return new InvestmentThesis(1L, "005930", "HBM recovery",
                 "memory margin improves", "margin declines",
@@ -698,5 +770,17 @@ class ResearchControllerTest {
 
     private static SharesOutstandingImportHistory sharesImportHistory(SharesOutstandingImportStatus status) {
         return new SharesOutstandingImportHistory(1L, status, 1, null, NOW, NOW);
+    }
+
+    private static DisclosureEvidenceImportHistory disclosureHistory(DisclosureEvidenceImportStatus status) {
+        return new DisclosureEvidenceImportHistory(1L, DisclosureProvider.DART, "005930",
+                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30),
+                status, 0, null, NOW, NOW);
+    }
+
+    private static CatalystEvidence evidence(String summary) {
+        return new CatalystEvidence(1L, 1L, "005930", CatalystEvidenceType.MANUAL_NOTE,
+                "공시 확인", summary, "DART", "https://example.test/disclosure",
+                NOW, EvidenceConfidence.HIGH, EvidenceCreatedBy.USER, EvidenceStatus.ACTIVE, NOW, NOW);
     }
 }

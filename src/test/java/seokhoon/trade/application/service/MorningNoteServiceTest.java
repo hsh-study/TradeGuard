@@ -43,6 +43,8 @@ class MorningNoteServiceTest {
     private SharesOutstandingSnapshotPort sharesOutstanding;
     private DartCorpCodeImportHistoryPort dartCorpCodeImportHistories;
     private SharesOutstandingImportHistoryPort sharesOutstandingImportHistories;
+    private CatalystEvidencePort catalystEvidences;
+    private DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistories;
     private MorningNoteService service;
 
     @BeforeEach
@@ -63,6 +65,8 @@ class MorningNoteServiceTest {
         sharesOutstanding = mock(SharesOutstandingSnapshotPort.class);
         dartCorpCodeImportHistories = mock(DartCorpCodeImportHistoryPort.class);
         sharesOutstandingImportHistories = mock(SharesOutstandingImportHistoryPort.class);
+        catalystEvidences = mock(CatalystEvidencePort.class);
+        disclosureEvidenceImportHistories = mock(DisclosureEvidenceImportHistoryPort.class);
         when(notes.save(any())).thenAnswer(invocation -> {
             MorningNote note = invocation.getArgument(0);
             return new MorningNote(1L, note.tradeDate(), note.marketSummary(), note.sectorSummary(),
@@ -81,6 +85,9 @@ class MorningNoteServiceTest {
         when(sharesOutstanding.findLatestSharesByStockCode(any(), any())).thenReturn(Optional.empty());
         when(dartCorpCodeImportHistories.findAllCorpCodeImports()).thenReturn(List.of());
         when(sharesOutstandingImportHistories.findAllSharesOutstandingImports()).thenReturn(List.of());
+        when(catalystEvidences.findRecent(anyInt())).thenReturn(List.of());
+        when(catalystEvidences.findByCatalystId(anyLong())).thenReturn(List.of());
+        when(disclosureEvidenceImportHistories.findRecentDisclosureImports(anyInt())).thenReturn(List.of());
         service = new MorningNoteService(
                 notes, stocks, prices, indicators, signals, positions, theses, catalysts,
                 date -> !date.getDayOfWeek().equals(DayOfWeek.SATURDAY)
@@ -88,6 +95,7 @@ class MorningNoteServiceTest {
                 marketIndices, sectors, mappings, sectorSnapshots,
                 null, null, null, null, null, null, valuations, sharesOutstanding,
                 dartCorpCodeImportHistories, sharesOutstandingImportHistories,
+                catalystEvidences, disclosureEvidenceImportHistories,
                 OperationalMetricsPort.noop(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
@@ -188,6 +196,15 @@ class MorningNoteServiceTest {
         when(sharesOutstandingImportHistories.findAllSharesOutstandingImports())
                 .thenReturn(List.of(new SharesOutstandingImportHistory(1L,
                         SharesOutstandingImportStatus.SUCCESS, 1, null, NOW, NOW)));
+        when(catalystEvidences.findRecent(anyInt()))
+                .thenReturn(List.of(new CatalystEvidence(1L, 1L, "005930",
+                        CatalystEvidenceType.POST_EARNINGS_REVIEW, "review evidence", "summary",
+                        "TradeGuard", null, NOW, EvidenceConfidence.HIGH,
+                        EvidenceCreatedBy.SYSTEM, EvidenceStatus.ACTIVE, NOW, NOW)));
+        when(disclosureEvidenceImportHistories.findRecentDisclosureImports(anyInt()))
+                .thenReturn(List.of(new DisclosureEvidenceImportHistory(1L, DisclosureProvider.DART,
+                        "005930", TRADE_DATE.minusDays(7), TRADE_DATE,
+                        DisclosureEvidenceImportStatus.FAILED, 0, "provider failed", NOW, NOW)));
 
         MorningNote note = service.generate(TRADE_DATE);
 
@@ -196,7 +213,10 @@ class MorningNoteServiceTest {
                 .contains("VALUATION_NEGATIVE_EARNINGS")
                 .contains("VALUATION_OVERVALUED_WARNING")
                 .contains("DART_CORP_MAPPING_IMPORTED")
-                .contains("SHARES_OUTSTANDING_IMPORTED");
+                .contains("SHARES_OUTSTANDING_IMPORTED")
+                .contains("NEW_DISCLOSURE_EVIDENCE")
+                .contains("POST_EARNINGS_REVIEW_EVIDENCE")
+                .contains("DISCLOSURE_IMPORT_FAILED");
     }
 
     private static DailyPrice price() {

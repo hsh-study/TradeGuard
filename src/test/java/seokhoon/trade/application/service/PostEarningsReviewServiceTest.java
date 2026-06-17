@@ -29,9 +29,13 @@ class PostEarningsReviewServiceTest {
         InMemoryEventPort events = new InMemoryEventPort();
         InMemoryPreviewPort previews = new InMemoryPreviewPort();
         CountingAnalyzeUseCase analyzer = new CountingAnalyzeUseCase();
+        CatalystEvidenceServiceTest.InMemoryEvidencePort evidences =
+                new CatalystEvidenceServiceTest.InMemoryEvidencePort();
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         PostEarningsReviewService service = new PostEarningsReviewService(
-                reviews, events, previews, analyzer, OperationalMetricsPort.noop(),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                reviews, events, previews, analyzer,
+                new CatalystEvidenceService(evidences, OperationalMetricsPort.noop(), clock),
+                OperationalMetricsPort.noop(), clock);
 
         PostEarningsReview saved = service.create(new CreatePostEarningsReviewCommand(
                 1L, "005930", LocalDate.of(2026, 7, 31),
@@ -46,6 +50,8 @@ class PostEarningsReviewServiceTest {
         assertThat(saved.actionItems()).anyMatch(item -> item.contains("QUARTERLY_FINANCIAL_UPSERT_REQUIRED"));
         assertThat(analyzer.count).isZero();
         assertThat(events.savedStatus).isEqualTo(EarningsEventStatus.REVIEWED);
+        assertThat(evidences.findEvidenceByStockCode("005930"))
+                .anyMatch(evidence -> evidence.evidenceType() == CatalystEvidenceType.POST_EARNINGS_REVIEW);
     }
 
     private static class InMemoryReviewPort implements PostEarningsReviewPort {

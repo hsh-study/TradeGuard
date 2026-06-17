@@ -22,6 +22,7 @@ import java.util.Objects;
 public class EarningsEventService implements EarningsEventUseCase {
     private final EarningsEventPort eventPort;
     private final InvestmentCatalystPort catalystPort;
+    private final CatalystEvidenceService evidenceService;
     private final ResearchProperties properties;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
@@ -30,10 +31,27 @@ public class EarningsEventService implements EarningsEventUseCase {
     public EarningsEventService(
             EarningsEventPort eventPort,
             InvestmentCatalystPort catalystPort,
+            CatalystEvidenceService evidenceService,
             ResearchProperties properties,
             OperationalMetricsPort metrics
     ) {
-        this(eventPort, catalystPort, properties, metrics, Clock.systemUTC());
+        this(eventPort, catalystPort, evidenceService, properties, metrics, Clock.systemUTC());
+    }
+
+    EarningsEventService(
+            EarningsEventPort eventPort,
+            InvestmentCatalystPort catalystPort,
+            CatalystEvidenceService evidenceService,
+            ResearchProperties properties,
+            OperationalMetricsPort metrics,
+            Clock clock
+    ) {
+        this.eventPort = eventPort;
+        this.catalystPort = catalystPort;
+        this.evidenceService = evidenceService;
+        this.properties = properties;
+        this.metrics = metrics;
+        this.clock = clock;
     }
 
     EarningsEventService(
@@ -43,11 +61,9 @@ public class EarningsEventService implements EarningsEventUseCase {
             OperationalMetricsPort metrics,
             Clock clock
     ) {
-        this.eventPort = eventPort;
-        this.catalystPort = catalystPort;
-        this.properties = properties;
-        this.metrics = metrics;
-        this.clock = clock;
+        this(eventPort, catalystPort,
+                new CatalystEvidenceService(new NoopCatalystEvidencePort(), OperationalMetricsPort.noop(), clock),
+                properties, metrics, clock);
     }
 
     @Override
@@ -73,6 +89,11 @@ public class EarningsEventService implements EarningsEventUseCase {
         if (autoCreate) {
             createCatalystIfAbsent(saved, now);
         }
+        evidenceService.saveSystemEvidence(null, saved.stockCode(), CatalystEvidenceType.EARNINGS_EVENT,
+                eventTitle(saved), "Earnings event " + saved.fiscalYear() + "Q" + saved.fiscalQuarter()
+                        + " expected=" + saved.expectedAnnouncementDate(),
+                "TradeGuard", null, saved.expectedAnnouncementDate().atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                EvidenceConfidence.HIGH);
         metrics.recordResearchEarningsEvent(saved.status().name());
         return saved;
     }

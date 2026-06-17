@@ -21,6 +21,8 @@ class EarningsPreviewServiceTest {
     @Test
     void generatesDraftFromThesisLatestAnalysisValuationIndicatorAndCatalyst() {
         InMemoryPreviewPort previews = new InMemoryPreviewPort();
+        CatalystEvidenceServiceTest.InMemoryEvidencePort evidences =
+                new CatalystEvidenceServiceTest.InMemoryEvidencePort();
         EarningsPreviewService service = new EarningsPreviewService(
                 previews,
                 eventPort(),
@@ -29,6 +31,8 @@ class EarningsPreviewServiceTest {
                 valuationPort(),
                 indicatorPort(),
                 catalystPort(),
+                new CatalystEvidenceService(evidences, OperationalMetricsPort.noop(),
+                        Clock.fixed(NOW, ZoneOffset.UTC)),
                 OperationalMetricsPort.noop(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -40,6 +44,13 @@ class EarningsPreviewServiceTest {
         assertThat(result.keyCheckpoints()).anyMatch(value -> value.contains("TECHNICAL"));
         assertThat(result.keyCheckpoints()).anyMatch(value -> value.contains("UPCOMING_CATALYST"));
         assertThat(result.thesisWatchPoints()).anyMatch(value -> value.contains("HBM recovery"));
+
+        EarningsPreview ready = service.create(new seokhoon.trade.application.port.in.ResearchUseCases.CreateEarningsPreviewCommand(
+                1L, "005930", LocalDate.of(2026, 7, 25), List.of("margin"),
+                null, null, null, null, List.of(), List.of(), EarningsPreviewStatus.READY));
+        assertThat(ready.status()).isEqualTo(EarningsPreviewStatus.READY);
+        assertThat(evidences.findEvidenceByStockCode("005930"))
+                .anyMatch(evidence -> evidence.evidenceType() == CatalystEvidenceType.EARNINGS_PREVIEW);
     }
 
     private static EarningsEventPort eventPort() {
