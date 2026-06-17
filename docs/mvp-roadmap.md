@@ -61,7 +61,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | Action 1: Thesis | 완료 | `investment_theses`와 등록/종목별 조회/부분 수정/종료 API 구현. 핵심 가정, 무효화 조건, 목표가, 손절 조건, confidence, ACTIVE/WATCH/BROKEN/CLOSED 상태를 저장. BROKEN은 Morning Note action item만 만들고 자동매도하지 않음 |
 | Action 2: Catalyst | 완료 | `investment_catalysts`와 종목/기간 조회, 등록/부분 수정 API 구현. 실적·정책·수주·제품·섹터·공시·매크로 catalyst, 중요도와 진행 상태를 관리. UPCOMING 항목은 Morning Note에 포함되며 자동매수하지 않음 |
 | Action 3: Morning Note | 부분 완료 | 거래일 08:10 생성 scheduler와 수동 생성/조회 API 구현. 전 거래일 저장 후보, 보유 포지션, 관심종목 지표와 sector, market index 저장 데이터, 상위/하위 sector snapshot, upcoming catalyst, broken thesis, 데이터 부족 경고와 action item을 저장. Discord는 opt-in. 뉴스·공시·실적 원문 데이터 소스는 미연결 |
-| Action 1 /sector: Market/Sector Master | 부분 완료 | `market_indices`, `sectors`, `stock_sector_mappings`, `sector_daily_snapshots` schema와 sector 등록/조회/매핑/snapshot 생성 API 구현. 08:05 `SECTOR_DAILY_SNAPSHOT` scheduler가 전 거래일 기준 가격·거래대금 흐름과 leading stock을 계산해 Morning Note 기반으로 사용. 시장지수 원천 수집 port/provider와 뉴스 연결은 미구현 |
+| Action 1 /sector: Market/Sector Master | 완료 | `market_indices`, `sectors`, `stock_sector_mappings`, `sector_daily_snapshots` schema와 sector 등록/조회/매핑/snapshot 생성 API 구현. 시장지수 수동/CSV/provider import history, 07:50 `MARKET_INDEX_IMPORT` scheduler, sector seed CSV import/history와 optional sector snapshot generation 구현. provider 기본 disabled, 뉴스 연결과 자동 주문은 없음 |
 | Earnings Analysis | 완료 | 운영자 입력 기반 `quarterly_financials`, `valuation_snapshots`, `earnings_analysis_snapshots`와 수동 저장/분석/조회 API 구현. Morning Note와 종베/장초 후보 reason/점수에 STRONG/WEAK/DATA_INSUFFICIENT를 반영하되 자동 주문은 실행하지 않음 |
 | Earnings Preview | 완료 | 운영자 입력 기반 `earnings_events`, `earnings_previews`와 event/preview API, thesis/latest analysis/valuation/indicator/catalyst 기반 preview 초안 생성 구현. EARNINGS catalyst 자동 생성 옵션과 중복 방지 포함 |
 | Earnings Post Review | 완료 | `post_earnings_reviews`와 post review API 구현. expected 대비 surprise 계산, thesis impact action item, announced-but-not-reviewed Morning Note 경고 구현. BROKEN이어도 자동 thesis 변경·자동매도 없음 |
@@ -70,6 +70,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | DART Corp Mapping Import | 완료 | 공식 OpenDART corpCode zip/XML 파싱 port/provider, import history, 상장사 stock_code 기반 `dart_corp_mappings` upsert 구현. 기존 market 보존, 신규 mapping `UNKNOWN`, 원본 zip/xml DB 저장 없음, 기본 외부 호출 disabled |
 | Shares Outstanding Import | 완료 | 발행주식수 CSV import API/history와 optional valuation generate 연동 구현. DART 사업보고서/합법 provider 자동 수집은 후속 작업으로 분리하고 자동 주문은 연결하지 않음 |
 | Disclosure Evidence Provider | 완료 | `catalyst_evidences`와 disclosure import history/API 구현. 수동 evidence, DART/KRX/provider metadata evidence port, earnings event/preview/post review 자동 evidence, Morning Note evidence action item 추가. 뉴스 크롤링과 공시 원문 전체 저장, 자동 주문은 없음 |
+| Market Index Provider | 완료 | `MarketIndexProviderPort`, disabled-by-default KIS provider 설정, 시장지수 수동 저장/조회, CSV import, provider import, import history, 07:50 거래일 scheduler, Morning Note market index action item과 metric 구현. KIS credential/token/응답 노출과 자동 주문 연결 없음 |
+| Sector Seed Import | 완료 | `sector_import_histories`, sector seed CSV import API 구현. sector master upsert, stock-sector mapping 중복 방지, sector-only row 지원, optional sector snapshot generation, Morning Note sector import/mapping action item과 metric 구현 |
 
 ## 4. 구현 단계
 
@@ -198,13 +200,12 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. market index provider와 sector master seed/import 방식 결정
+1. disclosure evidence DART/KRX 실제 provider adapter와 rate limit 정책 구현
 2. consensus provider 범위와 합법적인 라이선스/입력 경로 결정
-3. disclosure evidence DART/KRX 실제 provider adapter와 rate limit 정책 구현
-4. shares outstanding provider 자동 수집 범위와 DART 사업보고서 parsing 정책 결정
-5. indicator warmup 실패율과 종목별 일봉 누락 운영 점검
-6. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
-7. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
-8. scheduler 실행 이력 보관 기간과 자동 정리 정책 결정
-9. KIS 주문 정정 API와 취소가능조회 모의환경 공식 TR ID 확인
-10. 로컬 encryption key 파일 권한과 백업·복구 절차 점검
+3. shares outstanding provider 자동 수집 범위와 DART 사업보고서 parsing 정책 결정
+4. indicator warmup 실패율과 종목별 일봉 누락 운영 점검
+5. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
+6. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
+7. scheduler 실행 이력 보관 기간과 자동 정리 정책 결정
+8. KIS 주문 정정 API와 취소가능조회 모의환경 공식 TR ID 확인
+9. 로컬 encryption key 파일 권한과 백업·복구 절차 점검

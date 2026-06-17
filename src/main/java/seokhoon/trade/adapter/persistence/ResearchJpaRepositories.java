@@ -148,3 +148,11 @@ interface DisclosureEvidenceImportHistoryJpaRepository
             org.springframework.data.domain.Pageable pageable
     );
 }
+
+interface MarketIndexImportHistoryJpaRepository extends JpaRepository<MarketIndexImportHistoryEntity, Long> {
+    List<MarketIndexImportHistoryEntity> findAllBy(org.springframework.data.domain.Pageable pageable);
+}
+
+interface SectorImportHistoryJpaRepository extends JpaRepository<SectorImportHistoryEntity, Long> {
+    List<SectorImportHistoryEntity> findAllBy(org.springframework.data.domain.Pageable pageable);
+}

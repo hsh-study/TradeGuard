@@ -1,6 +1,7 @@
 package seokhoon.trade.application.port.in;
 
 import seokhoon.trade.domain.research.*;
+import seokhoon.trade.domain.market.MarketIndex;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
 import seokhoon.trade.domain.market.SectorType;
@@ -113,6 +114,21 @@ public final class ResearchUseCases {
     public interface MorningNoteUseCase {
         MorningNote generate(LocalDate tradeDate);
         MorningNote load(LocalDate tradeDate);
+    }
+
+    public record SaveMarketIndexCommand(
+            String indexCode,
+            String indexName,
+            LocalDate tradeDate,
+            BigDecimal closePrice,
+            BigDecimal changeRate,
+            BigDecimal tradingValue
+    ) {
+    }
+
+    public interface MarketIndexUseCase {
+        MarketIndex save(SaveMarketIndexCommand command);
+        List<MarketIndex> findByTradeDate(LocalDate tradeDate);
     }
 
     public record CreateSectorCommand(

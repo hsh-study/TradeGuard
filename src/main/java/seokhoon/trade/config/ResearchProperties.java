@@ -13,6 +13,7 @@ public class ResearchProperties {
     private boolean valuationAutoSnapshotRequireSharesOutstanding = true;
     private boolean valuationAutoSnapshotAutoAnalyze = true;
     private boolean sharesOutstandingImportAutoGenerateValuation = false;
+    private boolean sectorImportAutoGenerateSnapshot = false;
 
     public boolean isMorningNoteDiscordEnabled() {
         return morningNoteDiscordEnabled;
@@ -68,5 +69,13 @@ public class ResearchProperties {
 
     public void setSharesOutstandingImportAutoGenerateValuation(boolean sharesOutstandingImportAutoGenerateValuation) {
         this.sharesOutstandingImportAutoGenerateValuation = sharesOutstandingImportAutoGenerateValuation;
+    }
+
+    public boolean isSectorImportAutoGenerateSnapshot() {
+        return sectorImportAutoGenerateSnapshot;
+    }
+
+    public void setSectorImportAutoGenerateSnapshot(boolean sectorImportAutoGenerateSnapshot) {
+        this.sectorImportAutoGenerateSnapshot = sectorImportAutoGenerateSnapshot;
     }
 }

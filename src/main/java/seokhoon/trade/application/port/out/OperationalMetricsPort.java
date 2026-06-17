@@ -88,6 +88,8 @@ public interface OperationalMetricsPort {
     void recordSharesOutstandingImport(String result);
     void recordCatalystEvidence(String type, String confidence);
     void recordDisclosureEvidenceImport(String provider, String result);
+    void recordMarketIndexImport(String provider, String result);
+    void recordSectorImport(String result);
 
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
@@ -241,6 +243,8 @@ public interface OperationalMetricsPort {
             @Override public void recordSharesOutstandingImport(String result) {}
             @Override public void recordCatalystEvidence(String type, String confidence) {}
             @Override public void recordDisclosureEvidenceImport(String provider, String result) {}
+            @Override public void recordMarketIndexImport(String provider, String result) {}
+            @Override public void recordSectorImport(String result) {}
         };
     }
 }

@@ -6,6 +6,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.out.*;
+import seokhoon.trade.domain.market.MarketIndexImportHistory;
+import seokhoon.trade.domain.market.SectorImportHistory;
 import seokhoon.trade.domain.research.*;
 
 import java.time.LocalDate;
@@ -20,7 +22,8 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         EarningsPreviewPort, PostEarningsReviewPort, DartCorpMappingPort,
         DartFinancialImportHistoryPort, SharesOutstandingSnapshotPort,
         DartCorpCodeImportHistoryPort, SharesOutstandingImportHistoryPort,
-        CatalystEvidencePort, DisclosureEvidenceImportHistoryPort {
+        CatalystEvidencePort, DisclosureEvidenceImportHistoryPort,
+        MarketIndexImportHistoryPort, SectorImportHistoryPort {
     private final InvestmentThesisJpaRepository theses;
     private final InvestmentCatalystJpaRepository catalysts;
     private final CatalystEvidenceJpaRepository evidences;
@@ -37,6 +40,8 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     private final DartCorpCodeImportHistoryJpaRepository dartCorpCodeImportHistories;
     private final SharesOutstandingImportHistoryJpaRepository sharesOutstandingImportHistories;
     private final DisclosureEvidenceImportHistoryJpaRepository disclosureEvidenceImportHistories;
+    private final MarketIndexImportHistoryJpaRepository marketIndexImportHistories;
+    private final SectorImportHistoryJpaRepository sectorImportHistories;
 
     public ResearchPersistenceAdapter(
             InvestmentThesisJpaRepository theses,
@@ -54,7 +59,9 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
             DartFinancialImportHistoryJpaRepository dartImportHistories,
             DartCorpCodeImportHistoryJpaRepository dartCorpCodeImportHistories,
             SharesOutstandingImportHistoryJpaRepository sharesOutstandingImportHistories,
-            DisclosureEvidenceImportHistoryJpaRepository disclosureEvidenceImportHistories
+            DisclosureEvidenceImportHistoryJpaRepository disclosureEvidenceImportHistories,
+            MarketIndexImportHistoryJpaRepository marketIndexImportHistories,
+            SectorImportHistoryJpaRepository sectorImportHistories
     ) {
         this.theses = theses;
         this.catalysts = catalysts;
@@ -72,6 +79,8 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         this.dartCorpCodeImportHistories = dartCorpCodeImportHistories;
         this.sharesOutstandingImportHistories = sharesOutstandingImportHistories;
         this.disclosureEvidenceImportHistories = disclosureEvidenceImportHistories;
+        this.marketIndexImportHistories = marketIndexImportHistories;
+        this.sectorImportHistories = sectorImportHistories;
     }
 
     @Override
@@ -541,5 +550,33 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         return disclosureEvidenceImportHistories.findAllBy(PageRequest.of(
                         0, limit, Sort.by(Sort.Order.desc("requestedAt"))))
                 .stream().map(DisclosureEvidenceImportHistoryEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public MarketIndexImportHistory save(MarketIndexImportHistory value) {
+        return marketIndexImportHistories.save(MarketIndexImportHistoryEntity.from(value)).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MarketIndexImportHistory> findRecentMarketIndexImports(int limit) {
+        return marketIndexImportHistories.findAllBy(PageRequest.of(
+                        0, limit, Sort.by(Sort.Order.desc("requestedAt"))))
+                .stream().map(MarketIndexImportHistoryEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public SectorImportHistory save(SectorImportHistory value) {
+        return sectorImportHistories.save(SectorImportHistoryEntity.from(value)).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SectorImportHistory> findRecentSectorImports(int limit) {
+        return sectorImportHistories.findAllBy(PageRequest.of(
+                        0, limit, Sort.by(Sort.Order.desc("requestedAt"))))
+                .stream().map(SectorImportHistoryEntity::toDomain).toList();
     }
 }

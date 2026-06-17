@@ -6,8 +6,13 @@ import seokhoon.trade.application.port.out.*;
 import seokhoon.trade.domain.indicator.IndicatorSnapshot;
 import seokhoon.trade.domain.market.DailyPrice;
 import seokhoon.trade.domain.market.MarketIndex;
+import seokhoon.trade.domain.market.MarketIndexImportHistory;
+import seokhoon.trade.domain.market.MarketIndexImportProvider;
+import seokhoon.trade.domain.market.MarketIndexImportStatus;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
+import seokhoon.trade.domain.market.SectorImportHistory;
+import seokhoon.trade.domain.market.SectorImportStatus;
 import seokhoon.trade.domain.market.SectorType;
 import seokhoon.trade.domain.market.StockSectorMapping;
 import seokhoon.trade.domain.research.*;
@@ -45,6 +50,8 @@ class MorningNoteServiceTest {
     private SharesOutstandingImportHistoryPort sharesOutstandingImportHistories;
     private CatalystEvidencePort catalystEvidences;
     private DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistories;
+    private MarketIndexImportHistoryPort marketIndexImportHistories;
+    private SectorImportHistoryPort sectorImportHistories;
     private MorningNoteService service;
 
     @BeforeEach
@@ -67,6 +74,8 @@ class MorningNoteServiceTest {
         sharesOutstandingImportHistories = mock(SharesOutstandingImportHistoryPort.class);
         catalystEvidences = mock(CatalystEvidencePort.class);
         disclosureEvidenceImportHistories = mock(DisclosureEvidenceImportHistoryPort.class);
+        marketIndexImportHistories = mock(MarketIndexImportHistoryPort.class);
+        sectorImportHistories = mock(SectorImportHistoryPort.class);
         when(notes.save(any())).thenAnswer(invocation -> {
             MorningNote note = invocation.getArgument(0);
             return new MorningNote(1L, note.tradeDate(), note.marketSummary(), note.sectorSummary(),
@@ -88,6 +97,8 @@ class MorningNoteServiceTest {
         when(catalystEvidences.findRecent(anyInt())).thenReturn(List.of());
         when(catalystEvidences.findByCatalystId(anyLong())).thenReturn(List.of());
         when(disclosureEvidenceImportHistories.findRecentDisclosureImports(anyInt())).thenReturn(List.of());
+        when(marketIndexImportHistories.findRecentMarketIndexImports(anyInt())).thenReturn(List.of());
+        when(sectorImportHistories.findRecentSectorImports(anyInt())).thenReturn(List.of());
         service = new MorningNoteService(
                 notes, stocks, prices, indicators, signals, positions, theses, catalysts,
                 date -> !date.getDayOfWeek().equals(DayOfWeek.SATURDAY)
@@ -96,6 +107,7 @@ class MorningNoteServiceTest {
                 null, null, null, null, null, null, valuations, sharesOutstanding,
                 dartCorpCodeImportHistories, sharesOutstandingImportHistories,
                 catalystEvidences, disclosureEvidenceImportHistories,
+                marketIndexImportHistories, sectorImportHistories,
                 OperationalMetricsPort.noop(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
@@ -217,6 +229,29 @@ class MorningNoteServiceTest {
                 .contains("NEW_DISCLOSURE_EVIDENCE")
                 .contains("POST_EARNINGS_REVIEW_EVIDENCE")
                 .contains("DISCLOSURE_IMPORT_FAILED");
+    }
+
+    @Test
+    void includesMarketAndSectorImportActionItems() {
+        when(stocks.findAll()).thenReturn(List.of(new Stock("005930", "Samsung", Market.KOSPI, true)));
+        when(sectors.findAll()).thenReturn(List.of());
+        when(mappings.findByStockCode("005930")).thenReturn(List.of());
+        when(marketIndexImportHistories.findRecentMarketIndexImports(anyInt()))
+                .thenReturn(List.of(new MarketIndexImportHistory(1L, MarketIndexImportProvider.KIS,
+                        TRADE_DATE.minusDays(3), MarketIndexImportStatus.FAILED, 0,
+                        "provider failed", NOW, NOW)));
+        when(sectorImportHistories.findRecentSectorImports(anyInt()))
+                .thenReturn(List.of(new SectorImportHistory(1L, SectorImportStatus.FAILED,
+                        0, 0, "csv failed", NOW, NOW)));
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.actionItems())
+                .contains("MARKET_INDEX_DATA_UNAVAILABLE")
+                .contains("MARKET_INDEX_IMPORT_FAILED")
+                .contains("SECTOR_IMPORT_REQUIRED")
+                .contains("SECTOR_MAPPING_INSUFFICIENT")
+                .contains("SECTOR_IMPORT_FAILED");
     }
 
     private static DailyPrice price() {

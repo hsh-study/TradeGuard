@@ -559,6 +559,44 @@ Evidence 관련해서는 Morning Note에 `NEW_DISCLOSURE_EVIDENCE`,
 `HIGH_IMPORTANCE_CATALYST_WITHOUT_EVIDENCE`,
 `POST_EARNINGS_REVIEW_EVIDENCE`, `DISCLOSURE_IMPORT_FAILED`가 추가됩니다.
 
+Market Index Provider & Import v1:
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/market-indices' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "indexCode": "KOSPI",
+    "indexName": "KOSPI",
+    "tradeDate": "2026-06-12",
+    "closePrice": 2800.0000,
+    "changeRate": 1.2500,
+    "tradingValue": 9000000000000
+  }'
+
+curl 'http://localhost:8080/api/research/market-indices?tradeDate=2026-06-12'
+```
+
+Market index CSV import columns는
+`indexCode,indexName,tradeDate,closePrice,changeRate,tradingValue`입니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/market-indices/import-csv' \
+  -H 'Content-Type: text/csv' \
+  --data-binary $'indexCode,indexName,tradeDate,closePrice,changeRate,tradingValue\nKOSPI,KOSPI,2026-06-12,2800,1.25,9000000000000\nKOSDAQ,KOSDAQ,2026-06-12,900,-0.5,3000000000000\n'
+
+curl -X POST \
+  'http://localhost:8080/api/research/market-indices/import?tradeDate=2026-06-12'
+
+curl 'http://localhost:8080/api/research/market-indices/import-histories'
+```
+
+`MARKET_INDEX_PROVIDER_ENABLED=false`가 기본값이므로 provider import는 외부
+KIS 호출 없이 `SKIPPED` 이력을 남깁니다. `MARKET_INDEX_IMPORT_AUTO_RUN=true`
+이고 provider가 enabled일 때만 거래일 07:50 Asia/Seoul scheduler가 전
+거래일 major index import를 시도합니다. KIS credential, token, 응답 본문은
+로그나 metric tag에 노출하지 않으며, 시장지수 수집 실패는 자동 주문 흐름과
+연결되지 않습니다.
+
 Sector master와 snapshot:
 
 ```sh
@@ -580,6 +618,25 @@ curl -X POST \
 curl \
   'http://localhost:8080/api/research/sectors/SEMICONDUCTOR/snapshot?tradeDate=2026-06-12'
 ```
+
+Sector seed CSV import columns는
+`sectorCode,sectorName,sectorType,stockCode,source`입니다. `stockCode`가
+비어 있으면 sector master만 upsert하고, 값이 있으면 stock-sector mapping도
+중복 없이 upsert합니다. `sectorType`이 비어 있으면 `CUSTOM`, `source`가 비어
+있으면 `CSV`를 사용합니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/sectors/import-csv' \
+  -H 'Content-Type: text/csv' \
+  --data-binary $'sectorCode,sectorName,sectorType,stockCode,source\nSEMICONDUCTOR,반도체,THEME,005930,CSV\nSEMICONDUCTOR,반도체,THEME,000660,CSV\nBIO,바이오,CUSTOM,,CSV\n'
+
+curl 'http://localhost:8080/api/research/sectors/import-histories'
+```
+
+`SECTOR_IMPORT_AUTO_GENERATE_SNAPSHOT=true`이면 sector CSV import 성공 후
+전 거래일 기준 sector snapshot 생성을 선택적으로 실행합니다. 이 옵션도
+리서치 데이터 보강 전용이며 자동매수/자동매도, 실계좌 주문, 시장가 주문과
+연결되지 않습니다.
 
 Sector snapshot은 섹터에 매핑된 종목의 기준일 종가와 직전 거래일 종가로
 등락률을 계산하고 평균, 중앙값, 총 거래대금, 상승/하락 종목 수, 가장 강한
@@ -624,12 +681,20 @@ actionItems:
 - UPCOMING_CATALYST 2026-06-19 005930 [HIGH] 실적 사전 전망
 - BROKEN_THESIS 000660 수요 회복: 고객사 재고가 재상승
 - DATA_INSUFFICIENT 035420 일봉/지표 보강 확인
+- MARKET_INDEX_DATA_UNAVAILABLE 2026-06-12 시장지수 데이터 없음
+- MARKET_INDEX_IMPORT_FAILED KIS provider failed
+- SECTOR_IMPORT_REQUIRED sector master CSV import 필요
+- SECTOR_MAPPING_INSUFFICIENT unmappedStocks=3
+- SECTOR_IMPORT_FAILED invalidRows=2
 ```
 
 뉴스와 실적 원문 수집은 이번 범위에 포함되지 않습니다. 시장지수는
 `market_indices` 저장 데이터가 있을 때 Morning Note에 반영되며, 섹터
 snapshot이 없으면 `SECTOR_DATA_UNAVAILABLE`, 섹터 구성 종목의 일봉이
-부족하면 `DATA_INSUFFICIENT`를 명시합니다.
+부족하면 `DATA_INSUFFICIENT`를 명시합니다. Market/Sector import 관련
+Morning Note action item은 `MARKET_INDEX_IMPORT_FAILED`,
+`MARKET_INDEX_DATA_UNAVAILABLE`, `SECTOR_IMPORT_REQUIRED`,
+`SECTOR_IMPORT_FAILED`, `SECTOR_MAPPING_INSUFFICIENT`입니다.
 
 ### KIS 수동 승인형 실매매
 
@@ -1337,6 +1402,8 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.research.shares_outstanding_import.count`: `result=success|partial|failure`
 - `tradeguard.research.catalyst_evidence.count`: `type`, `confidence`
 - `tradeguard.research.disclosure_evidence_import.count`: `provider`, `result=success|partial|failure|skipped`
+- `tradeguard.research.market_index_import.count`: `provider`, `result=success|partial|failure|skipped`
+- `tradeguard.research.sector_import.count`: `result=success|partial|failure`
 - `tradeguard.research.earnings_event.count`: `status`
 - `tradeguard.research.earnings_preview.count`: `result=created|ready|failure`
 - `tradeguard.research.post_earnings_review.count`: `thesisImpact`

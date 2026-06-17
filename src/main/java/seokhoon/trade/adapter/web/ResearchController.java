@@ -8,13 +8,18 @@ import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.DartCorpCodeImportUseCase;
 import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
 import seokhoon.trade.application.port.in.GenerateValuationSnapshotUseCase;
+import seokhoon.trade.application.port.in.ImportMarketIndexUseCase;
 import seokhoon.trade.application.port.in.ImportDisclosureEvidenceUseCase;
 import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
+import seokhoon.trade.application.port.in.ImportSectorSeedUseCase;
 import seokhoon.trade.application.port.in.ImportSharesOutstandingUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases.*;
 import seokhoon.trade.application.service.ResearchNotFoundException;
+import seokhoon.trade.domain.market.MarketIndex;
+import seokhoon.trade.domain.market.MarketIndexImportHistory;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
+import seokhoon.trade.domain.market.SectorImportHistory;
 import seokhoon.trade.domain.market.SectorType;
 import seokhoon.trade.domain.market.StockSectorMapping;
 import seokhoon.trade.domain.research.*;
@@ -30,7 +35,10 @@ public class ResearchController {
     private final CatalystUseCase catalystUseCase;
     private final CatalystEvidenceUseCase catalystEvidenceUseCase;
     private final MorningNoteUseCase morningNoteUseCase;
+    private final MarketIndexUseCase marketIndexUseCase;
+    private final ImportMarketIndexUseCase importMarketIndexUseCase;
     private final SectorUseCase sectorUseCase;
+    private final ImportSectorSeedUseCase importSectorSeedUseCase;
     private final EarningsDataUseCase earningsDataUseCase;
     private final GenerateValuationSnapshotUseCase generateValuationSnapshotUseCase;
     private final AnalyzeEarningsUseCase analyzeEarningsUseCase;
@@ -51,7 +59,10 @@ public class ResearchController {
             CatalystUseCase catalystUseCase,
             CatalystEvidenceUseCase catalystEvidenceUseCase,
             MorningNoteUseCase morningNoteUseCase,
+            MarketIndexUseCase marketIndexUseCase,
+            ImportMarketIndexUseCase importMarketIndexUseCase,
             SectorUseCase sectorUseCase,
+            ImportSectorSeedUseCase importSectorSeedUseCase,
             EarningsDataUseCase earningsDataUseCase,
             GenerateValuationSnapshotUseCase generateValuationSnapshotUseCase,
             AnalyzeEarningsUseCase analyzeEarningsUseCase,
@@ -71,7 +82,10 @@ public class ResearchController {
         this.catalystUseCase = catalystUseCase;
         this.catalystEvidenceUseCase = catalystEvidenceUseCase;
         this.morningNoteUseCase = morningNoteUseCase;
+        this.marketIndexUseCase = marketIndexUseCase;
+        this.importMarketIndexUseCase = importMarketIndexUseCase;
         this.sectorUseCase = sectorUseCase;
+        this.importSectorSeedUseCase = importSectorSeedUseCase;
         this.earningsDataUseCase = earningsDataUseCase;
         this.generateValuationSnapshotUseCase = generateValuationSnapshotUseCase;
         this.analyzeEarningsUseCase = analyzeEarningsUseCase;
@@ -175,6 +189,35 @@ public class ResearchController {
         return morningNoteUseCase.load(tradeDate);
     }
 
+    @PostMapping("/market-indices")
+    MarketIndex saveMarketIndex(@Valid @RequestBody MarketIndexRequest request) {
+        return marketIndexUseCase.save(request.toCommand());
+    }
+
+    @GetMapping("/market-indices")
+    List<MarketIndex> findMarketIndices(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradeDate
+    ) {
+        return marketIndexUseCase.findByTradeDate(tradeDate);
+    }
+
+    @PostMapping("/market-indices/import-csv")
+    MarketIndexImportHistory importMarketIndexCsv(@RequestBody String csv) {
+        return importMarketIndexUseCase.importCsv(csv);
+    }
+
+    @PostMapping("/market-indices/import")
+    MarketIndexImportHistory importMarketIndexProvider(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradeDate
+    ) {
+        return importMarketIndexUseCase.importProvider(tradeDate);
+    }
+
+    @GetMapping("/market-indices/import-histories")
+    List<MarketIndexImportHistory> findMarketIndexImportHistories() {
+        return importMarketIndexUseCase.findMarketIndexImportHistories();
+    }
+
     @PostMapping("/sectors")
     Sector createSector(@Valid @RequestBody SectorRequest request) {
         return sectorUseCase.create(request.toCommand());
@@ -206,6 +249,16 @@ public class ResearchController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate tradeDate
     ) {
         return sectorUseCase.generateSnapshots(tradeDate);
+    }
+
+    @PostMapping("/sectors/import-csv")
+    SectorImportHistory importSectorCsv(@RequestBody String csv) {
+        return importSectorSeedUseCase.importCsv(csv);
+    }
+
+    @GetMapping("/sectors/import-histories")
+    List<SectorImportHistory> findSectorImportHistories() {
+        return importSectorSeedUseCase.findSectorImportHistories();
     }
 
     @PostMapping("/financials/quarterly")
@@ -528,6 +581,20 @@ public class ResearchController {
     ) {
         CreateSectorCommand toCommand() {
             return new CreateSectorCommand(sectorCode, sectorName, sectorType);
+        }
+    }
+
+    public record MarketIndexRequest(
+            @NotBlank String indexCode,
+            @NotBlank String indexName,
+            @NotNull LocalDate tradeDate,
+            @NotNull @PositiveOrZero BigDecimal closePrice,
+            @NotNull BigDecimal changeRate,
+            @NotNull @PositiveOrZero BigDecimal tradingValue
+    ) {
+        SaveMarketIndexCommand toCommand() {
+            return new SaveMarketIndexCommand(indexCode, indexName, tradeDate,
+                    closePrice, changeRate, tradingValue);
         }
     }
 

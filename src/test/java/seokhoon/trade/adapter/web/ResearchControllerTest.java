@@ -9,11 +9,19 @@ import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
 import seokhoon.trade.application.port.in.GenerateValuationSnapshotUseCase;
 import seokhoon.trade.application.port.in.ImportDisclosureEvidenceUseCase;
 import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
+import seokhoon.trade.application.port.in.ImportMarketIndexUseCase;
+import seokhoon.trade.application.port.in.ImportSectorSeedUseCase;
 import seokhoon.trade.application.port.in.ImportSharesOutstandingUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases;
 import seokhoon.trade.domain.stock.Market;
+import seokhoon.trade.domain.market.MarketIndex;
+import seokhoon.trade.domain.market.MarketIndexImportHistory;
+import seokhoon.trade.domain.market.MarketIndexImportProvider;
+import seokhoon.trade.domain.market.MarketIndexImportStatus;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
+import seokhoon.trade.domain.market.SectorImportHistory;
+import seokhoon.trade.domain.market.SectorImportStatus;
 import seokhoon.trade.domain.market.SectorType;
 import seokhoon.trade.domain.market.StockSectorMapping;
 import seokhoon.trade.domain.research.*;
@@ -37,7 +45,10 @@ class ResearchControllerTest {
                 new StubCatalystUseCase(),
                 new StubCatalystEvidenceUseCase(),
                 new StubMorningNoteUseCase(),
+                new StubMarketIndexUseCase(),
+                new StubImportMarketIndexUseCase(),
                 new StubSectorUseCase(),
+                new StubImportSectorSeedUseCase(),
                 new StubEarningsDataUseCase(),
                 new StubGenerateValuationSnapshotUseCase(),
                 new StubAnalyzeEarningsUseCase(),
@@ -142,6 +153,37 @@ class ResearchControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.marketSummary").value("market"));
 
+        mvc.perform(post("/api/research/market-indices")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "indexCode":"KOSPI",
+                                  "indexName":"KOSPI",
+                                  "tradeDate":"2026-06-12",
+                                  "closePrice":2800,
+                                  "changeRate":1.25,
+                                  "tradingValue":9000000000000
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.indexCode").value("KOSPI"));
+        mvc.perform(get("/api/research/market-indices")
+                        .param("tradeDate", "2026-06-12"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].indexName").value("KOSPI"));
+        mvc.perform(post("/api/research/market-indices/import-csv")
+                        .contentType("text/csv")
+                        .content("indexCode,indexName,tradeDate,closePrice,changeRate,tradingValue\nKOSPI,KOSPI,2026-06-12,2800,1.25,9000000000000\n"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.provider").value("CSV"));
+        mvc.perform(post("/api/research/market-indices/import")
+                        .param("tradeDate", "2026-06-12"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SKIPPED"));
+        mvc.perform(get("/api/research/market-indices/import-histories"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].provider").value("CSV"));
+
         mvc.perform(post("/api/research/sectors")
                         .contentType("application/json")
                         .content("""
@@ -167,6 +209,14 @@ class ResearchControllerTest {
                         .param("tradeDate", "2026-06-12"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.generatedCount").value(1));
+        mvc.perform(post("/api/research/sectors/import-csv")
+                        .contentType("text/csv")
+                        .content("sectorCode,sectorName,sectorType,stockCode,source\nSEMICONDUCTOR,반도체,THEME,005930,CSV\n"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.importedMappingCount").value(1));
+        mvc.perform(get("/api/research/sectors/import-histories"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("SUCCESS"));
 
         mvc.perform(post("/api/research/financials/quarterly")
                         .contentType("application/json")
@@ -447,6 +497,35 @@ class ResearchControllerTest {
         }
     }
 
+    private static class StubMarketIndexUseCase implements ResearchUseCases.MarketIndexUseCase {
+        @Override
+        public MarketIndex save(ResearchUseCases.SaveMarketIndexCommand command) {
+            return marketIndex();
+        }
+
+        @Override
+        public List<MarketIndex> findByTradeDate(LocalDate tradeDate) {
+            return List.of(marketIndex());
+        }
+    }
+
+    private static class StubImportMarketIndexUseCase implements ImportMarketIndexUseCase {
+        @Override
+        public MarketIndexImportHistory importCsv(String csv) {
+            return marketIndexHistory(MarketIndexImportProvider.CSV, MarketIndexImportStatus.SUCCESS);
+        }
+
+        @Override
+        public MarketIndexImportHistory importProvider(LocalDate tradeDate) {
+            return marketIndexHistory(MarketIndexImportProvider.KIS, MarketIndexImportStatus.SKIPPED);
+        }
+
+        @Override
+        public List<MarketIndexImportHistory> findMarketIndexImportHistories() {
+            return List.of(marketIndexHistory(MarketIndexImportProvider.CSV, MarketIndexImportStatus.SUCCESS));
+        }
+    }
+
     private static class StubSectorUseCase implements ResearchUseCases.SectorUseCase {
         @Override
         public Sector create(ResearchUseCases.CreateSectorCommand command) {
@@ -471,6 +550,18 @@ class ResearchControllerTest {
         @Override
         public ResearchUseCases.SectorSnapshotGenerationResult generateSnapshots(LocalDate tradeDate) {
             return new ResearchUseCases.SectorSnapshotGenerationResult(tradeDate, 1, 1, 0);
+        }
+    }
+
+    private static class StubImportSectorSeedUseCase implements ImportSectorSeedUseCase {
+        @Override
+        public SectorImportHistory importCsv(String csv) {
+            return sectorImportHistory(SectorImportStatus.SUCCESS);
+        }
+
+        @Override
+        public List<SectorImportHistory> findSectorImportHistories() {
+            return List.of(sectorImportHistory(SectorImportStatus.SUCCESS));
         }
     }
 
@@ -702,6 +793,12 @@ class ResearchControllerTest {
                 new BigDecimal("2.5000"), NOW, NOW);
     }
 
+    private static MarketIndex marketIndex() {
+        return new MarketIndex(1L, "KOSPI", "KOSPI", LocalDate.of(2026, 6, 12),
+                new BigDecimal("2800"), new BigDecimal("1.2500"),
+                new BigDecimal("9000000000000"), NOW, NOW);
+    }
+
     private static QuarterlyFinancial financial() {
         return new QuarterlyFinancial(1L, "005930", 2026, 1,
                 new BigDecimal("1000"), new BigDecimal("150"), new BigDecimal("100"),
@@ -776,6 +873,21 @@ class ResearchControllerTest {
         return new DisclosureEvidenceImportHistory(1L, DisclosureProvider.DART, "005930",
                 LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30),
                 status, 0, null, NOW, NOW);
+    }
+
+    private static MarketIndexImportHistory marketIndexHistory(
+            MarketIndexImportProvider provider,
+            MarketIndexImportStatus status
+    ) {
+        return new MarketIndexImportHistory(1L, provider, LocalDate.of(2026, 6, 12),
+                status, status == MarketIndexImportStatus.SKIPPED ? 0 : 1,
+                status == MarketIndexImportStatus.SKIPPED ? "MARKET_INDEX_PROVIDER_DISABLED" : null,
+                NOW, NOW);
+    }
+
+    private static SectorImportHistory sectorImportHistory(SectorImportStatus status) {
+        return new SectorImportHistory(1L, status, 1, 1,
+                status == SectorImportStatus.FAILED ? "failed" : null, NOW, NOW);
     }
 
     private static CatalystEvidence evidence(String summary) {

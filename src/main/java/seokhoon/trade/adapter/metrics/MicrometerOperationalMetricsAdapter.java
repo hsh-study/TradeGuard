@@ -372,6 +372,23 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordMarketIndexImport(String provider, String result) {
+        meterRegistry.counter(
+                "tradeguard.research.market_index_import.count",
+                "provider", provider,
+                "result", result
+        ).increment();
+    }
+
+    @Override
+    public void recordSectorImport(String result) {
+        meterRegistry.counter(
+                "tradeguard.research.sector_import.count",
+                "result", result
+        ).increment();
+    }
+
+    @Override
     public void recordLiveOrderRequest(String side, String status) {
         meterRegistry.counter("tradeguard.live_order.request.count",
                 "side", side, "status", status).increment();

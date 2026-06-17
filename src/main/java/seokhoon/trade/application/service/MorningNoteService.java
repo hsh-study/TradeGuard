@@ -8,8 +8,10 @@ import seokhoon.trade.application.port.out.*;
 import seokhoon.trade.domain.indicator.IndicatorSnapshot;
 import seokhoon.trade.domain.market.DailyPrice;
 import seokhoon.trade.domain.market.MarketIndex;
+import seokhoon.trade.domain.market.MarketIndexImportStatus;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
+import seokhoon.trade.domain.market.SectorImportStatus;
 import seokhoon.trade.domain.position.LivePosition;
 import seokhoon.trade.domain.research.*;
 import seokhoon.trade.domain.stock.Stock;
@@ -56,6 +58,8 @@ public class MorningNoteService implements MorningNoteUseCase {
     private final SharesOutstandingImportHistoryPort sharesOutstandingImportHistoryPort;
     private final CatalystEvidencePort catalystEvidencePort;
     private final DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistoryPort;
+    private final MarketIndexImportHistoryPort marketIndexImportHistoryPort;
+    private final SectorImportHistoryPort sectorImportHistoryPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -86,6 +90,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             SharesOutstandingImportHistoryPort sharesOutstandingImportHistoryPort,
             CatalystEvidencePort catalystEvidencePort,
             DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistoryPort,
+            MarketIndexImportHistoryPort marketIndexImportHistoryPort,
+            SectorImportHistoryPort sectorImportHistoryPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
@@ -96,6 +102,7 @@ public class MorningNoteService implements MorningNoteUseCase {
                 valuationSnapshotPort, sharesOutstandingSnapshotPort,
                 dartCorpCodeImportHistoryPort, sharesOutstandingImportHistoryPort,
                 catalystEvidencePort, disclosureEvidenceImportHistoryPort,
+                marketIndexImportHistoryPort, sectorImportHistoryPort,
                 metrics, Clock.systemUTC());
     }
 
@@ -119,7 +126,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
                 thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
                 stockSectorMappingPort, sectorSnapshotPort, null, null, null, null,
-                null, null, null, null, null, null, null, null, metrics, clock);
+                null, null, null, null, null, null, null, null, null, null, metrics, clock);
     }
 
     MorningNoteService(
@@ -148,6 +155,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             SharesOutstandingImportHistoryPort sharesOutstandingImportHistoryPort,
             CatalystEvidencePort catalystEvidencePort,
             DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistoryPort,
+            MarketIndexImportHistoryPort marketIndexImportHistoryPort,
+            SectorImportHistoryPort sectorImportHistoryPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
@@ -176,6 +185,8 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.sharesOutstandingImportHistoryPort = sharesOutstandingImportHistoryPort;
         this.catalystEvidencePort = catalystEvidencePort;
         this.disclosureEvidenceImportHistoryPort = disclosureEvidenceImportHistoryPort;
+        this.marketIndexImportHistoryPort = marketIndexImportHistoryPort;
+        this.sectorImportHistoryPort = sectorImportHistoryPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -436,10 +447,44 @@ public class MorningNoteService implements MorningNoteUseCase {
         appendValuationItems(result, stocks, tradeDate);
         appendImportHistoryItems(result);
         appendEvidenceItems(result, catalysts);
+        appendMarketSectorItems(result, stocks, tradeDate);
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
         return result.toString();
+    }
+
+    private void appendMarketSectorItems(StringBuilder result, List<Stock> stocks, LocalDate tradeDate) {
+        LocalDate previousTradingDay = calendarPort.previousTradingDay(tradeDate);
+        if (marketIndexPort.findByTradeDate(previousTradingDay).isEmpty()) {
+            result.append("\n- MARKET_INDEX_DATA_UNAVAILABLE ")
+                    .append(previousTradingDay).append(" 시장지수 데이터 없음");
+        }
+        if (sectorPort.findAll().isEmpty()) {
+            result.append("\n- SECTOR_IMPORT_REQUIRED sector master CSV import 필요");
+        }
+        long unmapped = stocks.stream()
+                .filter(stock -> stockSectorMappingPort.findByStockCode(stock.stockCode()).isEmpty())
+                .count();
+        if (!stocks.isEmpty() && unmapped > 0) {
+            result.append("\n- SECTOR_MAPPING_INSUFFICIENT unmappedStocks=")
+                    .append(unmapped);
+        }
+        if (marketIndexImportHistoryPort != null) {
+            marketIndexImportHistoryPort.findRecentMarketIndexImports(10).stream()
+                    .filter(history -> history.status() == MarketIndexImportStatus.FAILED)
+                    .findFirst()
+                    .ifPresent(history -> result.append("\n- MARKET_INDEX_IMPORT_FAILED ")
+                            .append(history.provider()).append(" ")
+                            .append(history.failureReason()));
+        }
+        if (sectorImportHistoryPort != null) {
+            sectorImportHistoryPort.findRecentSectorImports(10).stream()
+                    .filter(history -> history.status() == SectorImportStatus.FAILED)
+                    .findFirst()
+                    .ifPresent(history -> result.append("\n- SECTOR_IMPORT_FAILED ")
+                            .append(history.failureReason()));
+        }
     }
 
     private void appendValuationItems(StringBuilder result, List<Stock> stocks, LocalDate tradeDate) {
