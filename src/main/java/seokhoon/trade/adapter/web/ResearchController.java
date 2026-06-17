@@ -5,9 +5,11 @@ import jakarta.validation.constraints.*;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
+import seokhoon.trade.application.port.in.DartCorpCodeImportUseCase;
 import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
 import seokhoon.trade.application.port.in.GenerateValuationSnapshotUseCase;
 import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
+import seokhoon.trade.application.port.in.ImportSharesOutstandingUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases.*;
 import seokhoon.trade.application.service.ResearchNotFoundException;
 import seokhoon.trade.domain.market.Sector;
@@ -36,8 +38,10 @@ public class ResearchController {
     private final GenerateEarningsPreviewUseCase generateEarningsPreviewUseCase;
     private final PostEarningsReviewUseCase postEarningsReviewUseCase;
     private final DartCorpMappingUseCase dartCorpMappingUseCase;
+    private final DartCorpCodeImportUseCase dartCorpCodeImportUseCase;
     private final ImportDartFinancialsUseCase importDartFinancialsUseCase;
     private final DartFinancialImportHistoryQueryUseCase dartHistoryQueryUseCase;
+    private final ImportSharesOutstandingUseCase importSharesOutstandingUseCase;
 
     public ResearchController(
             ThesisUseCase thesisUseCase,
@@ -53,8 +57,10 @@ public class ResearchController {
             GenerateEarningsPreviewUseCase generateEarningsPreviewUseCase,
             PostEarningsReviewUseCase postEarningsReviewUseCase,
             DartCorpMappingUseCase dartCorpMappingUseCase,
+            DartCorpCodeImportUseCase dartCorpCodeImportUseCase,
             ImportDartFinancialsUseCase importDartFinancialsUseCase,
-            DartFinancialImportHistoryQueryUseCase dartHistoryQueryUseCase
+            DartFinancialImportHistoryQueryUseCase dartHistoryQueryUseCase,
+            ImportSharesOutstandingUseCase importSharesOutstandingUseCase
     ) {
         this.thesisUseCase = thesisUseCase;
         this.catalystUseCase = catalystUseCase;
@@ -69,8 +75,10 @@ public class ResearchController {
         this.generateEarningsPreviewUseCase = generateEarningsPreviewUseCase;
         this.postEarningsReviewUseCase = postEarningsReviewUseCase;
         this.dartCorpMappingUseCase = dartCorpMappingUseCase;
+        this.dartCorpCodeImportUseCase = dartCorpCodeImportUseCase;
         this.importDartFinancialsUseCase = importDartFinancialsUseCase;
         this.dartHistoryQueryUseCase = dartHistoryQueryUseCase;
+        this.importSharesOutstandingUseCase = importSharesOutstandingUseCase;
     }
 
     @PostMapping("/theses")
@@ -185,6 +193,16 @@ public class ResearchController {
     @GetMapping("/valuations/shares-outstanding")
     List<SharesOutstandingSnapshot> findSharesOutstanding(@RequestParam String stockCode) {
         return earningsDataUseCase.findSharesOutstanding(stockCode);
+    }
+
+    @PostMapping("/valuations/shares-outstanding/import-csv")
+    SharesOutstandingImportHistory importSharesOutstandingCsv(@RequestBody String csv) {
+        return importSharesOutstandingUseCase.importCsv(csv);
+    }
+
+    @GetMapping("/valuations/shares-outstanding/import-histories")
+    List<SharesOutstandingImportHistory> findSharesOutstandingImportHistories() {
+        return importSharesOutstandingUseCase.findSharesOutstandingImportHistories();
     }
 
     @PostMapping("/valuations/generate")
@@ -315,6 +333,16 @@ public class ResearchController {
     @GetMapping("/dart/corp-mappings")
     List<DartCorpMapping> findDartCorpMappings() {
         return dartCorpMappingUseCase.findAll();
+    }
+
+    @PostMapping("/dart/corp-codes/import")
+    DartCorpCodeImportHistory importDartCorpCodes() {
+        return dartCorpCodeImportUseCase.importCorpCodes();
+    }
+
+    @GetMapping("/dart/corp-codes/import-histories")
+    List<DartCorpCodeImportHistory> findDartCorpCodeImportHistories() {
+        return dartCorpCodeImportUseCase.findCorpCodeImportHistories();
     }
 
     @PostMapping("/dart/financials/import")

@@ -338,6 +338,22 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordDartCorpCodeImport(String result) {
+        meterRegistry.counter(
+                "tradeguard.research.dart_corp_code_import.count",
+                "result", result
+        ).increment();
+    }
+
+    @Override
+    public void recordSharesOutstandingImport(String result) {
+        meterRegistry.counter(
+                "tradeguard.research.shares_outstanding_import.count",
+                "result", result
+        ).increment();
+    }
+
+    @Override
     public void recordLiveOrderRequest(String side, String status) {
         meterRegistry.counter("tradeguard.live_order.request.count",
                 "side", side, "status", status).increment();

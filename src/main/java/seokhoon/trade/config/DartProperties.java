@@ -14,6 +14,10 @@ public class DartProperties {
     private int requestTimeoutSeconds = 10;
     private boolean importAutoAnalyze = true;
     private int importLookbackQuarters = 8;
+    private boolean corpCodeImportEnabled = false;
+    private String corpCodeZipUrl = "";
+    private int corpCodeImportTimeoutSeconds = 20;
+    private boolean corpCodeImportAutoMatchListedOnly = true;
 
     public boolean isProviderEnabled() {
         return providerEnabled;
@@ -63,8 +67,44 @@ public class DartProperties {
         this.importLookbackQuarters = importLookbackQuarters;
     }
 
+    public boolean isCorpCodeImportEnabled() {
+        return corpCodeImportEnabled;
+    }
+
+    public void setCorpCodeImportEnabled(boolean corpCodeImportEnabled) {
+        this.corpCodeImportEnabled = corpCodeImportEnabled;
+    }
+
+    public String getCorpCodeZipUrl() {
+        return corpCodeZipUrl;
+    }
+
+    public void setCorpCodeZipUrl(String corpCodeZipUrl) {
+        this.corpCodeZipUrl = corpCodeZipUrl;
+    }
+
+    public int getCorpCodeImportTimeoutSeconds() {
+        return corpCodeImportTimeoutSeconds;
+    }
+
+    public void setCorpCodeImportTimeoutSeconds(int corpCodeImportTimeoutSeconds) {
+        this.corpCodeImportTimeoutSeconds = corpCodeImportTimeoutSeconds;
+    }
+
+    public boolean isCorpCodeImportAutoMatchListedOnly() {
+        return corpCodeImportAutoMatchListedOnly;
+    }
+
+    public void setCorpCodeImportAutoMatchListedOnly(boolean corpCodeImportAutoMatchListedOnly) {
+        this.corpCodeImportAutoMatchListedOnly = corpCodeImportAutoMatchListedOnly;
+    }
+
     public Duration requestTimeout() {
         return Duration.ofSeconds(requestTimeoutSeconds);
+    }
+
+    public Duration corpCodeImportTimeout() {
+        return Duration.ofSeconds(corpCodeImportTimeoutSeconds);
     }
 
     public void validateProviderRequest() {
@@ -79,6 +119,18 @@ public class DartProperties {
         }
         if (requestTimeoutSeconds <= 0) {
             throw new DartProviderException("DART request timeout must be positive");
+        }
+    }
+
+    public void validateCorpCodeImportRequest() {
+        if (!corpCodeImportEnabled) {
+            throw new DartProviderException("DART corp code import is disabled");
+        }
+        if (corpCodeZipUrl == null || corpCodeZipUrl.isBlank()) {
+            throw new DartProviderException("DART corp code zip URL is not configured");
+        }
+        if (corpCodeImportTimeoutSeconds <= 0) {
+            throw new DartProviderException("DART corp code import timeout must be positive");
         }
     }
 }

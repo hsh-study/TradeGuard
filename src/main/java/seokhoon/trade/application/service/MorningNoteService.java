@@ -52,6 +52,8 @@ public class MorningNoteService implements MorningNoteUseCase {
     private final DartFinancialImportHistoryPort dartFinancialImportHistoryPort;
     private final ValuationSnapshotPort valuationSnapshotPort;
     private final SharesOutstandingSnapshotPort sharesOutstandingSnapshotPort;
+    private final DartCorpCodeImportHistoryPort dartCorpCodeImportHistoryPort;
+    private final SharesOutstandingImportHistoryPort sharesOutstandingImportHistoryPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -78,6 +80,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             DartFinancialImportHistoryPort dartFinancialImportHistoryPort,
             ValuationSnapshotPort valuationSnapshotPort,
             SharesOutstandingSnapshotPort sharesOutstandingSnapshotPort,
+            DartCorpCodeImportHistoryPort dartCorpCodeImportHistoryPort,
+            SharesOutstandingImportHistoryPort sharesOutstandingImportHistoryPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
@@ -86,6 +90,7 @@ public class MorningNoteService implements MorningNoteUseCase {
                 earningsEventPort, earningsPreviewPort, postEarningsReviewPort,
                 dartCorpMappingPort, dartFinancialImportHistoryPort,
                 valuationSnapshotPort, sharesOutstandingSnapshotPort,
+                dartCorpCodeImportHistoryPort, sharesOutstandingImportHistoryPort,
                 metrics, Clock.systemUTC());
     }
 
@@ -109,7 +114,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
                 thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
                 stockSectorMappingPort, sectorSnapshotPort, null, null, null, null,
-                null, null, null, null, metrics, clock);
+                null, null, null, null, null, null, metrics, clock);
     }
 
     MorningNoteService(
@@ -134,6 +139,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             DartFinancialImportHistoryPort dartFinancialImportHistoryPort,
             ValuationSnapshotPort valuationSnapshotPort,
             SharesOutstandingSnapshotPort sharesOutstandingSnapshotPort,
+            DartCorpCodeImportHistoryPort dartCorpCodeImportHistoryPort,
+            SharesOutstandingImportHistoryPort sharesOutstandingImportHistoryPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
@@ -158,6 +165,8 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.dartFinancialImportHistoryPort = dartFinancialImportHistoryPort;
         this.valuationSnapshotPort = valuationSnapshotPort;
         this.sharesOutstandingSnapshotPort = sharesOutstandingSnapshotPort;
+        this.dartCorpCodeImportHistoryPort = dartCorpCodeImportHistoryPort;
+        this.sharesOutstandingImportHistoryPort = sharesOutstandingImportHistoryPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -416,6 +425,7 @@ public class MorningNoteService implements MorningNoteUseCase {
                         .append(" opSurprise=").append(review.operatingIncomeSurpriseRate()));
         appendDartItems(result, stocks);
         appendValuationItems(result, stocks, tradeDate);
+        appendImportHistoryItems(result);
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
@@ -433,6 +443,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             if (sharesMissing) {
                 result.append("\n- SHARES_OUTSTANDING_REQUIRED ")
                         .append(stock.stockCode()).append(" 발행주식수 snapshot 필요");
+                result.append("\n- SHARES_OUTSTANDING_IMPORT_REQUIRED ")
+                        .append(stock.stockCode()).append(" CSV/provider import 필요");
             }
             Optional<ValuationSnapshot> valuation = valuationSnapshotPort
                     .findLatestByStockCode(stock.stockCode(), tradeDate);
@@ -459,6 +471,38 @@ public class MorningNoteService implements MorningNoteUseCase {
                         .append(" psr=").append(snapshot.psr());
             }
         });
+    }
+
+    private void appendImportHistoryItems(StringBuilder result) {
+        if (dartCorpCodeImportHistoryPort != null) {
+            dartCorpCodeImportHistoryPort.findAllCorpCodeImports().stream().findFirst()
+                    .ifPresent(history -> {
+                        if (history.status() == DartCorpCodeImportStatus.SUCCESS
+                                || history.status() == DartCorpCodeImportStatus.PARTIAL) {
+                            result.append("\n- DART_CORP_MAPPING_IMPORTED matched=")
+                                    .append(history.matchedStockCount())
+                                    .append(" imported=").append(history.importedCount());
+                        }
+                        if (history.status() == DartCorpCodeImportStatus.FAILED) {
+                            result.append("\n- DART_CORP_MAPPING_IMPORT_FAILED ")
+                                    .append(history.failureReason());
+                        }
+                    });
+        }
+        if (sharesOutstandingImportHistoryPort != null) {
+            sharesOutstandingImportHistoryPort.findAllSharesOutstandingImports().stream().findFirst()
+                    .ifPresent(history -> {
+                        if (history.status() == SharesOutstandingImportStatus.SUCCESS
+                                || history.status() == SharesOutstandingImportStatus.PARTIAL) {
+                            result.append("\n- SHARES_OUTSTANDING_IMPORTED imported=")
+                                    .append(history.importedCount());
+                        }
+                        if (history.status() == SharesOutstandingImportStatus.FAILED) {
+                            result.append("\n- SHARES_OUTSTANDING_IMPORT_FAILED ")
+                                    .append(history.failureReason());
+                        }
+                    });
+        }
     }
 
     private static boolean overvalued(ValuationSnapshot snapshot) {

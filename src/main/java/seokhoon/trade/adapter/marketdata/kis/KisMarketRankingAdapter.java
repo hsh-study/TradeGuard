@@ -201,6 +201,7 @@ public class KisMarketRankingAdapter implements MarketRankingPort {
             case KOSPI -> "0001";
             case KOSDAQ -> "1001";
             case KONEX -> "2001";
+            case UNKNOWN -> throw new IllegalArgumentException("UNKNOWN market is not supported by KIS ranking");
         };
     }
 

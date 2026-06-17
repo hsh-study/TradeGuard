@@ -41,6 +41,8 @@ class MorningNoteServiceTest {
     private SectorDailySnapshotPort sectorSnapshots;
     private ValuationSnapshotPort valuations;
     private SharesOutstandingSnapshotPort sharesOutstanding;
+    private DartCorpCodeImportHistoryPort dartCorpCodeImportHistories;
+    private SharesOutstandingImportHistoryPort sharesOutstandingImportHistories;
     private MorningNoteService service;
 
     @BeforeEach
@@ -59,6 +61,8 @@ class MorningNoteServiceTest {
         sectorSnapshots = mock(SectorDailySnapshotPort.class);
         valuations = mock(ValuationSnapshotPort.class);
         sharesOutstanding = mock(SharesOutstandingSnapshotPort.class);
+        dartCorpCodeImportHistories = mock(DartCorpCodeImportHistoryPort.class);
+        sharesOutstandingImportHistories = mock(SharesOutstandingImportHistoryPort.class);
         when(notes.save(any())).thenAnswer(invocation -> {
             MorningNote note = invocation.getArgument(0);
             return new MorningNote(1L, note.tradeDate(), note.marketSummary(), note.sectorSummary(),
@@ -75,12 +79,15 @@ class MorningNoteServiceTest {
         when(sectorSnapshots.findByTradeDate(any())).thenReturn(List.of());
         when(valuations.findLatestByStockCode(any(), any())).thenReturn(Optional.empty());
         when(sharesOutstanding.findLatestSharesByStockCode(any(), any())).thenReturn(Optional.empty());
+        when(dartCorpCodeImportHistories.findAllCorpCodeImports()).thenReturn(List.of());
+        when(sharesOutstandingImportHistories.findAllSharesOutstandingImports()).thenReturn(List.of());
         service = new MorningNoteService(
                 notes, stocks, prices, indicators, signals, positions, theses, catalysts,
                 date -> !date.getDayOfWeek().equals(DayOfWeek.SATURDAY)
                         && !date.getDayOfWeek().equals(DayOfWeek.SUNDAY),
                 marketIndices, sectors, mappings, sectorSnapshots,
                 null, null, null, null, null, null, valuations, sharesOutstanding,
+                dartCorpCodeImportHistories, sharesOutstandingImportHistories,
                 OperationalMetricsPort.noop(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
@@ -175,13 +182,21 @@ class MorningNoteServiceTest {
                         bd("1000"), null, bd("3.5000"), bd("6.0000"),
                         bd("-1.0000"), bd("30.0000"), bd("100.0000"),
                         ValuationSnapshotSource.AUTO, NOW, NOW)));
+        when(dartCorpCodeImportHistories.findAllCorpCodeImports())
+                .thenReturn(List.of(new DartCorpCodeImportHistory(1L,
+                        DartCorpCodeImportStatus.SUCCESS, 2, 1, null, NOW, NOW)));
+        when(sharesOutstandingImportHistories.findAllSharesOutstandingImports())
+                .thenReturn(List.of(new SharesOutstandingImportHistory(1L,
+                        SharesOutstandingImportStatus.SUCCESS, 1, null, NOW, NOW)));
 
         MorningNote note = service.generate(TRADE_DATE);
 
         assertThat(note.actionItems())
                 .contains("VALUATION_AUTO_GENERATED")
                 .contains("VALUATION_NEGATIVE_EARNINGS")
-                .contains("VALUATION_OVERVALUED_WARNING");
+                .contains("VALUATION_OVERVALUED_WARNING")
+                .contains("DART_CORP_MAPPING_IMPORTED")
+                .contains("SHARES_OUTSTANDING_IMPORTED");
     }
 
     private static DailyPrice price() {

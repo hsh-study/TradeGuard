@@ -12,6 +12,7 @@ public class ResearchProperties {
     private int valuationAutoSnapshotLookbackDays = 30;
     private boolean valuationAutoSnapshotRequireSharesOutstanding = true;
     private boolean valuationAutoSnapshotAutoAnalyze = true;
+    private boolean sharesOutstandingImportAutoGenerateValuation = false;
 
     public boolean isMorningNoteDiscordEnabled() {
         return morningNoteDiscordEnabled;
@@ -59,5 +60,13 @@ public class ResearchProperties {
 
     public void setValuationAutoSnapshotAutoAnalyze(boolean valuationAutoSnapshotAutoAnalyze) {
         this.valuationAutoSnapshotAutoAnalyze = valuationAutoSnapshotAutoAnalyze;
+    }
+
+    public boolean isSharesOutstandingImportAutoGenerateValuation() {
+        return sharesOutstandingImportAutoGenerateValuation;
+    }
+
+    public void setSharesOutstandingImportAutoGenerateValuation(boolean sharesOutstandingImportAutoGenerateValuation) {
+        this.sharesOutstandingImportAutoGenerateValuation = sharesOutstandingImportAutoGenerateValuation;
     }
 }

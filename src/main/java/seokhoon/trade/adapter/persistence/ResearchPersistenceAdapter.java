@@ -17,7 +17,8 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         InvestmentCatalystPort, MorningNotePort, QuarterlyFinancialPort,
         ValuationSnapshotPort, EarningsAnalysisPort, EarningsEventPort,
         EarningsPreviewPort, PostEarningsReviewPort, DartCorpMappingPort,
-        DartFinancialImportHistoryPort, SharesOutstandingSnapshotPort {
+        DartFinancialImportHistoryPort, SharesOutstandingSnapshotPort,
+        DartCorpCodeImportHistoryPort, SharesOutstandingImportHistoryPort {
     private final InvestmentThesisJpaRepository theses;
     private final InvestmentCatalystJpaRepository catalysts;
     private final MorningNoteJpaRepository notes;
@@ -30,6 +31,8 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     private final PostEarningsReviewJpaRepository postEarningsReviews;
     private final DartCorpMappingJpaRepository dartCorpMappings;
     private final DartFinancialImportHistoryJpaRepository dartImportHistories;
+    private final DartCorpCodeImportHistoryJpaRepository dartCorpCodeImportHistories;
+    private final SharesOutstandingImportHistoryJpaRepository sharesOutstandingImportHistories;
 
     public ResearchPersistenceAdapter(
             InvestmentThesisJpaRepository theses,
@@ -43,7 +46,9 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
             EarningsPreviewJpaRepository earningsPreviews,
             PostEarningsReviewJpaRepository postEarningsReviews,
             DartCorpMappingJpaRepository dartCorpMappings,
-            DartFinancialImportHistoryJpaRepository dartImportHistories
+            DartFinancialImportHistoryJpaRepository dartImportHistories,
+            DartCorpCodeImportHistoryJpaRepository dartCorpCodeImportHistories,
+            SharesOutstandingImportHistoryJpaRepository sharesOutstandingImportHistories
     ) {
         this.theses = theses;
         this.catalysts = catalysts;
@@ -57,6 +62,8 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         this.postEarningsReviews = postEarningsReviews;
         this.dartCorpMappings = dartCorpMappings;
         this.dartImportHistories = dartImportHistories;
+        this.dartCorpCodeImportHistories = dartCorpCodeImportHistories;
+        this.sharesOutstandingImportHistories = sharesOutstandingImportHistories;
     }
 
     @Override
@@ -432,5 +439,31 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     public List<DartFinancialImportHistory> findHistoriesByStockCode(String stockCode) {
         return dartImportHistories.findByStockCode(stockCode, Sort.by(Sort.Order.desc("requestedAt")))
                 .stream().map(DartFinancialImportHistoryEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public DartCorpCodeImportHistory save(DartCorpCodeImportHistory value) {
+        return dartCorpCodeImportHistories.save(DartCorpCodeImportHistoryEntity.from(value)).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DartCorpCodeImportHistory> findAllCorpCodeImports() {
+        return dartCorpCodeImportHistories.findAllBy(Sort.by(Sort.Order.desc("requestedAt")))
+                .stream().map(DartCorpCodeImportHistoryEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public SharesOutstandingImportHistory save(SharesOutstandingImportHistory value) {
+        return sharesOutstandingImportHistories.save(SharesOutstandingImportHistoryEntity.from(value)).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SharesOutstandingImportHistory> findAllSharesOutstandingImports() {
+        return sharesOutstandingImportHistories.findAllBy(Sort.by(Sort.Order.desc("requestedAt")))
+                .stream().map(SharesOutstandingImportHistoryEntity::toDomain).toList();
     }
 }

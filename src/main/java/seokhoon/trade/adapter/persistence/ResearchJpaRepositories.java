@@ -106,3 +106,11 @@ interface DartCorpMappingJpaRepository extends JpaRepository<DartCorpMappingEnti
 interface DartFinancialImportHistoryJpaRepository extends JpaRepository<DartFinancialImportHistoryEntity, Long> {
     List<DartFinancialImportHistoryEntity> findByStockCode(String stockCode, Sort sort);
 }
+
+interface DartCorpCodeImportHistoryJpaRepository extends JpaRepository<DartCorpCodeImportHistoryEntity, Long> {
+    List<DartCorpCodeImportHistoryEntity> findAllBy(Sort sort);
+}
+
+interface SharesOutstandingImportHistoryJpaRepository extends JpaRepository<SharesOutstandingImportHistoryEntity, Long> {
+    List<SharesOutstandingImportHistoryEntity> findAllBy(Sort sort);
+}

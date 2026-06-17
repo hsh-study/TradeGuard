@@ -84,6 +84,8 @@ public interface OperationalMetricsPort {
     void recordResearchPostEarningsReview(String thesisImpact);
     void recordDartFinancialImport(String result);
     void recordDartProvider(String operation, String result);
+    void recordDartCorpCodeImport(String result);
+    void recordSharesOutstandingImport(String result);
 
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
@@ -233,6 +235,8 @@ public interface OperationalMetricsPort {
             @Override public void recordResearchPostEarningsReview(String thesisImpact) {}
             @Override public void recordDartFinancialImport(String result) {}
             @Override public void recordDartProvider(String operation, String result) {}
+            @Override public void recordDartCorpCodeImport(String result) {}
+            @Override public void recordSharesOutstandingImport(String result) {}
         };
     }
 }

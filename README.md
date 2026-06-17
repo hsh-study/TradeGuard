@@ -398,6 +398,10 @@ DART_API_KEY=
 DART_REQUEST_TIMEOUT_SECONDS=10
 DART_IMPORT_AUTO_ANALYZE=true
 DART_IMPORT_LOOKBACK_QUARTERS=8
+DART_CORP_CODE_IMPORT_ENABLED=false
+DART_CORP_CODE_ZIP_URL=
+DART_CORP_CODE_IMPORT_TIMEOUT_SECONDS=20
+DART_CORP_CODE_IMPORT_AUTO_MATCH_LISTED_ONLY=true
 ```
 
 Corp mapping 등록과 조회:
@@ -415,6 +419,23 @@ curl -X POST 'http://localhost:8080/api/research/dart/corp-mappings' \
 curl 'http://localhost:8080/api/research/dart/corp-mappings?stockCode=005930'
 curl 'http://localhost:8080/api/research/dart/corp-mappings'
 ```
+
+DART corp code import는 공식 OpenDART corpCode zip 또는 합법 provider가
+제공하는 동일 XML 파일을 메모리에서 파싱해 `dart_corp_mappings`를 upsert하는
+구조입니다. 기본값은 `DART_CORP_CODE_IMPORT_ENABLED=false`라 외부 호출이
+비활성입니다. 원본 zip/xml 전체를 DB에 저장하지 않으며, `DART_CORP_CODE_ZIP_URL`
+또는 API key가 로그, 응답, metric tag에 노출되지 않도록 실패 사유를 정리합니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/dart/corp-codes/import'
+curl 'http://localhost:8080/api/research/dart/corp-codes/import-histories'
+```
+
+corpCode XML의 `corp_code`, `corp_name`, `stock_code`, `modify_date`를
+파싱합니다. `stock_code`가 비어 있으면 기본 정책에서 비상장/비매핑 항목으로
+보고 skip합니다. `stock_code`가 있으면 `dart_corp_mappings`를 upsert하며,
+기존 mapping에 `KOSPI`, `KOSDAQ`, `KONEX` market 값이 있으면 보존합니다.
+신규 자동 mapping의 market은 `UNKNOWN`으로 저장합니다.
 
 DART 재무제표 import:
 
@@ -451,6 +472,31 @@ Valuation Auto Snapshot 관련해서는 Morning Note에
 `VALUATION_DATA_INSUFFICIENT`, `SHARES_OUTSTANDING_REQUIRED`,
 `VALUATION_AUTO_GENERATED`, `VALUATION_NEGATIVE_EARNINGS`,
 `VALUATION_OVERVALUED_WARNING` action item이 추가됩니다.
+
+발행주식수 import v1은 DART 재무제표 API만으로 안정적으로 수집하기 어려운
+필드이므로 CSV 입력을 제공합니다. 추후 DART 사업보고서의 주식의 총수 parsing
+provider 또는 합법 provider를 붙일 수 있도록 port만 분리했습니다.
+
+```text
+SHARES_OUTSTANDING_IMPORT_AUTO_GENERATE_VALUATION=false
+```
+
+CSV columns는 `stockCode,baseDate,sharesOutstanding,source`입니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/valuations/shares-outstanding/import-csv' \
+  -H 'Content-Type: text/csv' \
+  --data-binary $'stockCode,baseDate,sharesOutstanding,source\n005930,2026-06-15,5969782550,MANUAL\n'
+
+curl 'http://localhost:8080/api/research/valuations/shares-outstanding/import-histories'
+```
+
+`SHARES_OUTSTANDING_IMPORT_AUTO_GENERATE_VALUATION=true`이면 CSV로 저장된 각
+행에 대해 같은 `baseDate`로 valuation generate를 선택적으로 실행합니다. 이
+옵션은 Earnings Analysis 자동 재실행 옵션과 별개이며, 자동 주문과 연결되지
+않습니다. Morning Note에는 `DART_CORP_MAPPING_IMPORTED`,
+`DART_CORP_MAPPING_IMPORT_FAILED`, `SHARES_OUTSTANDING_IMPORT_REQUIRED`,
+`SHARES_OUTSTANDING_IMPORT_FAILED`, `SHARES_OUTSTANDING_IMPORTED`가 추가됩니다.
 
 Sector master와 snapshot:
 
@@ -1226,6 +1272,8 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.research.valuation_import.count`: `result=saved|failure`
 - `tradeguard.research.valuation_auto_snapshot.count`: `result=success|insufficient|failure`
 - `tradeguard.research.shares_outstanding.count`: `result=saved|failure`
+- `tradeguard.research.dart_corp_code_import.count`: `result=success|partial|failure|skipped`
+- `tradeguard.research.shares_outstanding_import.count`: `result=success|partial|failure`
 - `tradeguard.research.earnings_event.count`: `status`
 - `tradeguard.research.earnings_preview.count`: `result=created|ready|failure`
 - `tradeguard.research.post_earnings_review.count`: `thesisImpact`

@@ -4,9 +4,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
+import seokhoon.trade.application.port.in.DartCorpCodeImportUseCase;
 import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
 import seokhoon.trade.application.port.in.GenerateValuationSnapshotUseCase;
 import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
+import seokhoon.trade.application.port.in.ImportSharesOutstandingUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.market.Sector;
@@ -43,8 +45,10 @@ class ResearchControllerTest {
                 new StubGenerateEarningsPreviewUseCase(),
                 new StubPostEarningsReviewUseCase(),
                 new StubDartCorpMappingUseCase(),
+                new StubDartCorpCodeImportUseCase(),
                 new StubImportDartFinancialsUseCase(),
-                new StubDartFinancialImportHistoryQueryUseCase()
+                new StubDartFinancialImportHistoryQueryUseCase(),
+                new StubImportSharesOutstandingUseCase()
         )).setControllerAdvice(new GlobalExceptionHandler()).build();
 
         mvc.perform(post("/api/research/theses")
@@ -315,6 +319,20 @@ class ResearchControllerTest {
                         .param("stockCode", "005930"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].status").value("SUCCESS"));
+        mvc.perform(post("/api/research/dart/corp-codes/import"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matchedStockCount").value(1));
+        mvc.perform(get("/api/research/dart/corp-codes/import-histories"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("SUCCESS"));
+        mvc.perform(post("/api/research/valuations/shares-outstanding/import-csv")
+                        .contentType("text/csv")
+                        .content("stockCode,baseDate,sharesOutstanding,source\n005930,2026-06-15,10,MANUAL\n"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.importedCount").value(1));
+        mvc.perform(get("/api/research/valuations/shares-outstanding/import-histories"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("SUCCESS"));
     }
 
     private static class StubThesisUseCase implements ResearchUseCases.ThesisUseCase {
@@ -534,6 +552,23 @@ class ResearchControllerTest {
         }
     }
 
+    private static class StubDartCorpCodeImportUseCase implements DartCorpCodeImportUseCase {
+        @Override
+        public DartCorpCodeImportHistory importCorpCodes() {
+            return dartCorpCodeHistory(DartCorpCodeImportStatus.SUCCESS);
+        }
+
+        @Override
+        public DartCorpCodeImportHistory importCorpCodesFromFile(byte[] content) {
+            return dartCorpCodeHistory(DartCorpCodeImportStatus.SUCCESS);
+        }
+
+        @Override
+        public List<DartCorpCodeImportHistory> findCorpCodeImportHistories() {
+            return List.of(dartCorpCodeHistory(DartCorpCodeImportStatus.SUCCESS));
+        }
+    }
+
     private static class StubImportDartFinancialsUseCase implements ImportDartFinancialsUseCase {
         @Override
         public DartFinancialImportHistory importStock(String stockCode, int fiscalYear, String reportCode) {
@@ -556,6 +591,18 @@ class ResearchControllerTest {
         @Override
         public List<DartFinancialImportHistory> findByStockCode(String stockCode) {
             return List.of(dartHistory("11013"));
+        }
+    }
+
+    private static class StubImportSharesOutstandingUseCase implements ImportSharesOutstandingUseCase {
+        @Override
+        public SharesOutstandingImportHistory importCsv(String csv) {
+            return sharesImportHistory(SharesOutstandingImportStatus.SUCCESS);
+        }
+
+        @Override
+        public List<SharesOutstandingImportHistory> findSharesOutstandingImportHistories() {
+            return List.of(sharesImportHistory(SharesOutstandingImportStatus.SUCCESS));
         }
     }
 
@@ -643,5 +690,13 @@ class ResearchControllerTest {
     private static DartFinancialImportHistory dartHistory(String reportCode) {
         return new DartFinancialImportHistory(1L, "005930", "00126380", 2026,
                 reportCode, DartFinancialImportStatus.SUCCESS, 1, null, NOW, NOW);
+    }
+
+    private static DartCorpCodeImportHistory dartCorpCodeHistory(DartCorpCodeImportStatus status) {
+        return new DartCorpCodeImportHistory(1L, status, 1, 1, null, NOW, NOW);
+    }
+
+    private static SharesOutstandingImportHistory sharesImportHistory(SharesOutstandingImportStatus status) {
+        return new SharesOutstandingImportHistory(1L, status, 1, null, NOW, NOW);
     }
 }
