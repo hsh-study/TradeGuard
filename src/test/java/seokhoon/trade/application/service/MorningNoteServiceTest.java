@@ -39,6 +39,8 @@ class MorningNoteServiceTest {
     private SectorPort sectors;
     private StockSectorMappingPort mappings;
     private SectorDailySnapshotPort sectorSnapshots;
+    private ValuationSnapshotPort valuations;
+    private SharesOutstandingSnapshotPort sharesOutstanding;
     private MorningNoteService service;
 
     @BeforeEach
@@ -55,6 +57,8 @@ class MorningNoteServiceTest {
         sectors = mock(SectorPort.class);
         mappings = mock(StockSectorMappingPort.class);
         sectorSnapshots = mock(SectorDailySnapshotPort.class);
+        valuations = mock(ValuationSnapshotPort.class);
+        sharesOutstanding = mock(SharesOutstandingSnapshotPort.class);
         when(notes.save(any())).thenAnswer(invocation -> {
             MorningNote note = invocation.getArgument(0);
             return new MorningNote(1L, note.tradeDate(), note.marketSummary(), note.sectorSummary(),
@@ -69,11 +73,14 @@ class MorningNoteServiceTest {
         when(sectors.findAll()).thenReturn(List.of());
         when(mappings.findByStockCode(any())).thenReturn(List.of());
         when(sectorSnapshots.findByTradeDate(any())).thenReturn(List.of());
+        when(valuations.findLatestByStockCode(any(), any())).thenReturn(Optional.empty());
+        when(sharesOutstanding.findLatestSharesByStockCode(any(), any())).thenReturn(Optional.empty());
         service = new MorningNoteService(
                 notes, stocks, prices, indicators, signals, positions, theses, catalysts,
                 date -> !date.getDayOfWeek().equals(DayOfWeek.SATURDAY)
                         && !date.getDayOfWeek().equals(DayOfWeek.SUNDAY),
                 marketIndices, sectors, mappings, sectorSnapshots,
+                null, null, null, null, null, null, valuations, sharesOutstanding,
                 OperationalMetricsPort.noop(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
@@ -153,6 +160,28 @@ class MorningNoteServiceTest {
                 .flatMap(constructor -> List.of(constructor.getParameterTypes()).stream())
                 .map(Class::getName))
                 .noneMatch(name -> name.contains("Broker") || name.contains("Order"));
+    }
+
+    @Test
+    void includesValuationActionItems() {
+        when(stocks.findAll()).thenReturn(List.of(new Stock("005930", "Samsung", Market.KOSPI, true)));
+        when(prices.findByStockCodeAndTradeDateBetween(any(), any(), any())).thenReturn(List.of(price()));
+        when(indicators.findByStockCodeAndTradeDateBetween(any(), any(), any())).thenReturn(List.of(indicator()));
+        when(sharesOutstanding.findLatestSharesByStockCode(eq("005930"), eq(TRADE_DATE)))
+                .thenReturn(Optional.of(new SharesOutstandingSnapshot(1L, "005930", TRADE_DATE.minusDays(1),
+                        bd("10"), SharesOutstandingSource.MANUAL, NOW, NOW)));
+        when(valuations.findLatestByStockCode(eq("005930"), eq(TRADE_DATE)))
+                .thenReturn(Optional.of(new ValuationSnapshot(1L, "005930", TRADE_DATE.minusDays(1),
+                        bd("1000"), null, bd("3.5000"), bd("6.0000"),
+                        bd("-1.0000"), bd("30.0000"), bd("100.0000"),
+                        ValuationSnapshotSource.AUTO, NOW, NOW)));
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.actionItems())
+                .contains("VALUATION_AUTO_GENERATED")
+                .contains("VALUATION_NEGATIVE_EARNINGS")
+                .contains("VALUATION_OVERVALUED_WARNING");
     }
 
     private static DailyPrice price() {

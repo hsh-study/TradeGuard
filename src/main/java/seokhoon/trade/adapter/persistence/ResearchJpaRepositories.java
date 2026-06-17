@@ -42,6 +42,17 @@ interface ValuationSnapshotJpaRepository extends JpaRepository<ValuationSnapshot
     );
 }
 
+interface SharesOutstandingSnapshotJpaRepository extends JpaRepository<SharesOutstandingSnapshotEntity, Long> {
+    Optional<SharesOutstandingSnapshotEntity> findByStockCodeAndBaseDate(String stockCode, LocalDate baseDate);
+
+    Optional<SharesOutstandingSnapshotEntity> findFirstByStockCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+            String stockCode,
+            LocalDate baseDate
+    );
+
+    List<SharesOutstandingSnapshotEntity> findByStockCode(String stockCode, Sort sort);
+}
+
 interface EarningsAnalysisSnapshotJpaRepository extends JpaRepository<EarningsAnalysisSnapshotEntity, Long> {
     Optional<EarningsAnalysisSnapshotEntity> findByStockCodeAndBaseDate(String stockCode, LocalDate baseDate);
 

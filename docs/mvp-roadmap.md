@@ -66,6 +66,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | Earnings Preview | 완료 | 운영자 입력 기반 `earnings_events`, `earnings_previews`와 event/preview API, thesis/latest analysis/valuation/indicator/catalyst 기반 preview 초안 생성 구현. EARNINGS catalyst 자동 생성 옵션과 중복 방지 포함 |
 | Earnings Post Review | 완료 | `post_earnings_reviews`와 post review API 구현. expected 대비 surprise 계산, thesis impact action item, announced-but-not-reviewed Morning Note 경고 구현. BROKEN이어도 자동 thesis 변경·자동매도 없음 |
 | DART Financial Import | 완료 | 공식 OpenDART 재무제표 API 기반 import 구조, corp mapping, import history, 계정명 exact/normalized mapping, `quarterly_financials` upsert, 선택적 earnings analysis 재실행, Morning Note DART action item, metric 구현. 기본 provider disabled이며 뉴스·공시 원문·컨센서스 수집과 자동 주문은 없음 |
+| Valuation Auto Snapshot | 완료 | `shares_outstanding_snapshots`와 valuation 자동 생성 API/scheduler 구현. 저장된 일봉 종가, 최신 분기 재무, 최신 발행주식수로 PER/PBR/PSR과 EPS/BPS/SPS를 계산하고 선택적으로 Earnings Analysis를 재실행. 후보 생성 중 외부 호출과 자동 주문은 없음 |
 
 ## 4. 구현 단계
 
@@ -194,7 +195,7 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. valuation auto snapshot provider 범위와 저장 정책 결정
+1. shares outstanding provider 범위와 DART/거래소/유료 provider 입력 정책 결정
 2. disclosure evidence provider 범위와 DART/KRX 공시 원문 수집 정책 결정
 3. consensus provider 범위와 합법적인 라이선스/입력 경로 결정
 4. market index provider와 sector master seed/import 방식 결정

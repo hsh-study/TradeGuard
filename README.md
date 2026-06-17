@@ -254,6 +254,64 @@ curl 'http://localhost:8080/api/research/earnings-analysis?stockCode=005930'
 curl 'http://localhost:8080/api/research/earnings-analysis?baseDate=2026-06-15'
 ```
 
+Valuation Auto Snapshot v1은 운영자가 `valuation_snapshots`를 직접 입력하지
+않아도 저장된 일봉 종가, 최신 `quarterly_financials`, 최신 발행주식수
+snapshot으로 PER/PBR/PSR을 계산합니다. 자동 생성은 리서치 데이터 보강과
+Earnings Analysis 재실행까지만 수행하며 자동매수/자동매도, 실계좌 주문,
+시장가 주문과 연결되지 않습니다.
+
+```text
+VALUATION_AUTO_SNAPSHOT_ENABLED=true
+VALUATION_AUTO_SNAPSHOT_LOOKBACK_DAYS=30
+VALUATION_AUTO_SNAPSHOT_REQUIRE_SHARES_OUTSTANDING=true
+VALUATION_AUTO_SNAPSHOT_AUTO_ANALYZE=true
+```
+
+발행주식수 저장과 조회:
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/valuations/shares-outstanding' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "stockCode": "005930",
+    "baseDate": "2026-06-15",
+    "sharesOutstanding": 5969782550,
+    "source": "MANUAL"
+  }'
+
+curl 'http://localhost:8080/api/research/valuations/shares-outstanding?stockCode=005930'
+```
+
+Valuation snapshot 생성:
+
+```sh
+curl -X POST \
+  'http://localhost:8080/api/research/valuations/generate?stockCode=005930&baseDate=2026-06-15'
+
+curl -X POST 'http://localhost:8080/api/research/valuations/generate-batch?baseDate=2026-06-15' \
+  -H 'Content-Type: application/json' \
+  -d '{"stockCodes":["005930","000660"]}'
+
+curl -X POST \
+  'http://localhost:8080/api/research/valuations/generate-watchlist?baseDate=2026-06-15'
+```
+
+계산식은 `marketCap = closePrice * sharesOutstanding`,
+`eps = netIncome / sharesOutstanding`, `bps = totalEquity / sharesOutstanding`,
+`salesPerShare = revenue / sharesOutstanding`입니다. PER은
+`marketCap / netIncome`, PBR은 `marketCap / totalEquity`, PSR은
+`marketCap / revenue`로 계산합니다. `netIncome <= 0`이면 PER은 `null`이고
+`NEGATIVE_EARNINGS` reason을 남깁니다. `totalEquity <= 0`이면 PBR은 `null`,
+`revenue <= 0`이면 PSR은 `null`입니다. 일봉 가격이나 발행주식수, 최신 분기
+재무가 없으면 `DATA_INSUFFICIENT` 결과를 반환합니다.
+
+`VALUATION_AUTO_SNAPSHOT_AUTO_ANALYZE=true`이면 valuation 생성 성공 후 해당
+종목의 Earnings Analysis를 같은 `baseDate`로 재실행합니다. 종가베팅/장초반
+후보 생성은 기존 최신 Earnings Analysis를 읽기만 하며, 후보 생성 과정에서
+valuation 생성이나 외부 호출을 수행하지 않습니다. `VALUATION_AUTO_SNAPSHOT`
+scheduler는 거래일 07:55 Asia/Seoul에 실행되어 전 거래일 기준 관심종목 전체
+snapshot 생성을 시도합니다.
+
 Earnings Preview & Post-Earnings Review v1도 운영자 입력 기반입니다. 뉴스,
 공시, 컨센서스는 자동 수집하지 않으며 preview/review 결과는 Morning Note와
 수동 action item에만 반영됩니다. thesis impact가 `BROKEN`이어도 thesis 상태
@@ -388,6 +446,11 @@ curl \
 Morning Note에는 `DART_MAPPING_REQUIRED`, `DART_IMPORT_REQUIRED`,
 `DART_IMPORT_FAILED`, `DART_IMPORT_RECENT_EARNINGS_STATUS` action item이
 추가됩니다.
+
+Valuation Auto Snapshot 관련해서는 Morning Note에
+`VALUATION_DATA_INSUFFICIENT`, `SHARES_OUTSTANDING_REQUIRED`,
+`VALUATION_AUTO_GENERATED`, `VALUATION_NEGATIVE_EARNINGS`,
+`VALUATION_OVERVALUED_WARNING` action item이 추가됩니다.
 
 Sector master와 snapshot:
 
@@ -1161,6 +1224,8 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.research.earnings_analysis.count`: `result=success|insufficient|failure`
 - `tradeguard.research.financial_import.count`: `result=saved|failure`
 - `tradeguard.research.valuation_import.count`: `result=saved|failure`
+- `tradeguard.research.valuation_auto_snapshot.count`: `result=success|insufficient|failure`
+- `tradeguard.research.shares_outstanding.count`: `result=saved|failure`
 - `tradeguard.research.earnings_event.count`: `status`
 - `tradeguard.research.earnings_preview.count`: `result=created|ready|failure`
 - `tradeguard.research.post_earnings_review.count`: `thesisImpact`

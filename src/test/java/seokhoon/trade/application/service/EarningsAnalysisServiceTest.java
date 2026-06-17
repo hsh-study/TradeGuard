@@ -9,6 +9,7 @@ import seokhoon.trade.domain.research.EarningsAnalysisSnapshot;
 import seokhoon.trade.domain.research.EarningsAnalysisStatus;
 import seokhoon.trade.domain.research.QuarterlyFinancial;
 import seokhoon.trade.domain.research.ValuationSnapshot;
+import seokhoon.trade.domain.research.ValuationSnapshotSource;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -169,7 +170,7 @@ class EarningsAnalysisServiceTest {
         return new ValuationSnapshot(null, "005930", BASE_DATE,
                 new BigDecimal("500000000000000"), new BigDecimal(per),
                 new BigDecimal(pbr), new BigDecimal(psr),
-                null, null, null, NOW, NOW);
+                null, null, null, ValuationSnapshotSource.MANUAL, NOW, NOW);
     }
 
     private static class InMemoryEarningsAnalysisPort implements EarningsAnalysisPort {

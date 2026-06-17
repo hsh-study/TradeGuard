@@ -17,12 +17,13 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         InvestmentCatalystPort, MorningNotePort, QuarterlyFinancialPort,
         ValuationSnapshotPort, EarningsAnalysisPort, EarningsEventPort,
         EarningsPreviewPort, PostEarningsReviewPort, DartCorpMappingPort,
-        DartFinancialImportHistoryPort {
+        DartFinancialImportHistoryPort, SharesOutstandingSnapshotPort {
     private final InvestmentThesisJpaRepository theses;
     private final InvestmentCatalystJpaRepository catalysts;
     private final MorningNoteJpaRepository notes;
     private final QuarterlyFinancialJpaRepository financials;
     private final ValuationSnapshotJpaRepository valuations;
+    private final SharesOutstandingSnapshotJpaRepository sharesOutstandingSnapshots;
     private final EarningsAnalysisSnapshotJpaRepository earningsAnalyses;
     private final EarningsEventJpaRepository earningsEvents;
     private final EarningsPreviewJpaRepository earningsPreviews;
@@ -36,6 +37,7 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
             MorningNoteJpaRepository notes,
             QuarterlyFinancialJpaRepository financials,
             ValuationSnapshotJpaRepository valuations,
+            SharesOutstandingSnapshotJpaRepository sharesOutstandingSnapshots,
             EarningsAnalysisSnapshotJpaRepository earningsAnalyses,
             EarningsEventJpaRepository earningsEvents,
             EarningsPreviewJpaRepository earningsPreviews,
@@ -48,6 +50,7 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         this.notes = notes;
         this.financials = financials;
         this.valuations = valuations;
+        this.sharesOutstandingSnapshots = sharesOutstandingSnapshots;
         this.earningsAnalyses = earningsAnalyses;
         this.earningsEvents = earningsEvents;
         this.earningsPreviews = earningsPreviews;
@@ -197,6 +200,33 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     public Optional<ValuationSnapshot> findLatestByStockCode(String stockCode, LocalDate baseDate) {
         return valuations.findFirstByStockCodeAndTradeDateLessThanEqualOrderByTradeDateDesc(stockCode, baseDate)
                 .map(ValuationSnapshotEntity::toDomain);
+    }
+
+    @Override
+    @Transactional
+    public SharesOutstandingSnapshot save(SharesOutstandingSnapshot value) {
+        SharesOutstandingSnapshotEntity entity = sharesOutstandingSnapshots
+                .findByStockCodeAndBaseDate(value.stockCode(), value.baseDate())
+                .orElseGet(() -> SharesOutstandingSnapshotEntity.from(value));
+        entity.update(value);
+        return sharesOutstandingSnapshots.save(entity).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<SharesOutstandingSnapshot> findLatestSharesByStockCode(String stockCode, LocalDate baseDate) {
+        return sharesOutstandingSnapshots
+                .findFirstByStockCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(stockCode, baseDate)
+                .map(SharesOutstandingSnapshotEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SharesOutstandingSnapshot> findSharesByStockCode(String stockCode) {
+        return sharesOutstandingSnapshots.findByStockCode(stockCode, Sort.by(Sort.Order.desc("baseDate")))
+                .stream()
+                .map(SharesOutstandingSnapshotEntity::toDomain)
+                .toList();
     }
 
     @Override

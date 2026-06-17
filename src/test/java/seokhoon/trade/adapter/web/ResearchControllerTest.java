@@ -5,6 +5,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
+import seokhoon.trade.application.port.in.GenerateValuationSnapshotUseCase;
 import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases;
 import seokhoon.trade.domain.stock.Market;
@@ -34,6 +35,7 @@ class ResearchControllerTest {
                 new StubMorningNoteUseCase(),
                 new StubSectorUseCase(),
                 new StubEarningsDataUseCase(),
+                new StubGenerateValuationSnapshotUseCase(),
                 new StubAnalyzeEarningsUseCase(),
                 new StubEarningsAnalysisQueryUseCase(),
                 new StubEarningsEventUseCase(),
@@ -406,6 +408,36 @@ class ResearchControllerTest {
         public ValuationSnapshot saveValuation(ResearchUseCases.CreateValuationSnapshotCommand command) {
             return valuation();
         }
+
+        @Override
+        public SharesOutstandingSnapshot saveSharesOutstanding(
+                ResearchUseCases.SaveSharesOutstandingCommand command
+        ) {
+            return sharesOutstanding();
+        }
+
+        @Override
+        public List<SharesOutstandingSnapshot> findSharesOutstanding(String stockCode) {
+            return List.of(sharesOutstanding());
+        }
+    }
+
+    private static class StubGenerateValuationSnapshotUseCase implements GenerateValuationSnapshotUseCase {
+        @Override
+        public ValuationGenerationResult generate(String stockCode, LocalDate baseDate) {
+            return new ValuationGenerationResult(stockCode, baseDate,
+                    ValuationGenerationStatus.GENERATED, valuation(), List.of("VALUATION_AUTO_GENERATED"));
+        }
+
+        @Override
+        public List<ValuationGenerationResult> generateBatch(List<String> stockCodes, LocalDate baseDate) {
+            return stockCodes.stream().map(stockCode -> generate(stockCode, baseDate)).toList();
+        }
+
+        @Override
+        public List<ValuationGenerationResult> generateWatchlist(LocalDate baseDate) {
+            return List.of(generate("005930", baseDate));
+        }
     }
 
     private static class StubAnalyzeEarningsUseCase implements AnalyzeEarningsUseCase {
@@ -562,7 +594,12 @@ class ResearchControllerTest {
         return new ValuationSnapshot(1L, "005930", LocalDate.of(2026, 6, 15),
                 new BigDecimal("500000000000000"), new BigDecimal("12"),
                 new BigDecimal("1.2"), new BigDecimal("1.8"),
-                null, null, null, NOW, NOW);
+                null, null, null, ValuationSnapshotSource.MANUAL, NOW, NOW);
+    }
+
+    private static SharesOutstandingSnapshot sharesOutstanding() {
+        return new SharesOutstandingSnapshot(1L, "005930", LocalDate.of(2026, 6, 15),
+                new BigDecimal("5969782550"), SharesOutstandingSource.MANUAL, NOW, NOW);
     }
 
     private static EarningsAnalysisSnapshot earnings() {

@@ -50,6 +50,8 @@ public class MorningNoteService implements MorningNoteUseCase {
     private final PostEarningsReviewPort postEarningsReviewPort;
     private final DartCorpMappingPort dartCorpMappingPort;
     private final DartFinancialImportHistoryPort dartFinancialImportHistoryPort;
+    private final ValuationSnapshotPort valuationSnapshotPort;
+    private final SharesOutstandingSnapshotPort sharesOutstandingSnapshotPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -74,6 +76,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             PostEarningsReviewPort postEarningsReviewPort,
             DartCorpMappingPort dartCorpMappingPort,
             DartFinancialImportHistoryPort dartFinancialImportHistoryPort,
+            ValuationSnapshotPort valuationSnapshotPort,
+            SharesOutstandingSnapshotPort sharesOutstandingSnapshotPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
@@ -81,6 +85,7 @@ public class MorningNoteService implements MorningNoteUseCase {
                 stockSectorMappingPort, sectorSnapshotPort, earningsAnalysisPort,
                 earningsEventPort, earningsPreviewPort, postEarningsReviewPort,
                 dartCorpMappingPort, dartFinancialImportHistoryPort,
+                valuationSnapshotPort, sharesOutstandingSnapshotPort,
                 metrics, Clock.systemUTC());
     }
 
@@ -104,7 +109,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
                 thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
                 stockSectorMappingPort, sectorSnapshotPort, null, null, null, null,
-                null, null, metrics, clock);
+                null, null, null, null, metrics, clock);
     }
 
     MorningNoteService(
@@ -127,6 +132,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             PostEarningsReviewPort postEarningsReviewPort,
             DartCorpMappingPort dartCorpMappingPort,
             DartFinancialImportHistoryPort dartFinancialImportHistoryPort,
+            ValuationSnapshotPort valuationSnapshotPort,
+            SharesOutstandingSnapshotPort sharesOutstandingSnapshotPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
@@ -149,6 +156,8 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.postEarningsReviewPort = postEarningsReviewPort;
         this.dartCorpMappingPort = dartCorpMappingPort;
         this.dartFinancialImportHistoryPort = dartFinancialImportHistoryPort;
+        this.valuationSnapshotPort = valuationSnapshotPort;
+        this.sharesOutstandingSnapshotPort = sharesOutstandingSnapshotPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -406,10 +415,56 @@ public class MorningNoteService implements MorningNoteUseCase {
                         .append(" revenueSurprise=").append(review.revenueSurpriseRate())
                         .append(" opSurprise=").append(review.operatingIncomeSurpriseRate()));
         appendDartItems(result, stocks);
+        appendValuationItems(result, stocks, tradeDate);
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
         return result.toString();
+    }
+
+    private void appendValuationItems(StringBuilder result, List<Stock> stocks, LocalDate tradeDate) {
+        if (valuationSnapshotPort == null || sharesOutstandingSnapshotPort == null) {
+            return;
+        }
+        stocks.forEach(stock -> {
+            boolean sharesMissing = sharesOutstandingSnapshotPort
+                    .findLatestSharesByStockCode(stock.stockCode(), tradeDate)
+                    .isEmpty();
+            if (sharesMissing) {
+                result.append("\n- SHARES_OUTSTANDING_REQUIRED ")
+                        .append(stock.stockCode()).append(" 발행주식수 snapshot 필요");
+            }
+            Optional<ValuationSnapshot> valuation = valuationSnapshotPort
+                    .findLatestByStockCode(stock.stockCode(), tradeDate);
+            if (valuation.isEmpty()) {
+                result.append("\n- VALUATION_DATA_INSUFFICIENT ")
+                        .append(stock.stockCode()).append(" valuation snapshot 없음");
+                return;
+            }
+            ValuationSnapshot snapshot = valuation.orElseThrow();
+            if (snapshot.source() == ValuationSnapshotSource.AUTO) {
+                result.append("\n- VALUATION_AUTO_GENERATED ")
+                        .append(stock.stockCode()).append(" tradeDate=")
+                        .append(snapshot.tradeDate());
+            }
+            if (snapshot.per() == null) {
+                result.append("\n- VALUATION_NEGATIVE_EARNINGS ")
+                        .append(stock.stockCode()).append(" PER 계산 제외");
+            }
+            if (overvalued(snapshot)) {
+                result.append("\n- VALUATION_OVERVALUED_WARNING ")
+                        .append(stock.stockCode())
+                        .append(" per=").append(snapshot.per())
+                        .append(" pbr=").append(snapshot.pbr())
+                        .append(" psr=").append(snapshot.psr());
+            }
+        });
+    }
+
+    private static boolean overvalued(ValuationSnapshot snapshot) {
+        return greaterThan(snapshot.per(), "30")
+                || greaterThan(snapshot.pbr(), "3")
+                || greaterThan(snapshot.psr(), "5");
     }
 
     private void appendDartItems(StringBuilder result, List<Stock> stocks) {
@@ -521,6 +576,10 @@ public class MorningNoteService implements MorningNoteUseCase {
         return value.ma20() == null || value.ma60() == null || value.rsi14() == null
                 || value.macd() == null || value.macdSignal() == null
                 || value.bollingerUpper() == null || value.bollingerLower() == null;
+    }
+
+    private static boolean greaterThan(BigDecimal value, String threshold) {
+        return value != null && value.compareTo(new BigDecimal(threshold)) > 0;
     }
 
     private static String side(BigDecimal value, BigDecimal reference) {

@@ -2,6 +2,7 @@ package seokhoon.trade.adapter.persistence;
 
 import jakarta.persistence.*;
 import seokhoon.trade.domain.research.ValuationSnapshot;
+import seokhoon.trade.domain.research.ValuationSnapshotSource;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -32,6 +33,9 @@ public class ValuationSnapshotEntity {
     private BigDecimal bps;
     @Column(name = "sales_per_share", precision = 19, scale = 4)
     private BigDecimal salesPerShare;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false, length = 20)
+    private ValuationSnapshotSource source;
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
     @Column(name = "updated_at", nullable = false)
@@ -57,12 +61,13 @@ public class ValuationSnapshotEntity {
         eps = value.eps();
         bps = value.bps();
         salesPerShare = value.salesPerShare();
+        source = value.source();
         createdAt = value.createdAt();
         updatedAt = value.updatedAt();
     }
 
     ValuationSnapshot toDomain() {
         return new ValuationSnapshot(id, stockCode, tradeDate, marketCap, per, pbr, psr,
-                eps, bps, salesPerShare, createdAt, updatedAt);
+                eps, bps, salesPerShare, source, createdAt, updatedAt);
     }
 }

@@ -6,6 +6,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
+import seokhoon.trade.application.port.in.GenerateValuationSnapshotUseCase;
 import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases.*;
 import seokhoon.trade.application.service.ResearchNotFoundException;
@@ -27,6 +28,7 @@ public class ResearchController {
     private final MorningNoteUseCase morningNoteUseCase;
     private final SectorUseCase sectorUseCase;
     private final EarningsDataUseCase earningsDataUseCase;
+    private final GenerateValuationSnapshotUseCase generateValuationSnapshotUseCase;
     private final AnalyzeEarningsUseCase analyzeEarningsUseCase;
     private final EarningsAnalysisQueryUseCase earningsAnalysisQueryUseCase;
     private final EarningsEventUseCase earningsEventUseCase;
@@ -43,6 +45,7 @@ public class ResearchController {
             MorningNoteUseCase morningNoteUseCase,
             SectorUseCase sectorUseCase,
             EarningsDataUseCase earningsDataUseCase,
+            GenerateValuationSnapshotUseCase generateValuationSnapshotUseCase,
             AnalyzeEarningsUseCase analyzeEarningsUseCase,
             EarningsAnalysisQueryUseCase earningsAnalysisQueryUseCase,
             EarningsEventUseCase earningsEventUseCase,
@@ -58,6 +61,7 @@ public class ResearchController {
         this.morningNoteUseCase = morningNoteUseCase;
         this.sectorUseCase = sectorUseCase;
         this.earningsDataUseCase = earningsDataUseCase;
+        this.generateValuationSnapshotUseCase = generateValuationSnapshotUseCase;
         this.analyzeEarningsUseCase = analyzeEarningsUseCase;
         this.earningsAnalysisQueryUseCase = earningsAnalysisQueryUseCase;
         this.earningsEventUseCase = earningsEventUseCase;
@@ -171,6 +175,39 @@ public class ResearchController {
     @PostMapping("/valuations")
     ValuationSnapshot saveValuation(@Valid @RequestBody ValuationSnapshotRequest request) {
         return earningsDataUseCase.saveValuation(request.toCommand());
+    }
+
+    @PostMapping("/valuations/shares-outstanding")
+    SharesOutstandingSnapshot saveSharesOutstanding(@Valid @RequestBody SharesOutstandingRequest request) {
+        return earningsDataUseCase.saveSharesOutstanding(request.toCommand());
+    }
+
+    @GetMapping("/valuations/shares-outstanding")
+    List<SharesOutstandingSnapshot> findSharesOutstanding(@RequestParam String stockCode) {
+        return earningsDataUseCase.findSharesOutstanding(stockCode);
+    }
+
+    @PostMapping("/valuations/generate")
+    ValuationGenerationResult generateValuation(
+            @RequestParam String stockCode,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate baseDate
+    ) {
+        return generateValuationSnapshotUseCase.generate(stockCode, baseDate);
+    }
+
+    @PostMapping("/valuations/generate-batch")
+    List<ValuationGenerationResult> generateValuationBatch(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate baseDate,
+            @Valid @RequestBody ValuationGenerationBatchRequest request
+    ) {
+        return generateValuationSnapshotUseCase.generateBatch(request.stockCodes(), baseDate);
+    }
+
+    @PostMapping("/valuations/generate-watchlist")
+    List<ValuationGenerationResult> generateValuationWatchlist(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate baseDate
+    ) {
+        return generateValuationSnapshotUseCase.generateWatchlist(baseDate);
     }
 
     @PostMapping("/earnings-analysis")
@@ -420,12 +457,30 @@ public class ResearchController {
             BigDecimal psr,
             BigDecimal eps,
             BigDecimal bps,
-            BigDecimal salesPerShare
+            BigDecimal salesPerShare,
+            ValuationSnapshotSource source
     ) {
         CreateValuationSnapshotCommand toCommand() {
             return new CreateValuationSnapshotCommand(stockCode, tradeDate, marketCap,
-                    per, pbr, psr, eps, bps, salesPerShare);
+                    per, pbr, psr, eps, bps, salesPerShare, source);
         }
+    }
+
+    public record SharesOutstandingRequest(
+            @NotBlank String stockCode,
+            @NotNull LocalDate baseDate,
+            @NotNull @Positive BigDecimal sharesOutstanding,
+            SharesOutstandingSource source
+    ) {
+        SaveSharesOutstandingCommand toCommand() {
+            return new SaveSharesOutstandingCommand(stockCode, baseDate, sharesOutstanding,
+                    source == null ? SharesOutstandingSource.MANUAL : source);
+        }
+    }
+
+    public record ValuationGenerationBatchRequest(
+            @NotEmpty List<@NotBlank String> stockCodes
+    ) {
     }
 
     public record EarningsAnalysisBatchRequest(

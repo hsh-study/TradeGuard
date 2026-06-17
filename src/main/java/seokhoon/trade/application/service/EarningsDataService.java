@@ -8,8 +8,11 @@ import seokhoon.trade.application.port.in.ResearchUseCases.CreateValuationSnapsh
 import seokhoon.trade.application.port.in.ResearchUseCases.EarningsDataUseCase;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.QuarterlyFinancialPort;
+import seokhoon.trade.application.port.out.SharesOutstandingSnapshotPort;
 import seokhoon.trade.application.port.out.ValuationSnapshotPort;
 import seokhoon.trade.domain.research.QuarterlyFinancial;
+import seokhoon.trade.domain.research.SharesOutstandingSnapshot;
+import seokhoon.trade.domain.research.ValuationSnapshotSource;
 import seokhoon.trade.domain.research.ValuationSnapshot;
 
 import java.time.Clock;
@@ -20,6 +23,7 @@ import java.util.List;
 public class EarningsDataService implements EarningsDataUseCase {
     private final QuarterlyFinancialPort financialPort;
     private final ValuationSnapshotPort valuationPort;
+    private final SharesOutstandingSnapshotPort sharesOutstandingPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -27,19 +31,22 @@ public class EarningsDataService implements EarningsDataUseCase {
     public EarningsDataService(
             QuarterlyFinancialPort financialPort,
             ValuationSnapshotPort valuationPort,
+            SharesOutstandingSnapshotPort sharesOutstandingPort,
             OperationalMetricsPort metrics
     ) {
-        this(financialPort, valuationPort, metrics, Clock.systemUTC());
+        this(financialPort, valuationPort, sharesOutstandingPort, metrics, Clock.systemUTC());
     }
 
     EarningsDataService(
             QuarterlyFinancialPort financialPort,
             ValuationSnapshotPort valuationPort,
+            SharesOutstandingSnapshotPort sharesOutstandingPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
         this.financialPort = financialPort;
         this.valuationPort = valuationPort;
+        this.sharesOutstandingPort = sharesOutstandingPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -91,6 +98,7 @@ public class EarningsDataService implements EarningsDataUseCase {
                     command.eps(),
                     command.bps(),
                     command.salesPerShare(),
+                    command.source() == null ? ValuationSnapshotSource.MANUAL : command.source(),
                     now,
                     now
             ));
@@ -100,5 +108,35 @@ public class EarningsDataService implements EarningsDataUseCase {
             metrics.recordResearchValuationImport("failure");
             throw exception;
         }
+    }
+
+    @Override
+    @Transactional
+    public SharesOutstandingSnapshot saveSharesOutstanding(
+            seokhoon.trade.application.port.in.ResearchUseCases.SaveSharesOutstandingCommand command
+    ) {
+        try {
+            Instant now = clock.instant();
+            SharesOutstandingSnapshot saved = sharesOutstandingPort.save(new SharesOutstandingSnapshot(
+                    null,
+                    command.stockCode(),
+                    command.baseDate(),
+                    command.sharesOutstanding(),
+                    command.source(),
+                    now,
+                    now
+            ));
+            metrics.recordResearchSharesOutstanding("saved");
+            return saved;
+        } catch (RuntimeException exception) {
+            metrics.recordResearchSharesOutstanding("failure");
+            throw exception;
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SharesOutstandingSnapshot> findSharesOutstanding(String stockCode) {
+        return sharesOutstandingPort.findSharesByStockCode(stockCode);
     }
 }

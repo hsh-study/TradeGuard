@@ -93,7 +93,8 @@ class EarningsPreviewServiceTest {
                 return Optional.of(new ValuationSnapshot(1L, stockCode, baseDate,
                         new BigDecimal("1000"), new BigDecimal("12"),
                         new BigDecimal("1.2"), new BigDecimal("1.8"),
-                        null, null, null, NOW, NOW));
+                        null, null, null,
+                        seokhoon.trade.domain.research.ValuationSnapshotSource.MANUAL, NOW, NOW));
             }
         };
     }

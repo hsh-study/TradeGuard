@@ -133,13 +133,24 @@ public final class ResearchUseCases {
             BigDecimal psr,
             BigDecimal eps,
             BigDecimal bps,
-            BigDecimal salesPerShare
+            BigDecimal salesPerShare,
+            ValuationSnapshotSource source
+    ) {
+    }
+
+    public record SaveSharesOutstandingCommand(
+            String stockCode,
+            LocalDate baseDate,
+            BigDecimal sharesOutstanding,
+            SharesOutstandingSource source
     ) {
     }
 
     public interface EarningsDataUseCase {
         List<QuarterlyFinancial> saveQuarterly(List<CreateQuarterlyFinancialCommand> commands);
         ValuationSnapshot saveValuation(CreateValuationSnapshotCommand command);
+        SharesOutstandingSnapshot saveSharesOutstanding(SaveSharesOutstandingCommand command);
+        List<SharesOutstandingSnapshot> findSharesOutstanding(String stockCode);
     }
 
     public interface EarningsAnalysisQueryUseCase {

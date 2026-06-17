@@ -77,6 +77,8 @@ public interface OperationalMetricsPort {
     void recordResearchEarningsAnalysis(String result);
     void recordResearchFinancialImport(String result);
     void recordResearchValuationImport(String result);
+    void recordResearchValuationAutoSnapshot(String result);
+    void recordResearchSharesOutstanding(String result);
     void recordResearchEarningsEvent(String status);
     void recordResearchEarningsPreview(String result);
     void recordResearchPostEarningsReview(String thesisImpact);
@@ -224,6 +226,8 @@ public interface OperationalMetricsPort {
             @Override public void recordResearchEarningsAnalysis(String result) {}
             @Override public void recordResearchFinancialImport(String result) {}
             @Override public void recordResearchValuationImport(String result) {}
+            @Override public void recordResearchValuationAutoSnapshot(String result) {}
+            @Override public void recordResearchSharesOutstanding(String result) {}
             @Override public void recordResearchEarningsEvent(String status) {}
             @Override public void recordResearchEarningsPreview(String result) {}
             @Override public void recordResearchPostEarningsReview(String thesisImpact) {}

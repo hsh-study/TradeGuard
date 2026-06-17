@@ -5,27 +5,24 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Objects;
 
-public record ValuationSnapshot(
+public record SharesOutstandingSnapshot(
         Long id,
         String stockCode,
-        LocalDate tradeDate,
-        BigDecimal marketCap,
-        BigDecimal per,
-        BigDecimal pbr,
-        BigDecimal psr,
-        BigDecimal eps,
-        BigDecimal bps,
-        BigDecimal salesPerShare,
-        ValuationSnapshotSource source,
+        LocalDate baseDate,
+        BigDecimal sharesOutstanding,
+        SharesOutstandingSource source,
         Instant createdAt,
         Instant updatedAt
 ) {
-    public ValuationSnapshot {
+    public SharesOutstandingSnapshot {
         Objects.requireNonNull(stockCode, "stockCode");
-        Objects.requireNonNull(tradeDate, "tradeDate");
-        Objects.requireNonNull(marketCap, "marketCap");
+        Objects.requireNonNull(baseDate, "baseDate");
+        Objects.requireNonNull(sharesOutstanding, "sharesOutstanding");
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(createdAt, "createdAt");
         Objects.requireNonNull(updatedAt, "updatedAt");
+        if (sharesOutstanding.signum() <= 0) {
+            throw new IllegalArgumentException("sharesOutstanding must be positive");
+        }
     }
 }
