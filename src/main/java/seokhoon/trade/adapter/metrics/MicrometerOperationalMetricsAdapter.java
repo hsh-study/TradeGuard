@@ -305,6 +305,23 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordDartFinancialImport(String result) {
+        meterRegistry.counter(
+                "tradeguard.research.dart_financial_import.count",
+                "result", result
+        ).increment();
+    }
+
+    @Override
+    public void recordDartProvider(String operation, String result) {
+        meterRegistry.counter(
+                "tradeguard.research.dart_provider.count",
+                "operation", operation,
+                "result", result
+        ).increment();
+    }
+
+    @Override
     public void recordLiveOrderRequest(String side, String status) {
         meterRegistry.counter("tradeguard.live_order.request.count",
                 "side", side, "status", status).increment();

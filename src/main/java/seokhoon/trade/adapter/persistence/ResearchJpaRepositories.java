@@ -86,3 +86,12 @@ interface PostEarningsReviewJpaRepository extends JpaRepository<PostEarningsRevi
             Sort sort
     );
 }
+
+interface DartCorpMappingJpaRepository extends JpaRepository<DartCorpMappingEntity, Long> {
+    Optional<DartCorpMappingEntity> findByStockCode(String stockCode);
+    Optional<DartCorpMappingEntity> findByCorpCode(String corpCode);
+}
+
+interface DartFinancialImportHistoryJpaRepository extends JpaRepository<DartFinancialImportHistoryEntity, Long> {
+    List<DartFinancialImportHistoryEntity> findByStockCode(String stockCode, Sort sort);
+}

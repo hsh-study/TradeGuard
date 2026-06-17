@@ -5,7 +5,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
+import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases;
+import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
 import seokhoon.trade.domain.market.SectorType;
@@ -37,7 +39,10 @@ class ResearchControllerTest {
                 new StubEarningsEventUseCase(),
                 new StubEarningsPreviewUseCase(),
                 new StubGenerateEarningsPreviewUseCase(),
-                new StubPostEarningsReviewUseCase()
+                new StubPostEarningsReviewUseCase(),
+                new StubDartCorpMappingUseCase(),
+                new StubImportDartFinancialsUseCase(),
+                new StubDartFinancialImportHistoryQueryUseCase()
         )).setControllerAdvice(new GlobalExceptionHandler()).build();
 
         mvc.perform(post("/api/research/theses")
@@ -269,6 +274,45 @@ class ResearchControllerTest {
                         .param("stockCode", "005930"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].reviewSummary").value("Beat expectations"));
+
+        mvc.perform(post("/api/research/dart/corp-mappings")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "stockCode":"005930",
+                                  "corpCode":"00126380",
+                                  "corpName":"삼성전자",
+                                  "market":"KOSPI"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.corpCode").value("00126380"));
+        mvc.perform(get("/api/research/dart/corp-mappings")
+                        .param("stockCode", "005930"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.corpName").value("삼성전자"));
+        mvc.perform(get("/api/research/dart/corp-mappings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].stockCode").value("005930"));
+        mvc.perform(post("/api/research/dart/financials/import")
+                        .param("stockCode", "005930")
+                        .param("fiscalYear", "2026")
+                        .param("reportCode", "11013"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"));
+        mvc.perform(post("/api/research/dart/financials/import-recent")
+                        .param("stockCode", "005930")
+                        .param("baseDate", "2026-06-15"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].reportCode").value("11013"));
+        mvc.perform(post("/api/research/dart/financials/import-watchlist")
+                        .param("baseDate", "2026-06-15"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].stockCode").value("005930"));
+        mvc.perform(get("/api/research/dart/financials/import-histories")
+                        .param("stockCode", "005930"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("SUCCESS"));
     }
 
     private static class StubThesisUseCase implements ResearchUseCases.ThesisUseCase {
@@ -441,6 +485,48 @@ class ResearchControllerTest {
         }
     }
 
+    private static class StubDartCorpMappingUseCase implements ResearchUseCases.DartCorpMappingUseCase {
+        @Override
+        public DartCorpMapping save(ResearchUseCases.SaveDartCorpMappingCommand command) {
+            return dartMapping();
+        }
+
+        @Override
+        public java.util.Optional<DartCorpMapping> findByStockCode(String stockCode) {
+            return java.util.Optional.of(dartMapping());
+        }
+
+        @Override
+        public List<DartCorpMapping> findAll() {
+            return List.of(dartMapping());
+        }
+    }
+
+    private static class StubImportDartFinancialsUseCase implements ImportDartFinancialsUseCase {
+        @Override
+        public DartFinancialImportHistory importStock(String stockCode, int fiscalYear, String reportCode) {
+            return dartHistory(reportCode);
+        }
+
+        @Override
+        public List<DartFinancialImportHistory> importStockRecent(String stockCode, LocalDate baseDate) {
+            return List.of(dartHistory("11013"));
+        }
+
+        @Override
+        public List<DartFinancialImportHistory> importActiveWatchlist(LocalDate baseDate) {
+            return List.of(dartHistory("11013"));
+        }
+    }
+
+    private static class StubDartFinancialImportHistoryQueryUseCase
+            implements ResearchUseCases.DartFinancialImportHistoryQueryUseCase {
+        @Override
+        public List<DartFinancialImportHistory> findByStockCode(String stockCode) {
+            return List.of(dartHistory("11013"));
+        }
+    }
+
     private static InvestmentThesis thesis(ThesisStatus status) {
         return new InvestmentThesis(1L, "005930", "HBM recovery",
                 "memory margin improves", "margin declines",
@@ -510,5 +596,15 @@ class ResearchControllerTest {
                 new BigDecimal("180"), new BigDecimal("120"),
                 new BigDecimal("0.1636"), new BigDecimal("0.1000"),
                 new BigDecimal("0.2000"), impact, summary, List.of(), NOW, NOW);
+    }
+
+    private static DartCorpMapping dartMapping() {
+        return new DartCorpMapping(1L, "005930", "00126380", "삼성전자",
+                Market.KOSPI, NOW, NOW);
+    }
+
+    private static DartFinancialImportHistory dartHistory(String reportCode) {
+        return new DartFinancialImportHistory(1L, "005930", "00126380", 2026,
+                reportCode, DartFinancialImportStatus.SUCCESS, 1, null, NOW, NOW);
     }
 }

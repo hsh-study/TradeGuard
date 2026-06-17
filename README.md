@@ -327,6 +327,68 @@ Morning Note에는 `UPCOMING_EARNINGS`, `EARNINGS_PREVIEW_READY`,
 earnings event 생성 시 `EARNINGS_EVENT_AUTO_CREATE_CATALYST=true`이면 같은
 종목·발표일·분기의 `EARNINGS` catalyst를 중복 없이 자동 생성합니다.
 
+DART Financial Import v1은 운영자가 `quarterly_financials`를 매번 수동
+입력하지 않아도 되도록 공식 OpenDART 재무제표 API에서 분기 재무를 가져오는
+구조입니다. 뉴스 크롤링, 공시 원문 저장, 컨센서스 무단 수집은 하지 않습니다.
+기본값은 `DART_PROVIDER_ENABLED=false`라 외부 호출이 비활성입니다.
+`DART_API_KEY`는 로그, API 응답, health, metric tag에 포함하지 않습니다.
+
+```text
+DART_PROVIDER_ENABLED=false
+DART_API_BASE_URL=
+DART_API_KEY=
+DART_REQUEST_TIMEOUT_SECONDS=10
+DART_IMPORT_AUTO_ANALYZE=true
+DART_IMPORT_LOOKBACK_QUARTERS=8
+```
+
+Corp mapping 등록과 조회:
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/dart/corp-mappings' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "stockCode": "005930",
+    "corpCode": "00126380",
+    "corpName": "삼성전자",
+    "market": "KOSPI"
+  }'
+
+curl 'http://localhost:8080/api/research/dart/corp-mappings?stockCode=005930'
+curl 'http://localhost:8080/api/research/dart/corp-mappings'
+```
+
+DART 재무제표 import:
+
+```sh
+curl -X POST \
+  'http://localhost:8080/api/research/dart/financials/import?stockCode=005930&fiscalYear=2026&reportCode=11013'
+
+curl -X POST \
+  'http://localhost:8080/api/research/dart/financials/import-recent?stockCode=005930&baseDate=2026-06-15'
+
+curl -X POST \
+  'http://localhost:8080/api/research/dart/financials/import-watchlist?baseDate=2026-06-15'
+
+curl \
+  'http://localhost:8080/api/research/dart/financials/import-histories?stockCode=005930'
+```
+
+보고서 코드는 `11013 -> Q1`, `11012 -> Q2`, `11014 -> Q3`,
+`11011 -> Q4`로 매핑합니다. 계정명은 exact matching을 우선하고 공백과
+괄호를 제거한 normalized fallback을 사용합니다. 매출액, 영업이익,
+당기순이익, 자산총계, 부채총계, 자본총계, 영업활동현금흐름을 찾으면
+`quarterly_financials`에 upsert하며, OpenDART가 직접 제공하지 않는
+`freeCashFlow`는 `null`로 저장합니다.
+
+`DART_IMPORT_AUTO_ANALYZE=true`이면 import가 `SUCCESS`로 재무 데이터를 저장한
+뒤 해당 종목의 Earnings Analysis를 재실행합니다. `PARTIAL`, `FAILED`,
+`SKIPPED` 이력은 저장하지만 자동 분석은 실행하지 않습니다. 이 흐름은
+자동매수, 자동매도, thesis 상태 변경, 실계좌 주문과 연결되지 않습니다.
+Morning Note에는 `DART_MAPPING_REQUIRED`, `DART_IMPORT_REQUIRED`,
+`DART_IMPORT_FAILED`, `DART_IMPORT_RECENT_EARNINGS_STATUS` action item이
+추가됩니다.
+
 Sector master와 snapshot:
 
 ```sh

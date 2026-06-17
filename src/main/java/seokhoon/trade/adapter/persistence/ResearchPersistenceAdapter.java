@@ -16,7 +16,8 @@ import java.util.Optional;
 public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         InvestmentCatalystPort, MorningNotePort, QuarterlyFinancialPort,
         ValuationSnapshotPort, EarningsAnalysisPort, EarningsEventPort,
-        EarningsPreviewPort, PostEarningsReviewPort {
+        EarningsPreviewPort, PostEarningsReviewPort, DartCorpMappingPort,
+        DartFinancialImportHistoryPort {
     private final InvestmentThesisJpaRepository theses;
     private final InvestmentCatalystJpaRepository catalysts;
     private final MorningNoteJpaRepository notes;
@@ -26,6 +27,8 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     private final EarningsEventJpaRepository earningsEvents;
     private final EarningsPreviewJpaRepository earningsPreviews;
     private final PostEarningsReviewJpaRepository postEarningsReviews;
+    private final DartCorpMappingJpaRepository dartCorpMappings;
+    private final DartFinancialImportHistoryJpaRepository dartImportHistories;
 
     public ResearchPersistenceAdapter(
             InvestmentThesisJpaRepository theses,
@@ -36,7 +39,9 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
             EarningsAnalysisSnapshotJpaRepository earningsAnalyses,
             EarningsEventJpaRepository earningsEvents,
             EarningsPreviewJpaRepository earningsPreviews,
-            PostEarningsReviewJpaRepository postEarningsReviews
+            PostEarningsReviewJpaRepository postEarningsReviews,
+            DartCorpMappingJpaRepository dartCorpMappings,
+            DartFinancialImportHistoryJpaRepository dartImportHistories
     ) {
         this.theses = theses;
         this.catalysts = catalysts;
@@ -47,6 +52,8 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         this.earningsEvents = earningsEvents;
         this.earningsPreviews = earningsPreviews;
         this.postEarningsReviews = postEarningsReviews;
+        this.dartCorpMappings = dartCorpMappings;
+        this.dartImportHistories = dartImportHistories;
     }
 
     @Override
@@ -358,5 +365,42 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     public List<PostEarningsReview> findByThesisImpactIn(List<ThesisImpact> thesisImpacts) {
         return postEarningsReviews.findByThesisImpactIn(thesisImpacts, Sort.by(Sort.Order.desc("reviewDate")))
                 .stream().map(PostEarningsReviewEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public DartCorpMapping save(DartCorpMapping value) {
+        DartCorpMappingEntity entity = dartCorpMappings.findByStockCode(value.stockCode())
+                .or(() -> dartCorpMappings.findByCorpCode(value.corpCode()))
+                .orElseGet(() -> DartCorpMappingEntity.from(value));
+        entity.update(value);
+        return dartCorpMappings.save(entity).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<DartCorpMapping> findByStockCode(String stockCode) {
+        return dartCorpMappings.findByStockCode(stockCode)
+                .map(DartCorpMappingEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DartCorpMapping> findAll() {
+        return dartCorpMappings.findAll(Sort.by(Sort.Order.asc("stockCode")))
+                .stream().map(DartCorpMappingEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public DartFinancialImportHistory save(DartFinancialImportHistory value) {
+        return dartImportHistories.save(DartFinancialImportHistoryEntity.from(value)).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DartFinancialImportHistory> findHistoriesByStockCode(String stockCode) {
+        return dartImportHistories.findByStockCode(stockCode, Sort.by(Sort.Order.desc("requestedAt")))
+                .stream().map(DartFinancialImportHistoryEntity::toDomain).toList();
     }
 }

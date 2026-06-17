@@ -29,7 +29,6 @@ public record QuarterlyFinancial(
         Objects.requireNonNull(totalLiabilities, "totalLiabilities");
         Objects.requireNonNull(totalEquity, "totalEquity");
         Objects.requireNonNull(operatingCashFlow, "operatingCashFlow");
-        Objects.requireNonNull(freeCashFlow, "freeCashFlow");
         Objects.requireNonNull(createdAt, "createdAt");
         Objects.requireNonNull(updatedAt, "updatedAt");
         if (fiscalQuarter < 1 || fiscalQuarter > 4) {

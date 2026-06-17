@@ -48,6 +48,8 @@ public class MorningNoteService implements MorningNoteUseCase {
     private final EarningsEventPort earningsEventPort;
     private final EarningsPreviewPort earningsPreviewPort;
     private final PostEarningsReviewPort postEarningsReviewPort;
+    private final DartCorpMappingPort dartCorpMappingPort;
+    private final DartFinancialImportHistoryPort dartFinancialImportHistoryPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -70,12 +72,15 @@ public class MorningNoteService implements MorningNoteUseCase {
             EarningsEventPort earningsEventPort,
             EarningsPreviewPort earningsPreviewPort,
             PostEarningsReviewPort postEarningsReviewPort,
+            DartCorpMappingPort dartCorpMappingPort,
+            DartFinancialImportHistoryPort dartFinancialImportHistoryPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
                 thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
                 stockSectorMappingPort, sectorSnapshotPort, earningsAnalysisPort,
                 earningsEventPort, earningsPreviewPort, postEarningsReviewPort,
+                dartCorpMappingPort, dartFinancialImportHistoryPort,
                 metrics, Clock.systemUTC());
     }
 
@@ -98,7 +103,8 @@ public class MorningNoteService implements MorningNoteUseCase {
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
                 thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
-                stockSectorMappingPort, sectorSnapshotPort, null, null, null, null, metrics, clock);
+                stockSectorMappingPort, sectorSnapshotPort, null, null, null, null,
+                null, null, metrics, clock);
     }
 
     MorningNoteService(
@@ -119,6 +125,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             EarningsEventPort earningsEventPort,
             EarningsPreviewPort earningsPreviewPort,
             PostEarningsReviewPort postEarningsReviewPort,
+            DartCorpMappingPort dartCorpMappingPort,
+            DartFinancialImportHistoryPort dartFinancialImportHistoryPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
@@ -139,6 +147,8 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.earningsEventPort = earningsEventPort;
         this.earningsPreviewPort = earningsPreviewPort;
         this.postEarningsReviewPort = postEarningsReviewPort;
+        this.dartCorpMappingPort = dartCorpMappingPort;
+        this.dartFinancialImportHistoryPort = dartFinancialImportHistoryPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -395,10 +405,51 @@ public class MorningNoteService implements MorningNoteUseCase {
                         .append(review.stockCode())
                         .append(" revenueSurprise=").append(review.revenueSurpriseRate())
                         .append(" opSurprise=").append(review.operatingIncomeSurpriseRate()));
+        appendDartItems(result, stocks);
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
         return result.toString();
+    }
+
+    private void appendDartItems(StringBuilder result, List<Stock> stocks) {
+        if (dartCorpMappingPort == null) {
+            return;
+        }
+        stocks.stream()
+                .filter(stock -> dartCorpMappingPort.findByStockCode(stock.stockCode()).isEmpty())
+                .forEach(stock -> result.append("\n- DART_MAPPING_REQUIRED ")
+                        .append(stock.stockCode()).append(" corp_code mapping 필요"));
+        stocks.stream()
+                .filter(stock -> latestEarnings(stock.stockCode())
+                        .filter(earnings -> earnings.status() == EarningsAnalysisStatus.DATA_INSUFFICIENT)
+                        .isPresent())
+                .forEach(stock -> result.append("\n- DART_IMPORT_REQUIRED ")
+                        .append(stock.stockCode()).append(" earnings analysis DATA_INSUFFICIENT"));
+        if (dartFinancialImportHistoryPort == null) {
+            return;
+        }
+        stocks.forEach(stock -> dartFinancialImportHistoryPort.findHistoriesByStockCode(stock.stockCode()).stream()
+                .findFirst()
+                .ifPresent(history -> {
+                    if (history.status() == DartFinancialImportStatus.FAILED) {
+                        result.append("\n- DART_IMPORT_FAILED ")
+                                .append(stock.stockCode()).append(" ")
+                                .append(history.failureReason());
+                    }
+                    latestEarnings(stock.stockCode())
+                            .filter(earnings -> earnings.status() == EarningsAnalysisStatus.STRONG
+                                    || earnings.status() == EarningsAnalysisStatus.WEAK)
+                            .ifPresent(earnings -> {
+                                if (history.status() == DartFinancialImportStatus.SUCCESS
+                                        || history.status() == DartFinancialImportStatus.PARTIAL) {
+                                    result.append("\n- DART_IMPORT_RECENT_EARNINGS_STATUS ")
+                                            .append(stock.stockCode())
+                                            .append(" ").append(earnings.status())
+                                            .append(" overallScore=").append(earnings.overallScore());
+                                }
+                            });
+                }));
     }
 
     private List<EarningsEvent> upcomingEarningsEvents(LocalDate from, LocalDate to) {

@@ -34,7 +34,7 @@ public class QuarterlyFinancialEntity {
     private BigDecimal totalEquity;
     @Column(name = "operating_cash_flow", nullable = false, precision = 19, scale = 4)
     private BigDecimal operatingCashFlow;
-    @Column(name = "free_cash_flow", nullable = false, precision = 19, scale = 4)
+    @Column(name = "free_cash_flow", precision = 19, scale = 4)
     private BigDecimal freeCashFlow;
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

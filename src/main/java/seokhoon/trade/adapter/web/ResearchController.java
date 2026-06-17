@@ -6,7 +6,9 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
+import seokhoon.trade.application.port.in.ImportDartFinancialsUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases.*;
+import seokhoon.trade.application.service.ResearchNotFoundException;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
 import seokhoon.trade.domain.market.SectorType;
@@ -31,6 +33,9 @@ public class ResearchController {
     private final EarningsPreviewUseCase earningsPreviewUseCase;
     private final GenerateEarningsPreviewUseCase generateEarningsPreviewUseCase;
     private final PostEarningsReviewUseCase postEarningsReviewUseCase;
+    private final DartCorpMappingUseCase dartCorpMappingUseCase;
+    private final ImportDartFinancialsUseCase importDartFinancialsUseCase;
+    private final DartFinancialImportHistoryQueryUseCase dartHistoryQueryUseCase;
 
     public ResearchController(
             ThesisUseCase thesisUseCase,
@@ -43,7 +48,10 @@ public class ResearchController {
             EarningsEventUseCase earningsEventUseCase,
             EarningsPreviewUseCase earningsPreviewUseCase,
             GenerateEarningsPreviewUseCase generateEarningsPreviewUseCase,
-            PostEarningsReviewUseCase postEarningsReviewUseCase
+            PostEarningsReviewUseCase postEarningsReviewUseCase,
+            DartCorpMappingUseCase dartCorpMappingUseCase,
+            ImportDartFinancialsUseCase importDartFinancialsUseCase,
+            DartFinancialImportHistoryQueryUseCase dartHistoryQueryUseCase
     ) {
         this.thesisUseCase = thesisUseCase;
         this.catalystUseCase = catalystUseCase;
@@ -56,6 +64,9 @@ public class ResearchController {
         this.earningsPreviewUseCase = earningsPreviewUseCase;
         this.generateEarningsPreviewUseCase = generateEarningsPreviewUseCase;
         this.postEarningsReviewUseCase = postEarningsReviewUseCase;
+        this.dartCorpMappingUseCase = dartCorpMappingUseCase;
+        this.importDartFinancialsUseCase = importDartFinancialsUseCase;
+        this.dartHistoryQueryUseCase = dartHistoryQueryUseCase;
     }
 
     @PostMapping("/theses")
@@ -253,6 +264,51 @@ public class ResearchController {
         return postEarningsReviewUseCase.findByStockCode(stockCode);
     }
 
+    @PostMapping("/dart/corp-mappings")
+    DartCorpMapping saveDartCorpMapping(@Valid @RequestBody DartCorpMappingRequest request) {
+        return dartCorpMappingUseCase.save(request.toCommand());
+    }
+
+    @GetMapping(value = "/dart/corp-mappings", params = "stockCode")
+    DartCorpMapping findDartCorpMapping(@RequestParam String stockCode) {
+        return dartCorpMappingUseCase.findByStockCode(stockCode)
+                .orElseThrow(() -> new ResearchNotFoundException("DART corp mapping not found: " + stockCode));
+    }
+
+    @GetMapping("/dart/corp-mappings")
+    List<DartCorpMapping> findDartCorpMappings() {
+        return dartCorpMappingUseCase.findAll();
+    }
+
+    @PostMapping("/dart/financials/import")
+    DartFinancialImportHistory importDartFinancial(
+            @RequestParam String stockCode,
+            @RequestParam int fiscalYear,
+            @RequestParam String reportCode
+    ) {
+        return importDartFinancialsUseCase.importStock(stockCode, fiscalYear, reportCode);
+    }
+
+    @PostMapping("/dart/financials/import-recent")
+    List<DartFinancialImportHistory> importRecentDartFinancials(
+            @RequestParam String stockCode,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate baseDate
+    ) {
+        return importDartFinancialsUseCase.importStockRecent(stockCode, baseDate);
+    }
+
+    @PostMapping("/dart/financials/import-watchlist")
+    List<DartFinancialImportHistory> importWatchlistDartFinancials(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate baseDate
+    ) {
+        return importDartFinancialsUseCase.importActiveWatchlist(baseDate);
+    }
+
+    @GetMapping("/dart/financials/import-histories")
+    List<DartFinancialImportHistory> findDartFinancialImportHistories(@RequestParam String stockCode) {
+        return dartHistoryQueryUseCase.findByStockCode(stockCode);
+    }
+
     public record ThesisRequest(
             @NotBlank String stockCode,
             @NotBlank String title,
@@ -446,6 +502,17 @@ public class ResearchController {
                     reviewDate, actualRevenue, actualOperatingIncome, actualNetIncome,
                     actualOperatingMargin, thesisImpact, reviewSummary, actionItems,
                     upsertQuarterlyFinancial, rerunEarningsAnalysis);
+        }
+    }
+
+    public record DartCorpMappingRequest(
+            @NotBlank String stockCode,
+            @NotBlank String corpCode,
+            @NotBlank String corpName,
+            @NotNull seokhoon.trade.domain.stock.Market market
+    ) {
+        SaveDartCorpMappingCommand toCommand() {
+            return new SaveDartCorpMappingCommand(stockCode, corpCode, corpName, market);
         }
     }
 }

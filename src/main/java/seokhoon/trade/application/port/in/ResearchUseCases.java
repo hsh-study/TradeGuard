@@ -9,6 +9,7 @@ import seokhoon.trade.domain.market.StockSectorMapping;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public final class ResearchUseCases {
     private ResearchUseCases() {
@@ -212,5 +213,23 @@ public final class ResearchUseCases {
     public interface PostEarningsReviewUseCase {
         PostEarningsReview create(CreatePostEarningsReviewCommand command);
         List<PostEarningsReview> findByStockCode(String stockCode);
+    }
+
+    public record SaveDartCorpMappingCommand(
+            String stockCode,
+            String corpCode,
+            String corpName,
+            seokhoon.trade.domain.stock.Market market
+    ) {
+    }
+
+    public interface DartCorpMappingUseCase {
+        DartCorpMapping save(SaveDartCorpMappingCommand command);
+        Optional<DartCorpMapping> findByStockCode(String stockCode);
+        List<DartCorpMapping> findAll();
+    }
+
+    public interface DartFinancialImportHistoryQueryUseCase {
+        List<DartFinancialImportHistory> findByStockCode(String stockCode);
     }
 }
