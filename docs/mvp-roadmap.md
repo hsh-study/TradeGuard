@@ -62,6 +62,9 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | Action 2: Catalyst | 완료 | `investment_catalysts`와 종목/기간 조회, 등록/부분 수정 API 구현. 실적·정책·수주·제품·섹터·공시·매크로 catalyst, 중요도와 진행 상태를 관리. UPCOMING 항목은 Morning Note에 포함되며 자동매수하지 않음 |
 | Action 3: Morning Note | 부분 완료 | 거래일 08:10 생성 scheduler와 수동 생성/조회 API 구현. 전 거래일 저장 후보, 보유 포지션, 관심종목 지표와 sector, market index 저장 데이터, 상위/하위 sector snapshot, upcoming catalyst, broken thesis, 데이터 부족 경고와 action item을 저장. Discord는 opt-in. 뉴스·공시·실적 원문 데이터 소스는 미연결 |
 | Action 1 /sector: Market/Sector Master | 부분 완료 | `market_indices`, `sectors`, `stock_sector_mappings`, `sector_daily_snapshots` schema와 sector 등록/조회/매핑/snapshot 생성 API 구현. 08:05 `SECTOR_DAILY_SNAPSHOT` scheduler가 전 거래일 기준 가격·거래대금 흐름과 leading stock을 계산해 Morning Note 기반으로 사용. 시장지수 원천 수집 port/provider와 뉴스 연결은 미구현 |
+| Earnings Analysis | 완료 | 운영자 입력 기반 `quarterly_financials`, `valuation_snapshots`, `earnings_analysis_snapshots`와 수동 저장/분석/조회 API 구현. Morning Note와 종베/장초 후보 reason/점수에 STRONG/WEAK/DATA_INSUFFICIENT를 반영하되 자동 주문은 실행하지 않음 |
+| Earnings Preview | 완료 | 운영자 입력 기반 `earnings_events`, `earnings_previews`와 event/preview API, thesis/latest analysis/valuation/indicator/catalyst 기반 preview 초안 생성 구현. EARNINGS catalyst 자동 생성 옵션과 중복 방지 포함 |
+| Earnings Post Review | 완료 | `post_earnings_reviews`와 post review API 구현. expected 대비 surprise 계산, thesis impact action item, announced-but-not-reviewed Morning Note 경고 구현. BROKEN이어도 자동 thesis 변경·자동매도 없음 |
 
 ## 4. 구현 단계
 
@@ -197,6 +200,6 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 5. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
 6. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
 7. scheduler 실행 이력 보관 기간과 자동 정리 정책 결정
-8. 시장지수 원천 수집 provider와 sector master seed/import 방식 결정
-9. 실적 surprise, consensus revision을 구조화하는 earnings analysis 추가
-10. 뉴스 크롤링 없이 운영자가 입력하거나 검증된 provider가 공급하는 catalyst evidence 연결
+8. consensus provider 범위와 합법적인 라이선스/입력 경로 결정
+9. disclosure provider 범위와 DART/KRX 공시 원문 수집 정책 결정
+10. market index provider와 sector master seed/import 방식 결정

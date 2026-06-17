@@ -2,6 +2,7 @@ package seokhoon.trade.adapter.persistence;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.domain.Sort;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -47,4 +48,41 @@ interface EarningsAnalysisSnapshotJpaRepository extends JpaRepository<EarningsAn
     Optional<EarningsAnalysisSnapshotEntity> findFirstByStockCodeOrderByBaseDateDesc(String stockCode);
 
     List<EarningsAnalysisSnapshotEntity> findByBaseDate(LocalDate baseDate);
+}
+
+interface EarningsEventJpaRepository extends JpaRepository<EarningsEventEntity, Long>,
+        JpaSpecificationExecutor<EarningsEventEntity> {
+    Optional<EarningsEventEntity> findByStockCodeAndFiscalYearAndFiscalQuarter(
+            String stockCode,
+            int fiscalYear,
+            int fiscalQuarter
+    );
+
+    List<EarningsEventEntity> findByStatusAndExpectedAnnouncementDateBetween(
+            seokhoon.trade.domain.research.EarningsEventStatus status,
+            LocalDate from,
+            LocalDate to,
+            Sort sort
+    );
+}
+
+interface EarningsPreviewJpaRepository extends JpaRepository<EarningsPreviewEntity, Long> {
+    Optional<EarningsPreviewEntity> findFirstByEarningsEventIdOrderByPreviewDateDesc(long earningsEventId);
+    List<EarningsPreviewEntity> findByStockCode(String stockCode, Sort sort);
+    List<EarningsPreviewEntity> findByStatusAndPreviewDateBetween(
+            seokhoon.trade.domain.research.EarningsPreviewStatus status,
+            LocalDate from,
+            LocalDate to,
+            Sort sort
+    );
+}
+
+interface PostEarningsReviewJpaRepository extends JpaRepository<PostEarningsReviewEntity, Long> {
+    Optional<PostEarningsReviewEntity> findByEarningsEventId(long earningsEventId);
+    List<PostEarningsReviewEntity> findByStockCode(String stockCode, Sort sort);
+    List<PostEarningsReviewEntity> findByReviewDateBetween(LocalDate from, LocalDate to, Sort sort);
+    List<PostEarningsReviewEntity> findByThesisImpactIn(
+            List<seokhoon.trade.domain.research.ThesisImpact> thesisImpacts,
+            Sort sort
+    );
 }

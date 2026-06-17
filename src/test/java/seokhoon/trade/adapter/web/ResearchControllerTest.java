@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
+import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
@@ -32,7 +33,11 @@ class ResearchControllerTest {
                 new StubSectorUseCase(),
                 new StubEarningsDataUseCase(),
                 new StubAnalyzeEarningsUseCase(),
-                new StubEarningsAnalysisQueryUseCase()
+                new StubEarningsAnalysisQueryUseCase(),
+                new StubEarningsEventUseCase(),
+                new StubEarningsPreviewUseCase(),
+                new StubGenerateEarningsPreviewUseCase(),
+                new StubPostEarningsReviewUseCase()
         )).setControllerAdvice(new GlobalExceptionHandler()).build();
 
         mvc.perform(post("/api/research/theses")
@@ -181,6 +186,89 @@ class ResearchControllerTest {
                         .param("baseDate", "2026-06-15"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].status").value("STRONG"));
+
+        mvc.perform(post("/api/research/earnings-events")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "stockCode":"005930",
+                                  "fiscalYear":2026,
+                                  "fiscalQuarter":2,
+                                  "expectedAnnouncementDate":"2026-07-31"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SCHEDULED"));
+        mvc.perform(get("/api/research/earnings-events")
+                        .param("from", "2026-07-01")
+                        .param("to", "2026-08-10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].stockCode").value("005930"));
+        mvc.perform(get("/api/research/earnings-events")
+                        .param("stockCode", "005930"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].fiscalQuarter").value(2));
+        mvc.perform(patch("/api/research/earnings-events/1")
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"ANNOUNCED","actualAnnouncementDate":"2026-07-31"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ANNOUNCED"));
+        mvc.perform(post("/api/research/earnings-previews")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "earningsEventId":1,
+                                  "stockCode":"005930",
+                                  "previewDate":"2026-07-25",
+                                  "keyCheckpoints":["HBM margin"],
+                                  "expectedRevenue":1000,
+                                  "expectedOperatingIncome":150,
+                                  "expectedNetIncome":100,
+                                  "status":"READY"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("READY"));
+        mvc.perform(post("/api/research/earnings-previews/generate")
+                        .param("stockCode", "005930")
+                        .param("earningsEventId", "1")
+                        .param("previewDate", "2026-07-25"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keyCheckpoints[0]").value("HBM margin"));
+        mvc.perform(get("/api/research/earnings-previews")
+                        .param("stockCode", "005930"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("READY"));
+        mvc.perform(get("/api/research/earnings-previews/upcoming")
+                        .param("from", "2026-07-20")
+                        .param("to", "2026-07-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].stockCode").value("005930"));
+        mvc.perform(post("/api/research/post-earnings-reviews")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "earningsEventId":1,
+                                  "stockCode":"005930",
+                                  "reviewDate":"2026-07-31",
+                                  "actualRevenue":1100,
+                                  "actualOperatingIncome":180,
+                                  "actualNetIncome":120,
+                                  "thesisImpact":"STRENGTHENED",
+                                  "reviewSummary":"Beat expectations",
+                                  "actionItems":[],
+                                  "upsertQuarterlyFinancial":false,
+                                  "rerunEarningsAnalysis":false
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.thesisImpact").value("STRENGTHENED"));
+        mvc.perform(get("/api/research/post-earnings-reviews")
+                        .param("stockCode", "005930"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].reviewSummary").value("Beat expectations"));
     }
 
     private static class StubThesisUseCase implements ResearchUseCases.ThesisUseCase {
@@ -300,6 +388,59 @@ class ResearchControllerTest {
         }
     }
 
+    private static class StubEarningsEventUseCase implements ResearchUseCases.EarningsEventUseCase {
+        @Override
+        public EarningsEvent create(ResearchUseCases.CreateEarningsEventCommand command) {
+            return event(command.status() == null ? EarningsEventStatus.SCHEDULED : command.status());
+        }
+
+        @Override
+        public List<EarningsEvent> find(String stockCode, LocalDate from, LocalDate to) {
+            return List.of(event(EarningsEventStatus.SCHEDULED));
+        }
+
+        @Override
+        public EarningsEvent update(long id, ResearchUseCases.UpdateEarningsEventCommand command) {
+            return event(command.status());
+        }
+    }
+
+    private static class StubEarningsPreviewUseCase implements ResearchUseCases.EarningsPreviewUseCase {
+        @Override
+        public EarningsPreview create(ResearchUseCases.CreateEarningsPreviewCommand command) {
+            return preview();
+        }
+
+        @Override
+        public List<EarningsPreview> findByStockCode(String stockCode) {
+            return List.of(preview());
+        }
+
+        @Override
+        public List<EarningsPreview> findUpcomingReady(LocalDate from, LocalDate to) {
+            return List.of(preview());
+        }
+    }
+
+    private static class StubGenerateEarningsPreviewUseCase implements GenerateEarningsPreviewUseCase {
+        @Override
+        public EarningsPreview generate(String stockCode, long earningsEventId, LocalDate previewDate) {
+            return preview();
+        }
+    }
+
+    private static class StubPostEarningsReviewUseCase implements ResearchUseCases.PostEarningsReviewUseCase {
+        @Override
+        public PostEarningsReview create(ResearchUseCases.CreatePostEarningsReviewCommand command) {
+            return review(command.thesisImpact(), command.reviewSummary());
+        }
+
+        @Override
+        public List<PostEarningsReview> findByStockCode(String stockCode) {
+            return List.of(review(ThesisImpact.STRENGTHENED, "Beat expectations"));
+        }
+    }
+
     private static InvestmentThesis thesis(ThesisStatus status) {
         return new InvestmentThesis(1L, "005930", "HBM recovery",
                 "memory margin improves", "margin declines",
@@ -346,5 +487,28 @@ class ResearchControllerTest {
                 new BigDecimal("12"), new BigDecimal("1.2"), new BigDecimal("1.8"),
                 30, 35, 65, EarningsAnalysisStatus.STRONG,
                 List.of("REVENUE_YOY_OVER_10PCT"), NOW, NOW);
+    }
+
+    private static EarningsEvent event(EarningsEventStatus status) {
+        return new EarningsEvent(1L, "005930", 2026, 2,
+                LocalDate.of(2026, 7, 31),
+                status == EarningsEventStatus.ANNOUNCED ? LocalDate.of(2026, 7, 31) : null,
+                status, null, NOW, NOW);
+    }
+
+    private static EarningsPreview preview() {
+        return new EarningsPreview(1L, 1L, "005930",
+                LocalDate.of(2026, 7, 25), List.of("HBM margin"),
+                new BigDecimal("1000"), new BigDecimal("150"), new BigDecimal("100"),
+                new BigDecimal("0.1500"), List.of("FX risk"),
+                List.of("margin improves"), EarningsPreviewStatus.READY, NOW, NOW);
+    }
+
+    private static PostEarningsReview review(ThesisImpact impact, String summary) {
+        return new PostEarningsReview(1L, 1L, "005930",
+                LocalDate.of(2026, 7, 31), new BigDecimal("1100"),
+                new BigDecimal("180"), new BigDecimal("120"),
+                new BigDecimal("0.1636"), new BigDecimal("0.1000"),
+                new BigDecimal("0.2000"), impact, summary, List.of(), NOW, NOW);
     }
 }

@@ -15,13 +15,17 @@ import java.util.Optional;
 @Component
 public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         InvestmentCatalystPort, MorningNotePort, QuarterlyFinancialPort,
-        ValuationSnapshotPort, EarningsAnalysisPort {
+        ValuationSnapshotPort, EarningsAnalysisPort, EarningsEventPort,
+        EarningsPreviewPort, PostEarningsReviewPort {
     private final InvestmentThesisJpaRepository theses;
     private final InvestmentCatalystJpaRepository catalysts;
     private final MorningNoteJpaRepository notes;
     private final QuarterlyFinancialJpaRepository financials;
     private final ValuationSnapshotJpaRepository valuations;
     private final EarningsAnalysisSnapshotJpaRepository earningsAnalyses;
+    private final EarningsEventJpaRepository earningsEvents;
+    private final EarningsPreviewJpaRepository earningsPreviews;
+    private final PostEarningsReviewJpaRepository postEarningsReviews;
 
     public ResearchPersistenceAdapter(
             InvestmentThesisJpaRepository theses,
@@ -29,7 +33,10 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
             MorningNoteJpaRepository notes,
             QuarterlyFinancialJpaRepository financials,
             ValuationSnapshotJpaRepository valuations,
-            EarningsAnalysisSnapshotJpaRepository earningsAnalyses
+            EarningsAnalysisSnapshotJpaRepository earningsAnalyses,
+            EarningsEventJpaRepository earningsEvents,
+            EarningsPreviewJpaRepository earningsPreviews,
+            PostEarningsReviewJpaRepository postEarningsReviews
     ) {
         this.theses = theses;
         this.catalysts = catalysts;
@@ -37,6 +44,9 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         this.financials = financials;
         this.valuations = valuations;
         this.earningsAnalyses = earningsAnalyses;
+        this.earningsEvents = earningsEvents;
+        this.earningsPreviews = earningsPreviews;
+        this.postEarningsReviews = postEarningsReviews;
     }
 
     @Override
@@ -212,5 +222,141 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
         return earningsAnalyses.findByBaseDate(baseDate).stream()
                 .map(EarningsAnalysisSnapshotEntity::toDomain)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public EarningsEvent save(EarningsEvent value) {
+        EarningsEventEntity entity = value.id() == null
+                ? earningsEvents.findByStockCodeAndFiscalYearAndFiscalQuarter(
+                                value.stockCode(), value.fiscalYear(), value.fiscalQuarter())
+                        .orElseGet(() -> EarningsEventEntity.from(value))
+                : earningsEvents.findById(value.id()).orElseGet(() -> EarningsEventEntity.from(value));
+        entity.update(value);
+        return earningsEvents.save(entity).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<EarningsEvent> findById(long id) {
+        return earningsEvents.findById(id).map(EarningsEventEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<EarningsEvent> findEventByStockCodeAndQuarter(String stockCode, int fiscalYear, int fiscalQuarter) {
+        return earningsEvents.findByStockCodeAndFiscalYearAndFiscalQuarter(stockCode, fiscalYear, fiscalQuarter)
+                .map(EarningsEventEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<EarningsEvent> find(String stockCode, LocalDate from, LocalDate to) {
+        Specification<EarningsEventEntity> specification = (root, query, cb) -> cb.conjunction();
+        if (stockCode != null) {
+            specification = specification.and((root, query, cb) -> cb.equal(root.get("stockCode"), stockCode));
+        }
+        if (from != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.greaterThanOrEqualTo(root.get("expectedAnnouncementDate"), from));
+        }
+        if (to != null) {
+            specification = specification.and((root, query, cb) ->
+                    cb.lessThanOrEqualTo(root.get("expectedAnnouncementDate"), to));
+        }
+        return earningsEvents.findAll(specification,
+                        Sort.by(Sort.Order.asc("expectedAnnouncementDate"), Sort.Order.asc("stockCode")))
+                .stream().map(EarningsEventEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<EarningsEvent> findByStatusAndExpectedAnnouncementDateBetween(
+            EarningsEventStatus status,
+            LocalDate from,
+            LocalDate to
+    ) {
+        return earningsEvents.findByStatusAndExpectedAnnouncementDateBetween(
+                        status, from, to, Sort.by(Sort.Order.asc("expectedAnnouncementDate")))
+                .stream().map(EarningsEventEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public EarningsPreview save(EarningsPreview value) {
+        EarningsPreviewEntity entity = value.id() == null
+                ? EarningsPreviewEntity.from(value)
+                : earningsPreviews.findById(value.id()).orElseGet(() -> EarningsPreviewEntity.from(value));
+        entity.update(value);
+        return earningsPreviews.save(entity).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<EarningsPreview> findPreviewById(long id) {
+        return earningsPreviews.findById(id).map(EarningsPreviewEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<EarningsPreview> findLatestByEarningsEventId(long earningsEventId) {
+        return earningsPreviews.findFirstByEarningsEventIdOrderByPreviewDateDesc(earningsEventId)
+                .map(EarningsPreviewEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<EarningsPreview> findPreviewsByStockCode(String stockCode) {
+        return earningsPreviews.findByStockCode(stockCode, Sort.by(Sort.Order.desc("previewDate")))
+                .stream().map(EarningsPreviewEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<EarningsPreview> findByStatusAndPreviewDateBetween(
+            EarningsPreviewStatus status,
+            LocalDate from,
+            LocalDate to
+    ) {
+        return earningsPreviews.findByStatusAndPreviewDateBetween(
+                        status, from, to, Sort.by(Sort.Order.asc("previewDate")))
+                .stream().map(EarningsPreviewEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public PostEarningsReview save(PostEarningsReview value) {
+        PostEarningsReviewEntity entity = postEarningsReviews.findByEarningsEventId(value.earningsEventId())
+                .orElseGet(() -> PostEarningsReviewEntity.from(value));
+        entity.update(value);
+        return postEarningsReviews.save(entity).toDomain();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<PostEarningsReview> findByEarningsEventId(long earningsEventId) {
+        return postEarningsReviews.findByEarningsEventId(earningsEventId)
+                .map(PostEarningsReviewEntity::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PostEarningsReview> findReviewsByStockCode(String stockCode) {
+        return postEarningsReviews.findByStockCode(stockCode, Sort.by(Sort.Order.desc("reviewDate")))
+                .stream().map(PostEarningsReviewEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PostEarningsReview> findByReviewDateBetween(LocalDate from, LocalDate to) {
+        return postEarningsReviews.findByReviewDateBetween(from, to, Sort.by(Sort.Order.desc("reviewDate")))
+                .stream().map(PostEarningsReviewEntity::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PostEarningsReview> findByThesisImpactIn(List<ThesisImpact> thesisImpacts) {
+        return postEarningsReviews.findByThesisImpactIn(thesisImpacts, Sort.by(Sort.Order.desc("reviewDate")))
+                .stream().map(PostEarningsReviewEntity::toDomain).toList();
     }
 }

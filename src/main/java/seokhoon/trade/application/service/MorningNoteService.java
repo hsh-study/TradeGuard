@@ -45,6 +45,9 @@ public class MorningNoteService implements MorningNoteUseCase {
     private final StockSectorMappingPort stockSectorMappingPort;
     private final SectorDailySnapshotPort sectorSnapshotPort;
     private final EarningsAnalysisPort earningsAnalysisPort;
+    private final EarningsEventPort earningsEventPort;
+    private final EarningsPreviewPort earningsPreviewPort;
+    private final PostEarningsReviewPort postEarningsReviewPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -64,11 +67,16 @@ public class MorningNoteService implements MorningNoteUseCase {
             StockSectorMappingPort stockSectorMappingPort,
             SectorDailySnapshotPort sectorSnapshotPort,
             EarningsAnalysisPort earningsAnalysisPort,
+            EarningsEventPort earningsEventPort,
+            EarningsPreviewPort earningsPreviewPort,
+            PostEarningsReviewPort postEarningsReviewPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
                 thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
-                stockSectorMappingPort, sectorSnapshotPort, earningsAnalysisPort, metrics, Clock.systemUTC());
+                stockSectorMappingPort, sectorSnapshotPort, earningsAnalysisPort,
+                earningsEventPort, earningsPreviewPort, postEarningsReviewPort,
+                metrics, Clock.systemUTC());
     }
 
     MorningNoteService(
@@ -90,7 +98,7 @@ public class MorningNoteService implements MorningNoteUseCase {
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
                 thesisPort, catalystPort, calendarPort, marketIndexPort, sectorPort,
-                stockSectorMappingPort, sectorSnapshotPort, null, metrics, clock);
+                stockSectorMappingPort, sectorSnapshotPort, null, null, null, null, metrics, clock);
     }
 
     MorningNoteService(
@@ -108,6 +116,9 @@ public class MorningNoteService implements MorningNoteUseCase {
             StockSectorMappingPort stockSectorMappingPort,
             SectorDailySnapshotPort sectorSnapshotPort,
             EarningsAnalysisPort earningsAnalysisPort,
+            EarningsEventPort earningsEventPort,
+            EarningsPreviewPort earningsPreviewPort,
+            PostEarningsReviewPort postEarningsReviewPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
@@ -125,6 +136,9 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.stockSectorMappingPort = stockSectorMappingPort;
         this.sectorSnapshotPort = sectorSnapshotPort;
         this.earningsAnalysisPort = earningsAnalysisPort;
+        this.earningsEventPort = earningsEventPort;
+        this.earningsPreviewPort = earningsPreviewPort;
+        this.postEarningsReviewPort = postEarningsReviewPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -360,10 +374,63 @@ public class MorningNoteService implements MorningNoteUseCase {
                 .forEach(signal -> result.append("\n- EARNINGS_WEAK_BUT_SIGNAL ")
                         .append(signal.stockCode()).append(" ")
                         .append(signal.strategyName()).append(" 후보지만 실적 품질 약함"));
+        upcomingEarningsEvents(tradeDate, tradeDate.plusDays(7))
+                .forEach(event -> result.append("\n- UPCOMING_EARNINGS ")
+                        .append(event.expectedAnnouncementDate()).append(" ")
+                        .append(event.stockCode()).append(" ")
+                        .append(event.fiscalYear()).append("Q").append(event.fiscalQuarter()));
+        readyPreviews(tradeDate, tradeDate.plusDays(7))
+                .forEach(preview -> result.append("\n- EARNINGS_PREVIEW_READY ")
+                        .append(preview.stockCode())
+                        .append(" previewDate=").append(preview.previewDate())
+                        .append(" checkpoints=").append(preview.keyCheckpoints()));
+        announcedNotReviewed(tradeDate.minusDays(30), tradeDate)
+                .forEach(event -> result.append("\n- EARNINGS_REVIEW_REQUIRED ")
+                        .append(event.stockCode()).append(" ")
+                        .append(event.fiscalYear()).append("Q").append(event.fiscalQuarter())
+                        .append(" announced=").append(event.actualAnnouncementDate()));
+        negativeReviews()
+                .forEach(review -> result.append("\n- POST_EARNINGS_")
+                        .append(review.thesisImpact()).append(" ")
+                        .append(review.stockCode())
+                        .append(" revenueSurprise=").append(review.revenueSurpriseRate())
+                        .append(" opSurprise=").append(review.operatingIncomeSurpriseRate()));
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
         return result.toString();
+    }
+
+    private List<EarningsEvent> upcomingEarningsEvents(LocalDate from, LocalDate to) {
+        if (earningsEventPort == null) {
+            return List.of();
+        }
+        return earningsEventPort.findByStatusAndExpectedAnnouncementDateBetween(
+                EarningsEventStatus.SCHEDULED, from, to);
+    }
+
+    private List<EarningsPreview> readyPreviews(LocalDate from, LocalDate to) {
+        if (earningsPreviewPort == null) {
+            return List.of();
+        }
+        return earningsPreviewPort.findByStatusAndPreviewDateBetween(EarningsPreviewStatus.READY, from, to);
+    }
+
+    private List<EarningsEvent> announcedNotReviewed(LocalDate from, LocalDate to) {
+        if (earningsEventPort == null || postEarningsReviewPort == null) {
+            return List.of();
+        }
+        return earningsEventPort.find(null, from, to).stream()
+                .filter(event -> event.status() == EarningsEventStatus.ANNOUNCED)
+                .filter(event -> postEarningsReviewPort.findByEarningsEventId(event.id()).isEmpty())
+                .toList();
+    }
+
+    private List<PostEarningsReview> negativeReviews() {
+        if (postEarningsReviewPort == null) {
+            return List.of();
+        }
+        return postEarningsReviewPort.findByThesisImpactIn(List.of(ThesisImpact.WEAKENED, ThesisImpact.BROKEN));
     }
 
     private String earningsStatus(String stockCode) {

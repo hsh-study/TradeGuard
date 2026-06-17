@@ -145,4 +145,72 @@ public final class ResearchUseCases {
         EarningsAnalysisSnapshot findLatestByStockCode(String stockCode);
         List<EarningsAnalysisSnapshot> findByBaseDate(LocalDate baseDate);
     }
+
+    public record CreateEarningsEventCommand(
+            String stockCode,
+            int fiscalYear,
+            int fiscalQuarter,
+            LocalDate expectedAnnouncementDate,
+            LocalDate actualAnnouncementDate,
+            EarningsEventStatus status,
+            String memo,
+            Boolean autoCreateCatalyst
+    ) {
+    }
+
+    public record UpdateEarningsEventCommand(
+            LocalDate expectedAnnouncementDate,
+            LocalDate actualAnnouncementDate,
+            EarningsEventStatus status,
+            String memo
+    ) {
+    }
+
+    public interface EarningsEventUseCase {
+        EarningsEvent create(CreateEarningsEventCommand command);
+        List<EarningsEvent> find(String stockCode, LocalDate from, LocalDate to);
+        EarningsEvent update(long id, UpdateEarningsEventCommand command);
+    }
+
+    public record CreateEarningsPreviewCommand(
+            long earningsEventId,
+            String stockCode,
+            LocalDate previewDate,
+            List<String> keyCheckpoints,
+            BigDecimal expectedRevenue,
+            BigDecimal expectedOperatingIncome,
+            BigDecimal expectedNetIncome,
+            BigDecimal expectedOperatingMargin,
+            List<String> expectedRisks,
+            List<String> thesisWatchPoints,
+            EarningsPreviewStatus status
+    ) {
+    }
+
+    public interface EarningsPreviewUseCase {
+        EarningsPreview create(CreateEarningsPreviewCommand command);
+        List<EarningsPreview> findByStockCode(String stockCode);
+        List<EarningsPreview> findUpcomingReady(LocalDate from, LocalDate to);
+    }
+
+    public record CreatePostEarningsReviewCommand(
+            long earningsEventId,
+            String stockCode,
+            LocalDate reviewDate,
+            BigDecimal actualRevenue,
+            BigDecimal actualOperatingIncome,
+            BigDecimal actualNetIncome,
+            BigDecimal actualOperatingMargin,
+            ThesisImpact thesisImpact,
+            String reviewSummary,
+            List<String> actionItems,
+            boolean upsertQuarterlyFinancial,
+            boolean rerunEarningsAnalysis
+    ) {
+    }
+
+    public interface PostEarningsReviewUseCase {
+        PostEarningsReview create(CreatePostEarningsReviewCommand command);
+        List<PostEarningsReview> findByStockCode(String stockCode);
+    }
 }

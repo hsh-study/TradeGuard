@@ -5,6 +5,7 @@ import jakarta.validation.constraints.*;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
+import seokhoon.trade.application.port.in.GenerateEarningsPreviewUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases.*;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
@@ -26,6 +27,10 @@ public class ResearchController {
     private final EarningsDataUseCase earningsDataUseCase;
     private final AnalyzeEarningsUseCase analyzeEarningsUseCase;
     private final EarningsAnalysisQueryUseCase earningsAnalysisQueryUseCase;
+    private final EarningsEventUseCase earningsEventUseCase;
+    private final EarningsPreviewUseCase earningsPreviewUseCase;
+    private final GenerateEarningsPreviewUseCase generateEarningsPreviewUseCase;
+    private final PostEarningsReviewUseCase postEarningsReviewUseCase;
 
     public ResearchController(
             ThesisUseCase thesisUseCase,
@@ -34,7 +39,11 @@ public class ResearchController {
             SectorUseCase sectorUseCase,
             EarningsDataUseCase earningsDataUseCase,
             AnalyzeEarningsUseCase analyzeEarningsUseCase,
-            EarningsAnalysisQueryUseCase earningsAnalysisQueryUseCase
+            EarningsAnalysisQueryUseCase earningsAnalysisQueryUseCase,
+            EarningsEventUseCase earningsEventUseCase,
+            EarningsPreviewUseCase earningsPreviewUseCase,
+            GenerateEarningsPreviewUseCase generateEarningsPreviewUseCase,
+            PostEarningsReviewUseCase postEarningsReviewUseCase
     ) {
         this.thesisUseCase = thesisUseCase;
         this.catalystUseCase = catalystUseCase;
@@ -43,6 +52,10 @@ public class ResearchController {
         this.earningsDataUseCase = earningsDataUseCase;
         this.analyzeEarningsUseCase = analyzeEarningsUseCase;
         this.earningsAnalysisQueryUseCase = earningsAnalysisQueryUseCase;
+        this.earningsEventUseCase = earningsEventUseCase;
+        this.earningsPreviewUseCase = earningsPreviewUseCase;
+        this.generateEarningsPreviewUseCase = generateEarningsPreviewUseCase;
+        this.postEarningsReviewUseCase = postEarningsReviewUseCase;
     }
 
     @PostMapping("/theses")
@@ -177,6 +190,69 @@ public class ResearchController {
         return earningsAnalysisQueryUseCase.findByBaseDate(baseDate);
     }
 
+    @PostMapping("/earnings-events")
+    EarningsEvent createEarningsEvent(@Valid @RequestBody EarningsEventRequest request) {
+        return earningsEventUseCase.create(request.toCreateCommand());
+    }
+
+    @GetMapping(value = "/earnings-events", params = {"from", "to"})
+    List<EarningsEvent> findEarningsEventsByDate(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return earningsEventUseCase.find(null, from, to);
+    }
+
+    @GetMapping(value = "/earnings-events", params = "stockCode")
+    List<EarningsEvent> findEarningsEventsByStock(@RequestParam String stockCode) {
+        return earningsEventUseCase.find(stockCode, null, null);
+    }
+
+    @PatchMapping("/earnings-events/{id}")
+    EarningsEvent updateEarningsEvent(
+            @PathVariable long id,
+            @RequestBody EarningsEventPatchRequest request
+    ) {
+        return earningsEventUseCase.update(id, request.toCommand());
+    }
+
+    @PostMapping("/earnings-previews")
+    EarningsPreview createEarningsPreview(@Valid @RequestBody EarningsPreviewRequest request) {
+        return earningsPreviewUseCase.create(request.toCommand());
+    }
+
+    @PostMapping("/earnings-previews/generate")
+    EarningsPreview generateEarningsPreview(
+            @RequestParam String stockCode,
+            @RequestParam long earningsEventId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate previewDate
+    ) {
+        return generateEarningsPreviewUseCase.generate(stockCode, earningsEventId, previewDate);
+    }
+
+    @GetMapping("/earnings-previews")
+    List<EarningsPreview> findEarningsPreviews(@RequestParam String stockCode) {
+        return earningsPreviewUseCase.findByStockCode(stockCode);
+    }
+
+    @GetMapping("/earnings-previews/upcoming")
+    List<EarningsPreview> findUpcomingEarningsPreviews(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return earningsPreviewUseCase.findUpcomingReady(from, to);
+    }
+
+    @PostMapping("/post-earnings-reviews")
+    PostEarningsReview createPostEarningsReview(@Valid @RequestBody PostEarningsReviewRequest request) {
+        return postEarningsReviewUseCase.create(request.toCommand());
+    }
+
+    @GetMapping("/post-earnings-reviews")
+    List<PostEarningsReview> findPostEarningsReviews(@RequestParam String stockCode) {
+        return postEarningsReviewUseCase.findByStockCode(stockCode);
+    }
+
     public record ThesisRequest(
             @NotBlank String stockCode,
             @NotBlank String title,
@@ -299,5 +375,77 @@ public class ResearchController {
     public record EarningsAnalysisBatchRequest(
             @NotEmpty List<@NotBlank String> stockCodes
     ) {
+    }
+
+    public record EarningsEventRequest(
+            @NotBlank String stockCode,
+            @Min(1900) int fiscalYear,
+            @Min(1) @Max(4) int fiscalQuarter,
+            @NotNull LocalDate expectedAnnouncementDate,
+            LocalDate actualAnnouncementDate,
+            EarningsEventStatus status,
+            String memo,
+            Boolean autoCreateCatalyst
+    ) {
+        CreateEarningsEventCommand toCreateCommand() {
+            return new CreateEarningsEventCommand(stockCode, fiscalYear, fiscalQuarter,
+                    expectedAnnouncementDate, actualAnnouncementDate, status, memo,
+                    autoCreateCatalyst);
+        }
+    }
+
+    public record EarningsEventPatchRequest(
+            LocalDate expectedAnnouncementDate,
+            LocalDate actualAnnouncementDate,
+            EarningsEventStatus status,
+            String memo
+    ) {
+        UpdateEarningsEventCommand toCommand() {
+            return new UpdateEarningsEventCommand(expectedAnnouncementDate,
+                    actualAnnouncementDate, status, memo);
+        }
+    }
+
+    public record EarningsPreviewRequest(
+            @Positive long earningsEventId,
+            @NotBlank String stockCode,
+            @NotNull LocalDate previewDate,
+            List<String> keyCheckpoints,
+            BigDecimal expectedRevenue,
+            BigDecimal expectedOperatingIncome,
+            BigDecimal expectedNetIncome,
+            BigDecimal expectedOperatingMargin,
+            List<String> expectedRisks,
+            List<String> thesisWatchPoints,
+            EarningsPreviewStatus status
+    ) {
+        CreateEarningsPreviewCommand toCommand() {
+            return new CreateEarningsPreviewCommand(earningsEventId, stockCode,
+                    previewDate, keyCheckpoints, expectedRevenue, expectedOperatingIncome,
+                    expectedNetIncome, expectedOperatingMargin, expectedRisks,
+                    thesisWatchPoints, status);
+        }
+    }
+
+    public record PostEarningsReviewRequest(
+            @Positive long earningsEventId,
+            @NotBlank String stockCode,
+            @NotNull LocalDate reviewDate,
+            @NotNull BigDecimal actualRevenue,
+            @NotNull BigDecimal actualOperatingIncome,
+            @NotNull BigDecimal actualNetIncome,
+            BigDecimal actualOperatingMargin,
+            @NotNull ThesisImpact thesisImpact,
+            @NotBlank String reviewSummary,
+            List<String> actionItems,
+            boolean upsertQuarterlyFinancial,
+            boolean rerunEarningsAnalysis
+    ) {
+        CreatePostEarningsReviewCommand toCommand() {
+            return new CreatePostEarningsReviewCommand(earningsEventId, stockCode,
+                    reviewDate, actualRevenue, actualOperatingIncome, actualNetIncome,
+                    actualOperatingMargin, thesisImpact, reviewSummary, actionItems,
+                    upsertQuarterlyFinancial, rerunEarningsAnalysis);
+        }
     }
 }

@@ -254,6 +254,79 @@ curl 'http://localhost:8080/api/research/earnings-analysis?stockCode=005930'
 curl 'http://localhost:8080/api/research/earnings-analysis?baseDate=2026-06-15'
 ```
 
+Earnings Preview & Post-Earnings Review v1도 운영자 입력 기반입니다. 뉴스,
+공시, 컨센서스는 자동 수집하지 않으며 preview/review 결과는 Morning Note와
+수동 action item에만 반영됩니다. thesis impact가 `BROKEN`이어도 thesis 상태
+변경이나 자동매도는 수행하지 않습니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/earnings-events' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "stockCode": "005930",
+    "fiscalYear": 2026,
+    "fiscalQuarter": 2,
+    "expectedAnnouncementDate": "2026-07-31",
+    "memo": "메모리 마진과 HBM 출하 확인"
+  }'
+
+curl 'http://localhost:8080/api/research/earnings-events?from=2026-07-01&to=2026-08-10'
+curl 'http://localhost:8080/api/research/earnings-events?stockCode=005930'
+
+curl -X PATCH 'http://localhost:8080/api/research/earnings-events/1' \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"ANNOUNCED","actualAnnouncementDate":"2026-07-31"}'
+
+curl -X POST 'http://localhost:8080/api/research/earnings-previews/generate?stockCode=005930&earningsEventId=1&previewDate=2026-07-25'
+
+curl -X POST 'http://localhost:8080/api/research/earnings-previews' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "earningsEventId": 1,
+    "stockCode": "005930",
+    "previewDate": "2026-07-25",
+    "keyCheckpoints": ["HBM margin", "server DRAM demand"],
+    "expectedRevenue": 79000000000000,
+    "expectedOperatingIncome": 6600000000000,
+    "expectedNetIncome": 5900000000000,
+    "expectedOperatingMargin": 0.0835,
+    "expectedRisks": ["FX volatility"],
+    "thesisWatchPoints": ["margin recovery thesis"],
+    "status": "READY"
+  }'
+
+curl 'http://localhost:8080/api/research/earnings-previews?stockCode=005930'
+curl 'http://localhost:8080/api/research/earnings-previews/upcoming?from=2026-07-20&to=2026-07-31'
+
+curl -X POST 'http://localhost:8080/api/research/post-earnings-reviews' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "earningsEventId": 1,
+    "stockCode": "005930",
+    "reviewDate": "2026-07-31",
+    "actualRevenue": 81000000000000,
+    "actualOperatingIncome": 7200000000000,
+    "actualNetIncome": 6300000000000,
+    "thesisImpact": "STRENGTHENED",
+    "reviewSummary": "Revenue and operating income beat preview assumptions.",
+    "actionItems": ["Update quarterly financials with cash-flow fields"],
+    "upsertQuarterlyFinancial": false,
+    "rerunEarningsAnalysis": false
+  }'
+
+curl 'http://localhost:8080/api/research/post-earnings-reviews?stockCode=005930'
+```
+
+Surprise는 `(actual - expected) / abs(expected)`로 계산합니다. 기대값이 없거나
+0이면 surprise는 `null`입니다. `upsertQuarterlyFinancial=true`를 주더라도
+post review 입력만으로 자산/부채/자본/현금흐름 필드가 부족하므로 자동 upsert는
+하지 않고 `QUARTERLY_FINANCIAL_UPSERT_REQUIRED` action item을 생성합니다.
+
+Morning Note에는 `UPCOMING_EARNINGS`, `EARNINGS_PREVIEW_READY`,
+`EARNINGS_REVIEW_REQUIRED`, `POST_EARNINGS_WEAKENED/BROKEN` 항목이 추가됩니다.
+earnings event 생성 시 `EARNINGS_EVENT_AUTO_CREATE_CATALYST=true`이면 같은
+종목·발표일·분기의 `EARNINGS` catalyst를 중복 없이 자동 생성합니다.
+
 Sector master와 snapshot:
 
 ```sh
@@ -1026,6 +1099,9 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.research.earnings_analysis.count`: `result=success|insufficient|failure`
 - `tradeguard.research.financial_import.count`: `result=saved|failure`
 - `tradeguard.research.valuation_import.count`: `result=saved|failure`
+- `tradeguard.research.earnings_event.count`: `status`
+- `tradeguard.research.earnings_preview.count`: `result=created|ready|failure`
+- `tradeguard.research.post_earnings_review.count`: `thesisImpact`
 
 장초반 scheduler는 기존 scheduler metric에 다음 `schedulerName` tag로 기록됩니다.
 
