@@ -22,6 +22,7 @@ import seokhoon.trade.domain.position.LivePosition;
 import seokhoon.trade.domain.research.*;
 import seokhoon.trade.domain.stock.Stock;
 import seokhoon.trade.domain.stock.Market;
+import seokhoon.trade.config.InvestorFlowProperties;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -70,6 +71,7 @@ public class MorningNoteService implements MorningNoteUseCase {
     private SupplyDemandSnapshotPort supplyDemandSnapshotPort;
     private MarketInvestorFlowPort marketInvestorFlowPort;
     private InvestorFlowImportHistoryPort investorFlowImportHistoryPort;
+    private InvestorFlowProperties investorFlowProperties;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -105,6 +107,7 @@ public class MorningNoteService implements MorningNoteUseCase {
             SupplyDemandSnapshotPort supplyDemandSnapshotPort,
             MarketInvestorFlowPort marketInvestorFlowPort,
             InvestorFlowImportHistoryPort investorFlowImportHistoryPort,
+            InvestorFlowProperties investorFlowProperties,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
@@ -120,6 +123,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.supplyDemandSnapshotPort = supplyDemandSnapshotPort;
         this.marketInvestorFlowPort = marketInvestorFlowPort;
         this.investorFlowImportHistoryPort = investorFlowImportHistoryPort;
+        this.investorFlowProperties = investorFlowProperties;
     }
 
     MorningNoteService(
@@ -554,6 +558,12 @@ public class MorningNoteService implements MorningNoteUseCase {
     }
 
     private void appendSupplyDemandItems(StringBuilder result, List<Stock> stocks) {
+        if (investorFlowProperties != null
+                && investorFlowProperties.isKisProviderWithUnverifiedAmountUnit()) {
+            result.append("\n- INVESTOR_FLOW_NOT_READY provider=")
+                    .append(investorFlowProperties.getProviderType());
+            result.append("\n- AMOUNT_UNIT_UNVERIFIED verify KIS amount unit and configure KIS_INVESTOR_FLOW_AMOUNT_UNIT");
+        }
         if (supplyDemandSnapshotPort == null) {
             return;
         }

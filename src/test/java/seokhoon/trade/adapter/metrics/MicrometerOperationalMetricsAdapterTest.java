@@ -42,6 +42,7 @@ class MicrometerOperationalMetricsAdapterTest {
         metrics.recordEarlyMarketBacktest("saved");
         metrics.recordEarlyMarketFollowUpPersist("saved");
         metrics.recordInvestorFlowDiagnostic("stock", "success");
+        metrics.recordInvestorFlowReadiness("not_ready");
 
         assertThat(counter(
                 registry,
@@ -144,6 +145,12 @@ class MicrometerOperationalMetricsAdapterTest {
                 "tradeguard.research.investor_flow_diagnostic.count",
                 "scope",
                 "stock"
+        )).isEqualTo(1.0);
+        assertThat(counter(
+                registry,
+                "tradeguard.research.investor_flow_readiness.count",
+                "result",
+                "not_ready"
         )).isEqualTo(1.0);
 
         assertThat(registry.getMeters())

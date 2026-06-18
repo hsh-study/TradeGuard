@@ -13,12 +13,13 @@ import java.util.List;
 public class InvestorFlowController {
     private final ImportInvestorFlowsUseCase imports; private final AnalyzeSupplyDemandUseCase analysis;
     private final VerifyInvestorFlowProviderUseCase verification;
+    private final GetInvestorFlowReadinessUseCase readiness;
     private final StockInvestorFlowPort stockFlows; private final MarketInvestorFlowPort marketFlows;
     private final SupplyDemandSnapshotPort snapshots;
     public InvestorFlowController(ImportInvestorFlowsUseCase imports,AnalyzeSupplyDemandUseCase analysis,
-            VerifyInvestorFlowProviderUseCase verification,StockInvestorFlowPort stockFlows,
+            VerifyInvestorFlowProviderUseCase verification,GetInvestorFlowReadinessUseCase readiness,StockInvestorFlowPort stockFlows,
             MarketInvestorFlowPort marketFlows,SupplyDemandSnapshotPort snapshots){
-        this.imports=imports;this.analysis=analysis;this.verification=verification;this.stockFlows=stockFlows;this.marketFlows=marketFlows;this.snapshots=snapshots;}
+        this.imports=imports;this.analysis=analysis;this.verification=verification;this.readiness=readiness;this.stockFlows=stockFlows;this.marketFlows=marketFlows;this.snapshots=snapshots;}
     @PostMapping(value="/investor-flows/stocks/import-csv",consumes="text/csv")
     InvestorFlowImportHistory importStockCsv(@RequestBody String csv){return imports.importStockCsv(csv);}
     @PostMapping(value="/investor-flows/markets/import-csv",consumes="text/csv")
@@ -33,6 +34,8 @@ public class InvestorFlowController {
     InvestorFlowVerification verifyStock(@RequestParam String stockCode,@RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate tradeDate){return verification.verifyStock(stockCode,tradeDate);}
     @PostMapping("/investor-flows/verify/market")
     InvestorFlowVerification verifyMarket(@RequestParam InvestorFlowMarket market,@RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate tradeDate){return verification.verifyMarket(market,tradeDate);}
+    @GetMapping("/investor-flows/readiness")
+    InvestorFlowReadiness readiness(){return readiness.getReadiness();}
     @GetMapping("/investor-flows/import-histories")
     List<InvestorFlowImportHistory> histories(@RequestParam(required=false) String stockCode){return imports.findHistories(stockCode);}
     @GetMapping("/investor-flows/stocks")

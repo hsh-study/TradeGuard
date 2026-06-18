@@ -75,6 +75,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | Investor Flow / Supply Demand Auto Import | 완료 | 종목/시장 투자자별 수급, import history, provider-first import, CSV fallback, 07:40 import와 07:45 분석 scheduler, smart-money snapshot, Morning Note 및 종베/장초 점수 연동 구현. 후보 생성 중 provider 호출과 자동 주문은 없음 |
 | KIS Investor Flow Provider Adapter | 부분 완료 | 공식 샘플의 종목 TR `FHKST01010900`, 시장 TR `FHPTJ04040000`과 응답 필드 기반 read-only adapter 구현. 시장 TR은 REAL/KOSPI/KOSDAQ만 허용. 공식 샘플에 금액 단위가 명시되지 않아 기본 `UNVERIFIED`에서 호출을 차단하며 운영 실응답 단위 확인 후 활성화 필요 |
 | KIS Investor Flow Verification | 완료 | opt-in diagnostic API로 `UNVERIFIED` 상태의 제한된 read-only 호출 지원. whitelist 필드와 마스킹된 숫자 표본만 반환하며 DB/history/snapshot 저장 없음. 일반 import와 07:40/07:45 scheduler는 단위 검증 전 `AMOUNT_UNIT_UNVERIFIED`로 차단 |
+| Investor Flow Operational Readiness | 완료 | 설정, 금액 단위 검증 여부, diagnostic/auto-run 상태, 최근 종목·시장 import와 supply-demand scheduler 상태를 외부 호출 없이 조회하는 API와 Actuator health를 구현. 미검증 auto-run은 `OUT_OF_SERVICE`이며 Morning Note에 NOT_READY action item을 표시 |
 
 ## 4. 구현 단계
 

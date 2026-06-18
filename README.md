@@ -721,6 +721,47 @@ snapshot 저장 전에 차단됩니다. 검증 중 우회 저장을 막기 위�
 활성화된 이 상태에서는 CSV fallback도 flow row를 저장하지 않습니다. provider를
 비활성화한 순수 CSV fallback 운영은 기존 정책대로 사용할 수 있습니다.
 
+Investor Flow Operational Readiness v1은 외부 KIS 호출 없이 현재 설정과 최근
+종목/시장 import history, `SUPPLY_DEMAND_ANALYSIS` scheduler 이력을 점검합니다.
+
+```sh
+curl 'http://localhost:8080/api/research/investor-flows/readiness'
+```
+
+```json
+{
+  "providerEnabled": true,
+  "providerType": "KIS",
+  "amountUnit": "UNVERIFIED",
+  "amountUnitVerified": false,
+  "diagnosticEnabled": true,
+  "diagnosticAllowHttp": true,
+  "diagnosticMaskResponse": true,
+  "importAutoRun": false,
+  "lookbackDays": 20,
+  "latestStockImportStatus": null,
+  "latestMarketImportStatus": null,
+  "latestSupplyDemandAnalysisStatus": null,
+  "ready": false,
+  "blockingReasons": ["AMOUNT_UNIT_UNVERIFIED"],
+  "warnings": ["DIAGNOSTIC_MODE_ENABLED", "DIAGNOSTIC_HTTP_ENABLED"],
+  "recommendedNextActions": [
+    "Run verify stock API",
+    "Compare KIS HTS amount unit",
+    "Set KIS_INVESTOR_FLOW_AMOUNT_UNIT"
+  ]
+}
+```
+
+운영 활성화 전에는 verify API로 금액 단위를 확인하고, 확인된 값으로
+`KIS_INVESTOR_FLOW_AMOUNT_UNIT`을 설정한 뒤 diagnostic enabled/allow HTTP를
+모두 `false`로 되돌립니다. 그 다음 일반 import를 실행해 종목/시장 최근 상태가
+성공인지 확인하고 `INVESTOR_FLOW_IMPORT_AUTO_RUN=true`를 적용합니다. provider가
+비활성화된 경우 readiness는 수동/CSV fallback을 허용하기 위해 `ready=true`와
+warning을 반환합니다. Actuator `investorFlowProvider` health는 provider disabled
+또는 검증 완료 시 `UP`, auto-run이 켜진 미검증 상태에서는 `OUT_OF_SERVICE`이며
+secret, token, header, 계좌정보를 details에 포함하지 않습니다.
+
 ```sh
 curl -X POST \
   'http://localhost:8080/api/research/investor-flows/stocks/import?stockCode=005930&tradeDate=2026-06-15'
@@ -809,6 +850,8 @@ actionItems:
 - SUPPLY_DEMAND_DISTRIBUTION 034220 foreign=-500000000 institution=-300000000
 - INVESTOR_FLOW_PROVIDER_DISABLED provider disabled 상태
 - INVESTOR_FLOW_IMPORT_REQUIRED 관심종목 수급 자동 import 필요 missing=2
+- INVESTOR_FLOW_NOT_READY provider=KIS
+- AMOUNT_UNIT_UNVERIFIED verify KIS amount unit and configure KIS_INVESTOR_FLOW_AMOUNT_UNIT
 ```
 
 뉴스와 실적 원문 수집은 이번 범위에 포함되지 않습니다. 시장지수는
@@ -1528,6 +1571,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.research.market_index_import.count`: `provider`, `result=success|partial|failure|skipped`
 - `tradeguard.research.sector_import.count`: `result=success|partial|failure`
 - `tradeguard.research.investor_flow_import.count`: `scope=stock|market`, `result=success|partial|failure|skipped`
+- `tradeguard.research.investor_flow_readiness.count`: `result=ready|not_ready`
 - `tradeguard.research.supply_demand_analysis.count`: `result=success|insufficient|failure`
 - `tradeguard.strategy.supply_demand_adjustment.count`: `strategy=closing_bet|early_market`, `result=strong|distribution|insufficient|neutral`
 - `tradeguard.research.earnings_event.count`: `status`

@@ -7,6 +7,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import seokhoon.trade.application.port.in.AnalyzeSupplyDemandUseCase;
 import seokhoon.trade.application.port.in.ImportInvestorFlowsUseCase;
 import seokhoon.trade.application.port.in.VerifyInvestorFlowProviderUseCase;
+import seokhoon.trade.application.port.in.GetInvestorFlowReadinessUseCase;
+import seokhoon.trade.application.port.in.InvestorFlowReadiness;
 import seokhoon.trade.application.port.out.MarketInvestorFlowPort;
 import seokhoon.trade.application.port.out.StockInvestorFlowPort;
 import seokhoon.trade.application.port.out.SupplyDemandSnapshotPort;
@@ -22,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -67,11 +70,40 @@ class InvestorFlowControllerTest {
                         .value("INVESTOR_FLOW_DIAGNOSTIC_BLOCKED"));
     }
 
+    @Test
+    void exposesReadinessWithoutCredentialsOrAccountData() throws Exception {
+        GetInvestorFlowReadinessUseCase readiness = mock(GetInvestorFlowReadinessUseCase.class);
+        when(readiness.getReadiness()).thenReturn(new InvestorFlowReadiness(
+                true, "KIS", KisInvestorFlowAmountUnit.UNVERIFIED, false,
+                true, true, true, false, 20,
+                null, null, null, false,
+                List.of("AMOUNT_UNIT_UNVERIFIED"), List.of(),
+                List.of("Run verify stock API")));
+
+        MvcResult result = mvc(mock(VerifyInvestorFlowProviderUseCase.class), readiness)
+                .perform(get("/api/research/investor-flows/readiness"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ready").value(false))
+                .andExpect(jsonPath("$.amountUnit").value("UNVERIFIED"))
+                .andExpect(jsonPath("$.blockingReasons[0]")
+                        .value("AMOUNT_UNIT_UNVERIFIED"))
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain("token", "appKey", "appSecret", "account", "header");
+    }
+
     private static MockMvc mvc(VerifyInvestorFlowProviderUseCase verification) {
+        return mvc(verification, mock(GetInvestorFlowReadinessUseCase.class));
+    }
+
+    private static MockMvc mvc(VerifyInvestorFlowProviderUseCase verification,
+            GetInvestorFlowReadinessUseCase readiness) {
         return MockMvcBuilders.standaloneSetup(new InvestorFlowController(
                         mock(ImportInvestorFlowsUseCase.class),
                         mock(AnalyzeSupplyDemandUseCase.class),
                         verification,
+                        readiness,
                         mock(StockInvestorFlowPort.class),
                         mock(MarketInvestorFlowPort.class),
                         mock(SupplyDemandSnapshotPort.class)))

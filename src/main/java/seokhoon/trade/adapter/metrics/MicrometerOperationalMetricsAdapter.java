@@ -401,6 +401,12 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordInvestorFlowReadiness(String result) {
+        meterRegistry.counter("tradeguard.research.investor_flow_readiness.count",
+                "result", result).increment();
+    }
+
+    @Override
     public void recordSupplyDemandAnalysis(String result) {
         meterRegistry.counter("tradeguard.research.supply_demand_analysis.count",
                 "result", result).increment();

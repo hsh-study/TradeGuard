@@ -25,6 +25,7 @@ import seokhoon.trade.domain.market.InvestorFlowImportStatus;
 import seokhoon.trade.domain.research.*;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.stock.Stock;
+import seokhoon.trade.config.InvestorFlowProperties;
 
 import java.math.BigDecimal;
 import java.time.*;
@@ -127,6 +128,7 @@ class MorningNoteServiceTest {
         ReflectionTestUtils.setField(service, "supplyDemandSnapshotPort", supplyDemandSnapshots);
         ReflectionTestUtils.setField(service, "marketInvestorFlowPort", marketInvestorFlows);
         ReflectionTestUtils.setField(service, "investorFlowImportHistoryPort", investorFlowImportHistories);
+        ReflectionTestUtils.setField(service, "investorFlowProperties", new InvestorFlowProperties());
         when(supplyDemandSnapshots.findLatestByStockCode(any())).thenReturn(Optional.empty());
         when(marketInvestorFlows.findByMarketAndDate(any(), any())).thenReturn(List.of());
         when(investorFlowImportHistories.findRecent(any(), anyInt())).thenReturn(List.of());
@@ -180,6 +182,19 @@ class MorningNoteServiceTest {
         assertThat(note.watchlistSummary()).contains("supplyDemand=STRONG_ACCUMULATION");
         assertThat(note.actionItems()).contains("SUPPLY_DEMAND_STRONG 005930",
                 "INVESTOR_FLOW_PROVIDER_DISABLED");
+    }
+
+    @Test
+    void includesInvestorFlowNotReadyWhenEnabledAmountUnitIsUnverified() {
+        InvestorFlowProperties properties = new InvestorFlowProperties();
+        properties.setProviderEnabled(true);
+        ReflectionTestUtils.setField(service, "investorFlowProperties", properties);
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.actionItems())
+                .contains("INVESTOR_FLOW_NOT_READY provider=KIS")
+                .contains("AMOUNT_UNIT_UNVERIFIED");
     }
 
     @Test

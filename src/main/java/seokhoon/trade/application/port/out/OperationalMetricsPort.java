@@ -92,6 +92,7 @@ public interface OperationalMetricsPort {
     void recordSectorImport(String result);
     void recordInvestorFlowImport(String scope, String result);
     void recordInvestorFlowDiagnostic(String scope, String result);
+    void recordInvestorFlowReadiness(String result);
     void recordSupplyDemandAnalysis(String result);
     void recordSupplyDemandStrategyAdjustment(String strategy, String result);
 
@@ -251,6 +252,7 @@ public interface OperationalMetricsPort {
             @Override public void recordSectorImport(String result) {}
             @Override public void recordInvestorFlowImport(String scope, String result) {}
             @Override public void recordInvestorFlowDiagnostic(String scope, String result) {}
+            @Override public void recordInvestorFlowReadiness(String result) {}
             @Override public void recordSupplyDemandAnalysis(String result) {}
             @Override public void recordSupplyDemandStrategyAdjustment(String strategy, String result) {}
         };
