@@ -35,17 +35,17 @@ public class InvestorFlowImportService implements ImportInvestorFlowsUseCase {
     @Override @Transactional public InvestorFlowImportHistory importStock(String code, LocalDate date) {
         Instant requested=clock.instant();
         if(!properties.isProviderEnabled()) return history(InvestorFlowImportScope.STOCK,code,null,date,providerType(),InvestorFlowImportStatus.SKIPPED,0,"INVESTOR_FLOW_PROVIDER_DISABLED",requested);
-        try { var fetched=provider.fetchStockInvestorFlows(code,date); var normalized=fetched.stream().map(v->normalize(v,code,date)).toList();
+        try { var fetched=provider.fetchStockInvestorFlows(code,date); var normalized=fetched.flows().stream().map(v->normalize(v,code,date)).toList();
             stockFlows.saveAll(normalized); return history(InvestorFlowImportScope.STOCK,code,null,date,providerType(),
-                    normalized.isEmpty()?InvestorFlowImportStatus.SKIPPED:InvestorFlowImportStatus.SUCCESS,normalized.size(),normalized.isEmpty()?"NO_PROVIDER_DATA":null,requested);
+                    providerStatus(normalized.size(),fetched.rejectedCount()),normalized.size(),providerReason(normalized.size(),fetched.rejectedCount()),requested);
         } catch(RuntimeException e){return history(InvestorFlowImportScope.STOCK,code,null,date,providerType(),InvestorFlowImportStatus.FAILED,0,sanitize(e.getMessage()),requested);}
     }
     @Override @Transactional public InvestorFlowImportHistory importMarket(InvestorFlowMarket market, LocalDate date) {
         Instant requested=clock.instant();
         if(!properties.isProviderEnabled()) return history(InvestorFlowImportScope.MARKET,null,market,date,providerType(),InvestorFlowImportStatus.SKIPPED,0,"INVESTOR_FLOW_PROVIDER_DISABLED",requested);
-        try { var fetched=provider.fetchMarketInvestorFlows(market,date); var normalized=fetched.stream().map(v->normalize(v,market,date)).toList();
+        try { var fetched=provider.fetchMarketInvestorFlows(market,date); var normalized=fetched.flows().stream().map(v->normalize(v,market,date)).toList();
             marketFlows.saveAll(normalized); return history(InvestorFlowImportScope.MARKET,null,market,date,providerType(),
-                    normalized.isEmpty()?InvestorFlowImportStatus.SKIPPED:InvestorFlowImportStatus.SUCCESS,normalized.size(),normalized.isEmpty()?"NO_PROVIDER_DATA":null,requested);
+                    providerStatus(normalized.size(),fetched.rejectedCount()),normalized.size(),providerReason(normalized.size(),fetched.rejectedCount()),requested);
         } catch(RuntimeException e){return history(InvestorFlowImportScope.MARKET,null,market,date,providerType(),InvestorFlowImportStatus.FAILED,0,sanitize(e.getMessage()),requested);}
     }
     @Override public List<InvestorFlowImportHistory> importWatchlist(LocalDate date){return stocks.findAll().stream().filter(Stock::active).map(s->importStock(s.stockCode(),date)).toList();}
@@ -71,6 +71,8 @@ public class InvestorFlowImportService implements ImportInvestorFlowsUseCase {
         metrics.recordInvestorFlowImport(scope.name().toLowerCase(Locale.ROOT),metric(status)); return saved;
     }
     private InvestorFlowProvider providerType(){try{return InvestorFlowProvider.valueOf(properties.getProviderType().toUpperCase(Locale.ROOT));}catch(Exception e){return InvestorFlowProvider.PROVIDER;}}
+    private static InvestorFlowImportStatus providerStatus(int imported,int rejected){if(rejected>0)return imported>0?InvestorFlowImportStatus.PARTIAL:InvestorFlowImportStatus.FAILED;return imported>0?InvestorFlowImportStatus.SUCCESS:InvestorFlowImportStatus.SKIPPED;}
+    private static String providerReason(int imported,int rejected){if(rejected>0)return "mappingRejected="+rejected;return imported==0?"NO_PROVIDER_DATA":null;}
     private StockInvestorFlow normalize(StockInvestorFlow v,String code,LocalDate date){Instant now=clock.instant(); return new StockInvestorFlow(null,code,date,v.investorType(),v.rawInvestorType(),v.netBuyAmount(),v.netBuyQuantity(),v.buyAmount(),v.sellAmount(),v.buyQuantity(),v.sellQuantity(),providerSource(),now,now);}
     private MarketInvestorFlow normalize(MarketInvestorFlow v,InvestorFlowMarket market,LocalDate date){Instant now=clock.instant(); return new MarketInvestorFlow(null,market,date,v.investorType(),v.rawInvestorType(),v.netBuyAmount(),v.netBuyQuantity(),v.buyAmount(),v.sellAmount(),providerSource(),now,now);}
     private InvestorFlowSource providerSource(){return providerType()==InvestorFlowProvider.KIS?InvestorFlowSource.KIS:InvestorFlowSource.PROVIDER;}

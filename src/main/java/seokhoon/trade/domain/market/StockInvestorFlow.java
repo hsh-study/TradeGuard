@@ -6,7 +6,7 @@ import java.time.LocalDate;
 
 public record StockInvestorFlow(Long id, String stockCode, LocalDate tradeDate,
         InvestorType investorType, String rawInvestorType, BigDecimal netBuyAmount,
-        long netBuyQuantity, BigDecimal buyAmount, BigDecimal sellAmount,
+        Long netBuyQuantity, BigDecimal buyAmount, BigDecimal sellAmount,
         Long buyQuantity, Long sellQuantity, InvestorFlowSource source,
         Instant createdAt, Instant updatedAt) {
 }

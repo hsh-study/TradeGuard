@@ -643,17 +643,39 @@ Investor Flow / Supply-Demand Auto Import v1:
 ```text
 INVESTOR_FLOW_PROVIDER_ENABLED=false
 INVESTOR_FLOW_PROVIDER_TYPE=KIS
+INVESTOR_FLOW_PROVIDER_TIMEOUT_SECONDS=10
 INVESTOR_FLOW_IMPORT_AUTO_RUN=false
 INVESTOR_FLOW_LOOKBACK_DAYS=20
+KIS_INVESTOR_FLOW_AMOUNT_UNIT=UNVERIFIED
 SUPPLY_DEMAND_STRATEGY_ENABLED=true
 ```
 
 provider import가 핵심 경로이며, 07:40 `INVESTOR_FLOW_IMPORT`가 전 거래일의
 활성 관심종목 수급을 저장하고 07:45 `SUPPLY_DEMAND_ANALYSIS`가 snapshot을
-생성합니다. v1의 KIS adapter는 공식 TR ID를 운영 환경에서 검증하기 전까지
-disabled 골격으로 유지합니다. provider가 꺼져 있으면 API는 외부 호출 없이
-`SKIPPED` history를 남깁니다. 후보 생성은 provider를 호출하지 않고 저장된
-snapshot만 읽습니다.
+생성합니다. KIS read-only adapter는 공식 KIS Open Trading API 샘플에서 확인한
+종목별 투자자매매동향 TR `FHKST01010900`
+(`/uapi/domestic-stock/v1/quotations/inquire-investor`)과 시장별 투자자매매동향
+TR `FHPTJ04040000`
+(`/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market`)을 사용합니다.
+종목 TR은 실전/모의 환경에서 사용할 수 있고, 공식 샘플이 실전 전용으로 표시한
+시장 TR은 `KIS_ENVIRONMENT=REAL`에서만 호출합니다. 시장 adapter v1은 공식
+파라미터가 확인된 KOSPI(`KSP`, `0001`)와 KOSDAQ(`KSQ`, `1001`)만 지원합니다.
+
+공식 응답 mapping은 거래일 `stck_bsop_date`, 순매수 수량
+`prsn/frgn/orgn_ntby_qty`, 순매수 금액 `prsn/frgn/orgn_ntby_tr_pbmn`, 매수 수량
+`*_shnu_vol`, 매도 수량 `*_seln_vol`, 매수 금액 `*_shnu_tr_pbmn`, 매도 금액
+`*_seln_tr_pbmn`입니다. `prsn`, `frgn`, `orgn`은 각각 `INDIVIDUAL`, `FOREIGN`,
+`INSTITUTION`으로 저장하고 raw 분류명도 보존합니다. 시장 TR이 제공하지 않는
+매수/매도 분리 필드는 null로 저장합니다.
+
+공식 샘플 코드에는 `*_tr_pbmn`의 금액 단위가 명시되어 있지 않으므로 추측하지
+않습니다. 기본 `KIS_INVESTOR_FLOW_AMOUNT_UNIT=UNVERIFIED`에서는 token/HTTP 호출
+전에 `Unsupported`로 실패합니다. 운영에서 실응답 단위를 확인한 뒤에만 `KRW`,
+`THOUSAND_KRW`, `MILLION_KRW` 중 하나를 설정하며 DB에는 모두 원화로 환산해
+저장합니다. 수량 필드는 `SHARE`, multiplier 1로 원본 값을 그대로 저장합니다.
+provider가 꺼져 있으면 API와 scheduler는 외부 호출 없이 `SKIPPED` history를
+남깁니다. CSV는 provider 장애 또는 초기 적재를 위한 fallback이며 후보 생성은
+provider를 호출하지 않고 저장된 snapshot만 읽습니다.
 
 ```sh
 curl -X POST \
@@ -688,7 +710,8 @@ smart money는 외국인과 기관 합계입니다. 최근 데이터가 3일 미
 `NEUTRAL`, 20 미만은 `DISTRIBUTION`입니다. 종베와 장초 후보는 기본적으로
 강한 매집에 +10, 분산에 -10을 적용하고 부족 상태는 reason만 추가합니다.
 개인 순매수가 크면서 외국인과 기관이 함께 순매도하면 caution reason도
-저장됩니다. 이 분석은 주문을 생성하지 않습니다.
+저장됩니다. KIS adapter와 이 분석은 계좌번호를 사용하지 않는 read-only 흐름이며
+자동매수/자동매도, 실계좌 주문 또는 시장가 주문을 생성하지 않습니다.
 
 Sector snapshot은 섹터에 매핑된 종목의 기준일 종가와 직전 거래일 종가로
 등락률을 계산하고 평균, 중앙값, 총 거래대금, 상승/하락 종목 수, 가장 강한

@@ -15,7 +15,7 @@ class MarketInvestorFlowEntity {
     @Column(name = "trade_date", nullable = false) LocalDate tradeDate;
     @Enumerated(EnumType.STRING) @Column(name = "investor_type", nullable = false, length = 40) InvestorType investorType;
     @Column(name = "raw_investor_type", length = 100) String rawInvestorType;
-    @Column(name = "net_buy_amount", nullable = false, precision = 19, scale = 4) BigDecimal netBuyAmount;
+    @Column(name = "net_buy_amount", precision = 19, scale = 4) BigDecimal netBuyAmount;
     @Column(name = "net_buy_quantity") Long netBuyQuantity;
     @Column(name = "buy_amount", precision = 19, scale = 4) BigDecimal buyAmount;
     @Column(name = "sell_amount", precision = 19, scale = 4) BigDecimal sellAmount;

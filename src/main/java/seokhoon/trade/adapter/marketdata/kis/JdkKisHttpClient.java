@@ -48,8 +48,13 @@ class JdkKisHttpClient implements KisHttpClient {
 
     @Override
     public KisHttpResponse get(URI uri, Map<String, String> headers) {
+        return get(uri, headers, REQUEST_TIMEOUT);
+    }
+
+    @Override
+    public KisHttpResponse get(URI uri, Map<String, String> headers, Duration timeout) {
         HttpRequest.Builder request = HttpRequest.newBuilder(uri)
-                .timeout(REQUEST_TIMEOUT)
+                .timeout(timeout)
                 .GET();
         headers.forEach(request::header);
         return send(request.build());

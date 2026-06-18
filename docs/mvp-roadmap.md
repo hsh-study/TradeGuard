@@ -56,7 +56,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 운영 관측성 | 부분 완료 | Actuator health/info/metrics, liveness/readiness, dependency health, scheduler 실행 이력, 핵심 Micrometer counter, 구조화 로그와 X-Request-Id 구현. 감사 이력 및 scheduler 실행 이력 correlation 연결 완료. 외부 metrics backend는 미구현 |
 | 시장 calendar | 부분 완료 | V11 `market_calendar_days`, V12 보정 audit, MANUAL_OVERRIDE 우선 정책, DB 우선 scheduler skip/이전·다음 거래일/시간외 기준일/리포트 거래일 수, 연도 sync·조회·검증·보정·audit API, 04:00 누락 연도 scheduler, health/metrics 구현. 공식 provider client/parser는 분리했으나 안정적인 KRX 무인증 endpoint가 명확하지 않아 기본은 생성 fallback이며 `MARKET_CALENDAR_HOLIDAYS` runtime fallback 관리가 필요 |
 | KIS 실매매 1단계 | 부분 완료 | 수동 지정가 매수/매도, 체결·부분체결 reconciliation, 취소, 자동취소 opt-in, 포지션 exit, kill switch 구현. REAL/DEMO OAuth token MEMORY cache와 AES-256-GCM DB cache, DB refresh lease, refresh scheduler, token health/API, 실매매 readiness 및 credential rotation/배포 체크리스트를 추가함. 자동매수·시장가·신용·미수·공매도는 미지원 |
-| DB migration | 완료 | Flyway V1~V27 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
+| DB migration | 완료 | Flyway V1~V28 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
 | 일봉·지표 warmup | 완료 | 관심종목 등록 후 KIS 일봉 120거래일 upsert, MA5/20/60·RSI·MACD·Bollinger 저장, warmup 이력/API/metrics, 종베 14:00·15:00 및 장초반 08:30·09:05 후보 사전 보강과 strict 제외 정책 구현 |
 | Action 1: Thesis | 완료 | `investment_theses`와 등록/종목별 조회/부분 수정/종료 API 구현. 핵심 가정, 무효화 조건, 목표가, 손절 조건, confidence, ACTIVE/WATCH/BROKEN/CLOSED 상태를 저장. BROKEN은 Morning Note action item만 만들고 자동매도하지 않음 |
 | Action 2: Catalyst | 완료 | `investment_catalysts`와 종목/기간 조회, 등록/부분 수정 API 구현. 실적·정책·수주·제품·섹터·공시·매크로 catalyst, 중요도와 진행 상태를 관리. UPCOMING 항목은 Morning Note에 포함되며 자동매수하지 않음 |
@@ -72,7 +72,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | Disclosure Evidence Provider | 완료 | `catalyst_evidences`와 disclosure import history/API 구현. 수동 evidence, DART/KRX/provider metadata evidence port, earnings event/preview/post review 자동 evidence, Morning Note evidence action item 추가. 뉴스 크롤링과 공시 원문 전체 저장, 자동 주문은 없음 |
 | Market Index Provider | 완료 | `MarketIndexProviderPort`, disabled-by-default KIS provider 설정, 시장지수 수동 저장/조회, CSV import, provider import, import history, 07:50 거래일 scheduler, Morning Note market index action item과 metric 구현. KIS credential/token/응답 노출과 자동 주문 연결 없음 |
 | Sector Seed Import | 완료 | `sector_import_histories`, sector seed CSV import API 구현. sector master upsert, stock-sector mapping 중복 방지, sector-only row 지원, optional sector snapshot generation, Morning Note sector import/mapping action item과 metric 구현 |
-| Investor Flow / Supply Demand Auto Import | 완료 | 종목/시장 투자자별 수급, import history, provider-first import port와 disabled KIS 골격, CSV fallback, 07:40 import와 07:45 분석 scheduler, smart-money snapshot, Morning Note 및 종베/장초 점수 연동 구현. 후보 생성 중 provider 호출과 자동 주문은 없음 |
+| Investor Flow / Supply Demand Auto Import | 완료 | 종목/시장 투자자별 수급, import history, provider-first import, CSV fallback, 07:40 import와 07:45 분석 scheduler, smart-money snapshot, Morning Note 및 종베/장초 점수 연동 구현. 후보 생성 중 provider 호출과 자동 주문은 없음 |
+| KIS Investor Flow Provider Adapter | 부분 완료 | 공식 샘플의 종목 TR `FHKST01010900`, 시장 TR `FHPTJ04040000`과 응답 필드 기반 read-only adapter 구현. 시장 TR은 REAL/KOSPI/KOSDAQ만 허용. 공식 샘플에 금액 단위가 명시되지 않아 기본 `UNVERIFIED`에서 호출을 차단하며 운영 실응답 단위 확인 후 활성화 필요 |
 
 ## 4. 구현 단계
 
@@ -201,12 +202,6 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. KIS investor flow 실제 TR ID와 응답 필드/단위 검증 후 read-only adapter 활성화
-2. disclosure evidence DART/KRX 실제 provider adapter와 rate limit 정책 구현
-3. consensus provider 범위와 합법적인 라이선스/입력 경로 결정
-4. indicator warmup 실패율과 종목별 일봉 누락 운영 점검
-5. 장초반 원천 데이터 축적량과 누락률 운영 모니터링
-6. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
-7. scheduler 실행 이력 보관 기간과 자동 정리 정책 결정
-8. KIS 주문 정정 API와 취소가능조회 모의환경 공식 TR ID 확인
-9. 로컬 encryption key 파일 권한과 백업·복구 절차 점검
+1. disclosure evidence DART/KRX 실제 provider adapter와 rate limit 정책 구현
+2. consensus provider 범위와 합법적인 라이선스/입력 경로 결정
+3. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
