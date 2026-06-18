@@ -12,9 +12,16 @@ import seokhoon.trade.domain.market.MarketIndexImportStatus;
 import seokhoon.trade.domain.market.Sector;
 import seokhoon.trade.domain.market.SectorDailySnapshot;
 import seokhoon.trade.domain.market.SectorImportStatus;
+import seokhoon.trade.domain.market.InvestorFlowImportStatus;
+import seokhoon.trade.domain.market.InvestorType;
+import seokhoon.trade.domain.market.InvestorFlowMarket;
+import seokhoon.trade.domain.market.MarketInvestorFlow;
+import seokhoon.trade.domain.market.StockSupplyDemandSnapshot;
+import seokhoon.trade.domain.market.SupplyDemandStatus;
 import seokhoon.trade.domain.position.LivePosition;
 import seokhoon.trade.domain.research.*;
 import seokhoon.trade.domain.stock.Stock;
+import seokhoon.trade.domain.stock.Market;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -60,6 +67,9 @@ public class MorningNoteService implements MorningNoteUseCase {
     private final DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistoryPort;
     private final MarketIndexImportHistoryPort marketIndexImportHistoryPort;
     private final SectorImportHistoryPort sectorImportHistoryPort;
+    private SupplyDemandSnapshotPort supplyDemandSnapshotPort;
+    private MarketInvestorFlowPort marketInvestorFlowPort;
+    private InvestorFlowImportHistoryPort investorFlowImportHistoryPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -92,6 +102,9 @@ public class MorningNoteService implements MorningNoteUseCase {
             DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistoryPort,
             MarketIndexImportHistoryPort marketIndexImportHistoryPort,
             SectorImportHistoryPort sectorImportHistoryPort,
+            SupplyDemandSnapshotPort supplyDemandSnapshotPort,
+            MarketInvestorFlowPort marketInvestorFlowPort,
+            InvestorFlowImportHistoryPort investorFlowImportHistoryPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
@@ -104,6 +117,9 @@ public class MorningNoteService implements MorningNoteUseCase {
                 catalystEvidencePort, disclosureEvidenceImportHistoryPort,
                 marketIndexImportHistoryPort, sectorImportHistoryPort,
                 metrics, Clock.systemUTC());
+        this.supplyDemandSnapshotPort = supplyDemandSnapshotPort;
+        this.marketInvestorFlowPort = marketInvestorFlowPort;
+        this.investorFlowImportHistoryPort = investorFlowImportHistoryPort;
     }
 
     MorningNoteService(
@@ -207,7 +223,8 @@ public class MorningNoteService implements MorningNoteUseCase {
             MorningNote saved = notePort.save(new MorningNote(
                     null,
                     tradeDate,
-                    marketSummary(previousTradingDay, signals, marketIndexPort.findByTradeDate(previousTradingDay)),
+                    marketSummary(previousTradingDay, signals, marketIndexPort.findByTradeDate(previousTradingDay))
+                            + marketInvestorFlowSummary(previousTradingDay),
                     sectorSummary(previousTradingDay),
                     portfolioSummary(tradeDate, positions),
                     watchlistSummary(tradeDate, stocks),
@@ -257,6 +274,35 @@ public class MorningNoteService implements MorningNoteUseCase {
                         .append(signal.stockCode()).append(" score=")
                         .append(signal.score()).append(" status=").append(signal.status()));
         return result.toString();
+    }
+
+    private String marketInvestorFlowSummary(LocalDate tradeDate) {
+        if (marketInvestorFlowPort == null) {
+            return "";
+        }
+        StringBuilder result = new StringBuilder();
+        for (InvestorFlowMarket market : List.of(InvestorFlowMarket.KOSPI, InvestorFlowMarket.KOSDAQ)) {
+            List<MarketInvestorFlow> flows = marketInvestorFlowPort.findByMarketAndDate(market, tradeDate);
+            if (!flows.isEmpty()) {
+                result.append("\n").append(market).append(" 투자자 수급")
+                        .append(" foreign=").append(flowAmount(flows, InvestorType.FOREIGN))
+                        .append(" institution=").append(institutionAmount(flows))
+                        .append(" individual=").append(flowAmount(flows, InvestorType.INDIVIDUAL));
+            }
+        }
+        return result.toString();
+    }
+
+    private static BigDecimal flowAmount(List<MarketInvestorFlow> flows, InvestorType type) {
+        return flows.stream().filter(flow -> flow.investorType() == type)
+                .map(MarketInvestorFlow::netBuyAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static BigDecimal institutionAmount(List<MarketInvestorFlow> flows) {
+        return flows.stream().filter(flow -> flow.investorType() != InvestorType.FOREIGN
+                        && flow.investorType() != InvestorType.INDIVIDUAL
+                        && flow.investorType() != InvestorType.ETC)
+                .map(MarketInvestorFlow::netBuyAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private String sectorSummary(LocalDate previousTradingDay) {
@@ -320,6 +366,7 @@ public class MorningNoteService implements MorningNoteUseCase {
                     .append(" qty=").append(position.quantity())
                     .append(" avg=").append(position.averageBuyPrice())
                     .append(" earnings=").append(earningsStatus(position.stockCode()));
+            appendSupplyDemandStatus(result, position.stockCode());
             if (price.isPresent() && position.averageBuyPrice().signum() > 0) {
                 BigDecimal change = price.get().closePrice()
                         .subtract(position.averageBuyPrice())
@@ -343,7 +390,8 @@ public class MorningNoteService implements MorningNoteUseCase {
                 .collect(Collectors.toMap(Sector::sectorCode, Function.identity(), (left, right) -> left));
         stocks.forEach(stock -> result.append("\n- ")
                 .append(indicatorLine(stock, tradeDate))
-                .append(" sectors=").append(stockSectorLabels(stock.stockCode(), sectors)));
+                .append(" sectors=").append(stockSectorLabels(stock.stockCode(), sectors))
+                .append(supplyDemandLabel(stock.stockCode())));
         return result.toString();
     }
 
@@ -371,6 +419,23 @@ public class MorningNoteService implements MorningNoteUseCase {
                 + " MACD=" + macdState(value)
                 + " Bollinger=" + bollingerState(close, value)
                 + " earnings=" + earningsStatus(stock.stockCode());
+    }
+
+    private void appendSupplyDemandStatus(StringBuilder result, String stockCode) {
+        if (supplyDemandSnapshotPort != null) {
+            supplyDemandSnapshotPort.findLatestByStockCode(stockCode)
+                    .ifPresent(value -> result.append(" supplyDemand=").append(value.status()));
+        }
+    }
+
+    private String supplyDemandLabel(String stockCode) {
+        if (supplyDemandSnapshotPort == null) {
+            return "";
+        }
+        return supplyDemandSnapshotPort.findLatestByStockCode(stockCode)
+                .map(value -> " supplyDemand=" + value.status()
+                        + " smartMoney=" + value.smartMoneyNetBuyAmount())
+                .orElse(" supplyDemand=DATA_INSUFFICIENT");
     }
 
     private String actionItems(
@@ -448,6 +513,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         appendImportHistoryItems(result);
         appendEvidenceItems(result, catalysts);
         appendMarketSectorItems(result, stocks, tradeDate);
+        appendSupplyDemandItems(result, stocks);
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
@@ -484,6 +550,50 @@ public class MorningNoteService implements MorningNoteUseCase {
                     .findFirst()
                     .ifPresent(history -> result.append("\n- SECTOR_IMPORT_FAILED ")
                             .append(history.failureReason()));
+        }
+    }
+
+    private void appendSupplyDemandItems(StringBuilder result, List<Stock> stocks) {
+        if (supplyDemandSnapshotPort == null) {
+            return;
+        }
+        long missing = 0;
+        for (Stock stock : stocks) {
+            Optional<StockSupplyDemandSnapshot> optional =
+                    supplyDemandSnapshotPort.findLatestByStockCode(stock.stockCode());
+            if (optional.isEmpty() || optional.orElseThrow().status() == SupplyDemandStatus.DATA_INSUFFICIENT) {
+                result.append("\n- INVESTOR_FLOW_DATA_INSUFFICIENT ")
+                        .append(stock.stockCode()).append(" 최근 수급 데이터 부족");
+                missing++;
+                continue;
+            }
+            StockSupplyDemandSnapshot snapshot = optional.orElseThrow();
+            if (snapshot.status() == SupplyDemandStatus.STRONG_ACCUMULATION) {
+                result.append("\n- SUPPLY_DEMAND_STRONG ").append(stock.stockCode())
+                        .append(" smartMoneyDays=")
+                        .append(snapshot.consecutiveCombinedSmartMoneyBuyDays())
+                        .append(" smartMoney=").append(snapshot.smartMoneyNetBuyAmount());
+            }
+            if (snapshot.status() == SupplyDemandStatus.DISTRIBUTION) {
+                result.append("\n- SUPPLY_DEMAND_DISTRIBUTION ").append(stock.stockCode())
+                        .append(" foreign=").append(snapshot.foreignNetBuyAmount())
+                        .append(" institution=").append(snapshot.institutionNetBuyAmount());
+            }
+        }
+        if (missing > 0) {
+            result.append("\n- INVESTOR_FLOW_IMPORT_REQUIRED 관심종목 수급 자동 import 필요 missing=")
+                    .append(missing);
+        }
+        if (investorFlowImportHistoryPort != null) {
+            investorFlowImportHistoryPort.findRecent(null, 20).stream()
+                    .filter(history -> history.status() == InvestorFlowImportStatus.SKIPPED
+                            && "INVESTOR_FLOW_PROVIDER_DISABLED".equals(history.failureReason()))
+                    .findFirst().ifPresent(history -> result.append(
+                            "\n- INVESTOR_FLOW_PROVIDER_DISABLED provider disabled 상태"));
+            investorFlowImportHistoryPort.findRecent(null, 20).stream()
+                    .filter(history -> history.status() == InvestorFlowImportStatus.FAILED)
+                    .findFirst().ifPresent(history -> result.append("\n- INVESTOR_FLOW_IMPORT_FAILED ")
+                            .append(history.provider()).append(" ").append(history.failureReason()));
         }
     }
 

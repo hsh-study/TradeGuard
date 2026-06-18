@@ -46,6 +46,7 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
     private final LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase;
     private final NotificationPort notificationPort;
     private final EarlyMarketStrategyProperties strategyProperties;
+    private SupplyDemandStrategyAdjustment supplyDemandAdjustment;
     private final Clock clock;
     private IndicatorStrategyWarmUpSupport warmUpSupport =
             IndicatorStrategyWarmUpSupport.disabled();
@@ -58,6 +59,7 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
             LoadEarlyMarketPriceActionFeaturesUseCase priceActionFeaturesUseCase,
             NotificationPort notificationPort,
             EarlyMarketStrategyProperties strategyProperties,
+            SupplyDemandStrategyAdjustment supplyDemandAdjustment,
             IndicatorStrategyWarmUpSupport warmUpSupport
     ) {
         this(
@@ -70,6 +72,7 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
                 Clock.systemUTC()
         );
         this.warmUpSupport = warmUpSupport;
+        this.supplyDemandAdjustment = supplyDemandAdjustment;
     }
 
     EarlyMarketOpeningCompressor(
@@ -285,6 +288,15 @@ public class EarlyMarketOpeningCompressor implements CompressEarlyMarketOpeningU
         }
         score += assessment.scoreAdjustment();
         reasons.addAll(assessment.reasons());
+        if (supplyDemandAdjustment != null) {
+            SupplyDemandStrategyAdjustment.Assessment supply =
+                    supplyDemandAdjustment.assess(preScan.stockCode(), "early_market");
+            if (supply.excluded()) {
+                return null;
+            }
+            score += supply.scoreAdjustment();
+            reasons.addAll(supply.reasons());
+        }
         return new Selection(preScan, score, reasons);
     }
 

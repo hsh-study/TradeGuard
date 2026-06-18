@@ -638,6 +638,58 @@ curl 'http://localhost:8080/api/research/sectors/import-histories'
 리서치 데이터 보강 전용이며 자동매수/자동매도, 실계좌 주문, 시장가 주문과
 연결되지 않습니다.
 
+Investor Flow / Supply-Demand Auto Import v1:
+
+```text
+INVESTOR_FLOW_PROVIDER_ENABLED=false
+INVESTOR_FLOW_PROVIDER_TYPE=KIS
+INVESTOR_FLOW_IMPORT_AUTO_RUN=false
+INVESTOR_FLOW_LOOKBACK_DAYS=20
+SUPPLY_DEMAND_STRATEGY_ENABLED=true
+```
+
+provider import가 핵심 경로이며, 07:40 `INVESTOR_FLOW_IMPORT`가 전 거래일의
+활성 관심종목 수급을 저장하고 07:45 `SUPPLY_DEMAND_ANALYSIS`가 snapshot을
+생성합니다. v1의 KIS adapter는 공식 TR ID를 운영 환경에서 검증하기 전까지
+disabled 골격으로 유지합니다. provider가 꺼져 있으면 API는 외부 호출 없이
+`SKIPPED` history를 남깁니다. 후보 생성은 provider를 호출하지 않고 저장된
+snapshot만 읽습니다.
+
+```sh
+curl -X POST \
+  'http://localhost:8080/api/research/investor-flows/stocks/import?stockCode=005930&tradeDate=2026-06-15'
+curl -X POST \
+  'http://localhost:8080/api/research/investor-flows/markets/import?market=KOSPI&tradeDate=2026-06-15'
+curl -X POST \
+  'http://localhost:8080/api/research/investor-flows/watchlist/import?tradeDate=2026-06-15'
+curl 'http://localhost:8080/api/research/investor-flows/import-histories?stockCode=005930'
+curl 'http://localhost:8080/api/research/investor-flows/stocks/recent?stockCode=005930&endDate=2026-06-15&days=20'
+```
+
+CSV는 provider 장애나 초기 적재를 위한 fallback입니다. 종목 CSV columns는
+`stockCode,tradeDate,investorType,netBuyAmount,netBuyQuantity,buyAmount,sellAmount,buyQuantity,sellQuantity,source`,
+시장 CSV columns는
+`market,tradeDate,investorType,netBuyAmount,netBuyQuantity,buyAmount,sellAmount,source`입니다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/investor-flows/stocks/import-csv' \
+  -H 'Content-Type: text/csv' \
+  --data-binary $'stockCode,tradeDate,investorType,netBuyAmount,netBuyQuantity,buyAmount,sellAmount,buyQuantity,sellQuantity,source\n005930,2026-06-15,FOREIGN,1000000000,10000,3000000000,2000000000,30000,20000,CSV\n'
+
+curl -X POST \
+  'http://localhost:8080/api/research/supply-demand/analyze?stockCode=005930&tradeDate=2026-06-15'
+curl -X POST \
+  'http://localhost:8080/api/research/supply-demand/analyze-watchlist?tradeDate=2026-06-15'
+curl 'http://localhost:8080/api/research/supply-demand?stockCode=005930'
+```
+
+smart money는 외국인과 기관 합계입니다. 최근 데이터가 3일 미만이면
+`DATA_INSUFFICIENT`, 점수 50 이상은 `STRONG_ACCUMULATION`, 20 이상은
+`NEUTRAL`, 20 미만은 `DISTRIBUTION`입니다. 종베와 장초 후보는 기본적으로
+강한 매집에 +10, 분산에 -10을 적용하고 부족 상태는 reason만 추가합니다.
+개인 순매수가 크면서 외국인과 기관이 함께 순매도하면 caution reason도
+저장됩니다. 이 분석은 주문을 생성하지 않습니다.
+
 Sector snapshot은 섹터에 매핑된 종목의 기준일 종가와 직전 거래일 종가로
 등락률을 계산하고 평균, 중앙값, 총 거래대금, 상승/하락 종목 수, 가장 강한
 leading stock을 저장합니다. 계산 가능한 종목이 없으면 스냅샷은
@@ -686,6 +738,10 @@ actionItems:
 - SECTOR_IMPORT_REQUIRED sector master CSV import 필요
 - SECTOR_MAPPING_INSUFFICIENT unmappedStocks=3
 - SECTOR_IMPORT_FAILED invalidRows=2
+- SUPPLY_DEMAND_STRONG 005930 smartMoneyDays=3 smartMoney=1200000000
+- SUPPLY_DEMAND_DISTRIBUTION 034220 foreign=-500000000 institution=-300000000
+- INVESTOR_FLOW_PROVIDER_DISABLED provider disabled 상태
+- INVESTOR_FLOW_IMPORT_REQUIRED 관심종목 수급 자동 import 필요 missing=2
 ```
 
 뉴스와 실적 원문 수집은 이번 범위에 포함되지 않습니다. 시장지수는
@@ -1404,6 +1460,9 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 - `tradeguard.research.disclosure_evidence_import.count`: `provider`, `result=success|partial|failure|skipped`
 - `tradeguard.research.market_index_import.count`: `provider`, `result=success|partial|failure|skipped`
 - `tradeguard.research.sector_import.count`: `result=success|partial|failure`
+- `tradeguard.research.investor_flow_import.count`: `scope=stock|market`, `result=success|partial|failure|skipped`
+- `tradeguard.research.supply_demand_analysis.count`: `result=success|insufficient|failure`
+- `tradeguard.strategy.supply_demand_adjustment.count`: `strategy=closing_bet|early_market`, `result=strong|distribution|insufficient|neutral`
 - `tradeguard.research.earnings_event.count`: `status`
 - `tradeguard.research.earnings_preview.count`: `result=created|ready|failure`
 - `tradeguard.research.post_earnings_review.count`: `thesisImpact`
@@ -1454,6 +1513,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - 자동매수, 공매도, 신용, 미수 주문은 지원하지 않습니다.
 - 08:30/09:05 장초반 후보 생성, 전일 고가/시초가 지지 feature, 09:20 follow-up과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
 - Earnings Analysis는 재무 품질 평가와 후보 reason/점수 보강만 수행하며 자동 주문을 실행하지 않습니다.
+- Investor Flow import와 Supply-Demand 분석은 저장 데이터와 후보 점수만 보강하며 자동 주문을 실행하지 않습니다.
 - 09:20 follow-up 결과 저장과 조회는 분석 데이터만 다루며 자동 주문을 실행하지 않습니다.
 - 장초반 전략 성과 리포트는 조회와 집계만 수행하며 신호 또는 주문을 생성하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.

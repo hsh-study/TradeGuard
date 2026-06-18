@@ -389,6 +389,24 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordInvestorFlowImport(String scope, String result) {
+        meterRegistry.counter("tradeguard.research.investor_flow_import.count",
+                "scope", scope, "result", result).increment();
+    }
+
+    @Override
+    public void recordSupplyDemandAnalysis(String result) {
+        meterRegistry.counter("tradeguard.research.supply_demand_analysis.count",
+                "result", result).increment();
+    }
+
+    @Override
+    public void recordSupplyDemandStrategyAdjustment(String strategy, String result) {
+        meterRegistry.counter("tradeguard.strategy.supply_demand_adjustment.count",
+                "strategy", strategy, "result", result).increment();
+    }
+
+    @Override
     public void recordLiveOrderRequest(String side, String status) {
         meterRegistry.counter("tradeguard.live_order.request.count",
                 "side", side, "status", status).increment();

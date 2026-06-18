@@ -1,0 +1,31 @@
+package seokhoon.trade.application.service;
+
+import org.junit.jupiter.api.Test;
+import seokhoon.trade.application.port.out.*;
+import seokhoon.trade.config.InvestorFlowProperties;
+import seokhoon.trade.domain.market.*;
+import seokhoon.trade.domain.stock.*;
+import java.math.BigDecimal;
+import java.time.*;
+import java.util.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
+
+class InvestorFlowImportServiceTest {
+    private static final LocalDate DATE=LocalDate.of(2026,6,15); private static final Instant NOW=Instant.parse("2026-06-15T00:00:00Z");
+    @Test void providerDisabledSavesSkippedWithoutCallingProvider(){var provider=mock(InvestorFlowProviderPort.class);var histories=new Histories();var properties=new InvestorFlowProperties();var service=service(provider,histories,properties,new StockFlows(),new MarketFlows());
+        var result=service.importStock("005930",DATE);assertThat(result.status()).isEqualTo(InvestorFlowImportStatus.SKIPPED);assertThat(result.failureReason()).isEqualTo("INVESTOR_FLOW_PROVIDER_DISABLED");verifyNoInteractions(provider);}
+    @Test void importsStockProviderResponse(){var provider=mock(InvestorFlowProviderPort.class);var histories=new Histories();var properties=new InvestorFlowProperties();properties.setProviderEnabled(true);var stocks=new StockFlows();when(provider.fetchStockInvestorFlows("005930",DATE)).thenReturn(List.of(stockFlow(InvestorType.FOREIGN,"100")));var service=service(provider,histories,properties,stocks,new MarketFlows());
+        var result=service.importStock("005930",DATE);assertThat(result.status()).isEqualTo(InvestorFlowImportStatus.SUCCESS);assertThat(stocks.values).singleElement().extracting(StockInvestorFlow::source).isEqualTo(InvestorFlowSource.KIS);}
+    @Test void importsStockAndMarketCsvFallbackAndMapsKoreanInvestorType(){var provider=mock(InvestorFlowProviderPort.class);var histories=new Histories();var properties=new InvestorFlowProperties();var stocks=new StockFlows();var markets=new MarketFlows();var service=service(provider,histories,properties,stocks,markets);
+        var stockResult=service.importStockCsv("stockCode,tradeDate,investorType,netBuyAmount,netBuyQuantity,buyAmount,sellAmount,buyQuantity,sellQuantity,source\n005930,2026-06-15,외국인,1000,10,2000,1000,20,10,CSV");
+        var marketResult=service.importMarketCsv("market,tradeDate,investorType,netBuyAmount,netBuyQuantity,buyAmount,sellAmount,source\nKOSPI,2026-06-15,기관,2000,20,3000,1000,CSV");
+        assertThat(stockResult.status()).isEqualTo(InvestorFlowImportStatus.SUCCESS);assertThat(stocks.values.getFirst().investorType()).isEqualTo(InvestorType.FOREIGN);assertThat(marketResult.status()).isEqualTo(InvestorFlowImportStatus.SUCCESS);assertThat(markets.values.getFirst().investorType()).isEqualTo(InvestorType.INSTITUTION);}
+    @Test void invalidCsvRowProducesPartial(){var service=service(mock(InvestorFlowProviderPort.class),new Histories(),new InvestorFlowProperties(),new StockFlows(),new MarketFlows());var result=service.importStockCsv("stockCode,tradeDate,investorType,netBuyAmount,netBuyQuantity\n005930,2026-06-15,FOREIGN,100,1\nBAD,not-date,FOREIGN,x,x");assertThat(result.status()).isEqualTo(InvestorFlowImportStatus.PARTIAL);assertThat(result.importedCount()).isEqualTo(1);}
+    @Test void hasNoOrderOrBrokerDependency(){assertThat(Arrays.stream(InvestorFlowImportService.class.getDeclaredConstructors()).flatMap(c->Arrays.stream(c.getParameterTypes())).map(Class::getName)).noneMatch(n->n.contains("Order")||n.contains("Broker"));}
+    private static InvestorFlowImportService service(InvestorFlowProviderPort p,Histories h,InvestorFlowProperties props,StockFlows sf,MarketFlows mf){StockPort stockPort=mock(StockPort.class);when(stockPort.findAll()).thenReturn(List.of(new Stock("005930","Samsung",Market.KOSPI,true)));return new InvestorFlowImportService(sf,mf,p,h,stockPort,props,OperationalMetricsPort.noop(),Clock.fixed(NOW,ZoneOffset.UTC));}
+    private static StockInvestorFlow stockFlow(InvestorType type,String amount){return new StockInvestorFlow(null,"005930",DATE,type,null,new BigDecimal(amount),1,null,null,null,null,InvestorFlowSource.KIS,NOW,NOW);}
+    private static class StockFlows implements StockInvestorFlowPort{List<StockInvestorFlow> values=new ArrayList<>();public List<StockInvestorFlow> saveAll(List<StockInvestorFlow> v){values.addAll(v);return v;}public List<StockInvestorFlow> findByStockCodeAndDate(String c,LocalDate d){return List.of();}public List<StockInvestorFlow> findRecentByStockCode(String c,LocalDate d,int days){return values;}}
+    private static class MarketFlows implements MarketInvestorFlowPort{List<MarketInvestorFlow> values=new ArrayList<>();public List<MarketInvestorFlow> saveAll(List<MarketInvestorFlow> v){values.addAll(v);return v;}public List<MarketInvestorFlow> findByMarketAndDate(InvestorFlowMarket m,LocalDate d){return List.of();}public List<MarketInvestorFlow> findRecentByMarket(InvestorFlowMarket m,LocalDate d,int days){return values;}}
+    private static class Histories implements InvestorFlowImportHistoryPort{List<InvestorFlowImportHistory> values=new ArrayList<>();public InvestorFlowImportHistory save(InvestorFlowImportHistory h){var v=new InvestorFlowImportHistory(1L,h.scope(),h.stockCode(),h.market(),h.tradeDate(),h.provider(),h.status(),h.importedCount(),h.failureReason(),h.requestedAt(),h.completedAt());values.add(v);return v;}public List<InvestorFlowImportHistory> findRecent(String c,int l){return values;}}
+}

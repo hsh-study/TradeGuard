@@ -46,6 +46,7 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
     private final TradingSignalQueryPort tradingSignalQueryPort;
     private final NotificationPort notificationPort;
     private final EarningsStrategyAdjustment earningsAdjustment;
+    private SupplyDemandStrategyAdjustment supplyDemandAdjustment;
     private final Clock clock;
     private IndicatorStrategyWarmUpSupport warmUpSupport =
             IndicatorStrategyWarmUpSupport.disabled();
@@ -57,11 +58,13 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
             TradingSignalQueryPort tradingSignalQueryPort,
             NotificationPort notificationPort,
             EarningsStrategyAdjustment earningsAdjustment,
+            SupplyDemandStrategyAdjustment supplyDemandAdjustment,
             IndicatorStrategyWarmUpSupport warmUpSupport
     ) {
         this(marketRankingPort, tradingSignalPort, tradingSignalQueryPort,
                 notificationPort, earningsAdjustment, Clock.systemUTC());
         this.warmUpSupport = warmUpSupport;
+        this.supplyDemandAdjustment = supplyDemandAdjustment;
     }
 
     ClosingBetCandidateScanner(
@@ -206,7 +209,19 @@ public class ClosingBetCandidateScanner implements ScanClosingBetCandidatesUseCa
         }
         score += earningsAssessment.scoreAdjustment();
         reasons.addAll(earningsAssessment.reasons());
+        SupplyDemandStrategyAdjustment.Assessment supplyAssessment = assessSupplyDemand(seed.stock().stockCode());
+        if (supplyAssessment.excluded()) {
+            return null;
+        }
+        score += supplyAssessment.scoreAdjustment();
+        reasons.addAll(supplyAssessment.reasons());
         return new ScoredCandidate(seed.stock(), score, reasons);
+    }
+
+    private SupplyDemandStrategyAdjustment.Assessment assessSupplyDemand(String stockCode) {
+        return supplyDemandAdjustment == null
+                ? new SupplyDemandStrategyAdjustment.Assessment(0, false, List.of())
+                : supplyDemandAdjustment.assess(stockCode, "closing_bet");
     }
 
     private EarningsStrategyAdjustment.Assessment assessEarnings(String stockCode) {

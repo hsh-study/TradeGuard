@@ -60,6 +60,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
     private final OperationalMetricsPort operationalMetricsPort;
     private final EarlyMarketStrategyProperties strategyProperties;
     private final EarningsStrategyAdjustment earningsAdjustment;
+    private SupplyDemandStrategyAdjustment supplyDemandAdjustment;
     private final Clock clock;
     private IndicatorStrategyWarmUpSupport warmUpSupport =
             IndicatorStrategyWarmUpSupport.disabled();
@@ -76,6 +77,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
             OperationalMetricsPort operationalMetricsPort,
             EarlyMarketStrategyProperties strategyProperties,
             EarningsStrategyAdjustment earningsAdjustment,
+            SupplyDemandStrategyAdjustment supplyDemandAdjustment,
             IndicatorStrategyWarmUpSupport warmUpSupport
     ) {
         this(
@@ -92,6 +94,7 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
                 Clock.systemUTC()
         );
         this.warmUpSupport = warmUpSupport;
+        this.supplyDemandAdjustment = supplyDemandAdjustment;
     }
 
     EarlyMarketPreOpenScanner(
@@ -339,7 +342,19 @@ public class EarlyMarketPreOpenScanner implements ScanEarlyMarketPreOpenUseCase 
         }
         score += earningsAssessment.scoreAdjustment();
         reasons.addAll(earningsAssessment.reasons());
+        SupplyDemandStrategyAdjustment.Assessment supplyAssessment = assessSupplyDemand(seed.stock().stockCode());
+        if (supplyAssessment.excluded()) {
+            return null;
+        }
+        score += supplyAssessment.scoreAdjustment();
+        reasons.addAll(supplyAssessment.reasons());
         return new ScoredCandidate(seed.stock(), score, reasons);
+    }
+
+    private SupplyDemandStrategyAdjustment.Assessment assessSupplyDemand(String stockCode) {
+        return supplyDemandAdjustment == null
+                ? new SupplyDemandStrategyAdjustment.Assessment(0, false, List.of())
+                : supplyDemandAdjustment.assess(stockCode, "early_market");
     }
 
     private EarningsStrategyAdjustment.Assessment assessEarnings(String stockCode) {

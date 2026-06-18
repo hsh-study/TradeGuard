@@ -2,6 +2,7 @@ package seokhoon.trade.application.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 import seokhoon.trade.application.port.out.*;
 import seokhoon.trade.domain.indicator.IndicatorSnapshot;
 import seokhoon.trade.domain.market.DailyPrice;
@@ -15,6 +16,12 @@ import seokhoon.trade.domain.market.SectorImportHistory;
 import seokhoon.trade.domain.market.SectorImportStatus;
 import seokhoon.trade.domain.market.SectorType;
 import seokhoon.trade.domain.market.StockSectorMapping;
+import seokhoon.trade.domain.market.StockSupplyDemandSnapshot;
+import seokhoon.trade.domain.market.SupplyDemandStatus;
+import seokhoon.trade.domain.market.InvestorFlowImportHistory;
+import seokhoon.trade.domain.market.InvestorFlowImportScope;
+import seokhoon.trade.domain.market.InvestorFlowProvider;
+import seokhoon.trade.domain.market.InvestorFlowImportStatus;
 import seokhoon.trade.domain.research.*;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.stock.Stock;
@@ -52,6 +59,9 @@ class MorningNoteServiceTest {
     private DisclosureEvidenceImportHistoryPort disclosureEvidenceImportHistories;
     private MarketIndexImportHistoryPort marketIndexImportHistories;
     private SectorImportHistoryPort sectorImportHistories;
+    private SupplyDemandSnapshotPort supplyDemandSnapshots;
+    private MarketInvestorFlowPort marketInvestorFlows;
+    private InvestorFlowImportHistoryPort investorFlowImportHistories;
     private MorningNoteService service;
 
     @BeforeEach
@@ -76,6 +86,9 @@ class MorningNoteServiceTest {
         disclosureEvidenceImportHistories = mock(DisclosureEvidenceImportHistoryPort.class);
         marketIndexImportHistories = mock(MarketIndexImportHistoryPort.class);
         sectorImportHistories = mock(SectorImportHistoryPort.class);
+        supplyDemandSnapshots = mock(SupplyDemandSnapshotPort.class);
+        marketInvestorFlows = mock(MarketInvestorFlowPort.class);
+        investorFlowImportHistories = mock(InvestorFlowImportHistoryPort.class);
         when(notes.save(any())).thenAnswer(invocation -> {
             MorningNote note = invocation.getArgument(0);
             return new MorningNote(1L, note.tradeDate(), note.marketSummary(), note.sectorSummary(),
@@ -111,6 +124,12 @@ class MorningNoteServiceTest {
                 OperationalMetricsPort.noop(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
+        ReflectionTestUtils.setField(service, "supplyDemandSnapshotPort", supplyDemandSnapshots);
+        ReflectionTestUtils.setField(service, "marketInvestorFlowPort", marketInvestorFlows);
+        ReflectionTestUtils.setField(service, "investorFlowImportHistoryPort", investorFlowImportHistories);
+        when(supplyDemandSnapshots.findLatestByStockCode(any())).thenReturn(Optional.empty());
+        when(marketInvestorFlows.findByMarketAndDate(any(), any())).thenReturn(List.of());
+        when(investorFlowImportHistories.findRecent(any(), anyInt())).thenReturn(List.of());
     }
 
     @Test
@@ -141,6 +160,26 @@ class MorningNoteServiceTest {
                 .contains("vsMA20=ABOVE", "vsMA60=ABOVE", "ma20>ma60=true")
                 .contains("RSI=NEUTRAL", "MACD=BULLISH", "Bollinger=INSIDE")
                 .contains("반도체(SEMICONDUCTOR)");
+    }
+
+    @Test
+    void includesSupplyDemandActionItemsAndProviderDisabledWarning() {
+        when(stocks.findAll()).thenReturn(List.of(new Stock("005930", "Samsung", Market.KOSPI, true)));
+        when(supplyDemandSnapshots.findLatestByStockCode("005930"))
+                .thenReturn(Optional.of(new StockSupplyDemandSnapshot(1L, "005930", TRADE_DATE.minusDays(3),
+                        bd("100"), bd("200"), bd("-300"), 3, 3, 3,
+                        bd("300"), bd("1500"), bd("0.5"), 85,
+                        SupplyDemandStatus.STRONG_ACCUMULATION, List.of("SMART_MONEY_NET_BUY"), NOW, NOW)));
+        when(investorFlowImportHistories.findRecent(isNull(), anyInt())).thenReturn(List.of(
+                new InvestorFlowImportHistory(1L, InvestorFlowImportScope.STOCK, "005930", null,
+                        TRADE_DATE.minusDays(3), InvestorFlowProvider.KIS, InvestorFlowImportStatus.SKIPPED,
+                        0, "INVESTOR_FLOW_PROVIDER_DISABLED", NOW, NOW)));
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.watchlistSummary()).contains("supplyDemand=STRONG_ACCUMULATION");
+        assertThat(note.actionItems()).contains("SUPPLY_DEMAND_STRONG 005930",
+                "INVESTOR_FLOW_PROVIDER_DISABLED");
     }
 
     @Test
