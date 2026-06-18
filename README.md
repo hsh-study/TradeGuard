@@ -647,6 +647,9 @@ INVESTOR_FLOW_PROVIDER_TIMEOUT_SECONDS=10
 INVESTOR_FLOW_IMPORT_AUTO_RUN=false
 INVESTOR_FLOW_LOOKBACK_DAYS=20
 KIS_INVESTOR_FLOW_AMOUNT_UNIT=UNVERIFIED
+KIS_INVESTOR_FLOW_DIAGNOSTIC_ENABLED=false
+KIS_INVESTOR_FLOW_DIAGNOSTIC_ALLOW_HTTP=false
+KIS_INVESTOR_FLOW_DIAGNOSTIC_MASK_RESPONSE=true
 SUPPLY_DEMAND_STRATEGY_ENABLED=true
 ```
 
@@ -676,6 +679,47 @@ TR `FHPTJ04040000`
 provider가 꺼져 있으면 API와 scheduler는 외부 호출 없이 `SKIPPED` history를
 남깁니다. CSV는 provider 장애 또는 초기 적재를 위한 fallback이며 후보 생성은
 provider를 호출하지 않고 저장된 snapshot만 읽습니다.
+
+KIS Investor Flow Verification v1은 금액 단위를 추측하지 않고 운영 실응답을
+확인하기 위한 diagnostic 전용 경로입니다. diagnostic은 `stock_investor_flows`,
+`market_investor_flows`, import history 또는 supply-demand snapshot을 저장하지
+않으며 scheduler와 후보 생성에서도 호출하지 않습니다. 원문 응답 전체, HTTP
+header, token, app key/secret, 계좌번호는 반환하거나 로그에 남기지 않습니다.
+기본 마스킹은 허용된 숫자 필드를 `POSITIVE_DIGITS_3` 같은 부호/자릿수 정보로만
+반환합니다.
+
+```sh
+curl -X POST \
+  'http://localhost:8080/api/research/investor-flows/verify/stock?stockCode=005930&tradeDate=2026-06-15'
+
+curl -X POST \
+  'http://localhost:8080/api/research/investor-flows/verify/market?market=KOSPI&tradeDate=2026-06-15'
+```
+
+운영 검증 절차:
+
+1. DART/KIS credential과 기존 read-only 설정을 완료합니다.
+2. `INVESTOR_FLOW_PROVIDER_ENABLED=true`로 설정합니다.
+3. `KIS_INVESTOR_FLOW_AMOUNT_UNIT=UNVERIFIED`를 유지합니다.
+4. `KIS_INVESTOR_FLOW_DIAGNOSTIC_ENABLED=true`로 설정합니다.
+5. `KIS_INVESTOR_FLOW_DIAGNOSTIC_ALLOW_HTTP=true`로 설정합니다.
+6. verify API로 삼성전자 등 표본 종목과 거래일을 조회합니다.
+7. KIS HTS/앱 또는 공식 응답 문서와 금액 단위를 비교합니다. 정확한 whitelist
+   숫자 비교가 필요한 통제된 로컬 환경에서만
+   `KIS_INVESTOR_FLOW_DIAGNOSTIC_MASK_RESPONSE=false`를 잠시 사용합니다.
+8. 확인된 단위에 따라 `KRW`, `THOUSAND_KRW`, `MILLION_KRW` 중 하나를 설정합니다.
+9. diagnostic enabled/allow HTTP를 다시 `false`로 변경합니다.
+10. 일반 import API를 실행합니다.
+11. 생성된 supply-demand snapshot을 확인합니다.
+
+diagnostic 또는 HTTP 허용 설정이 꺼져 있으면 verify API는 안전한 409 응답을
+반환합니다. KIS provider가 활성화된 상태에서 금액 단위가 `UNVERIFIED`이면 일반
+종목/시장/watchlist import는 provider나 DB를 호출하지 않고
+`SKIPPED / AMOUNT_UNIT_UNVERIFIED` history를 남깁니다. 07:40 import와 07:45
+supply-demand scheduler도 같은 reason으로 skip하며, 수동 supply-demand 분석은
+snapshot 저장 전에 차단됩니다. 검증 중 우회 저장을 막기 위해 KIS provider가
+활성화된 이 상태에서는 CSV fallback도 flow row를 저장하지 않습니다. provider를
+비활성화한 순수 CSV fallback 운영은 기존 정책대로 사용할 수 있습니다.
 
 ```sh
 curl -X POST \

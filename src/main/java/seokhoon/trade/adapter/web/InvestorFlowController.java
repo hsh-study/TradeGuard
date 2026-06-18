@@ -12,11 +12,13 @@ import java.util.List;
 @RequestMapping("/api/research")
 public class InvestorFlowController {
     private final ImportInvestorFlowsUseCase imports; private final AnalyzeSupplyDemandUseCase analysis;
+    private final VerifyInvestorFlowProviderUseCase verification;
     private final StockInvestorFlowPort stockFlows; private final MarketInvestorFlowPort marketFlows;
     private final SupplyDemandSnapshotPort snapshots;
     public InvestorFlowController(ImportInvestorFlowsUseCase imports,AnalyzeSupplyDemandUseCase analysis,
-            StockInvestorFlowPort stockFlows,MarketInvestorFlowPort marketFlows,SupplyDemandSnapshotPort snapshots){
-        this.imports=imports;this.analysis=analysis;this.stockFlows=stockFlows;this.marketFlows=marketFlows;this.snapshots=snapshots;}
+            VerifyInvestorFlowProviderUseCase verification,StockInvestorFlowPort stockFlows,
+            MarketInvestorFlowPort marketFlows,SupplyDemandSnapshotPort snapshots){
+        this.imports=imports;this.analysis=analysis;this.verification=verification;this.stockFlows=stockFlows;this.marketFlows=marketFlows;this.snapshots=snapshots;}
     @PostMapping(value="/investor-flows/stocks/import-csv",consumes="text/csv")
     InvestorFlowImportHistory importStockCsv(@RequestBody String csv){return imports.importStockCsv(csv);}
     @PostMapping(value="/investor-flows/markets/import-csv",consumes="text/csv")
@@ -27,6 +29,10 @@ public class InvestorFlowController {
     InvestorFlowImportHistory importMarket(@RequestParam InvestorFlowMarket market,@RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate tradeDate){return imports.importMarket(market,tradeDate);}
     @PostMapping("/investor-flows/watchlist/import")
     List<InvestorFlowImportHistory> importWatchlist(@RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate tradeDate){return imports.importWatchlist(tradeDate);}
+    @PostMapping("/investor-flows/verify/stock")
+    InvestorFlowVerification verifyStock(@RequestParam String stockCode,@RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate tradeDate){return verification.verifyStock(stockCode,tradeDate);}
+    @PostMapping("/investor-flows/verify/market")
+    InvestorFlowVerification verifyMarket(@RequestParam InvestorFlowMarket market,@RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate tradeDate){return verification.verifyMarket(market,tradeDate);}
     @GetMapping("/investor-flows/import-histories")
     List<InvestorFlowImportHistory> histories(@RequestParam(required=false) String stockCode){return imports.findHistories(stockCode);}
     @GetMapping("/investor-flows/stocks")

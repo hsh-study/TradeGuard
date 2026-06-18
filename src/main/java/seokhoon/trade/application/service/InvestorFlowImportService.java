@@ -35,6 +35,7 @@ public class InvestorFlowImportService implements ImportInvestorFlowsUseCase {
     @Override @Transactional public InvestorFlowImportHistory importStock(String code, LocalDate date) {
         Instant requested=clock.instant();
         if(!properties.isProviderEnabled()) return history(InvestorFlowImportScope.STOCK,code,null,date,providerType(),InvestorFlowImportStatus.SKIPPED,0,"INVESTOR_FLOW_PROVIDER_DISABLED",requested);
+        if(properties.isKisProviderWithUnverifiedAmountUnit()) return history(InvestorFlowImportScope.STOCK,code,null,date,providerType(),InvestorFlowImportStatus.SKIPPED,0,"AMOUNT_UNIT_UNVERIFIED",requested);
         try { var fetched=provider.fetchStockInvestorFlows(code,date); var normalized=fetched.flows().stream().map(v->normalize(v,code,date)).toList();
             stockFlows.saveAll(normalized); return history(InvestorFlowImportScope.STOCK,code,null,date,providerType(),
                     providerStatus(normalized.size(),fetched.rejectedCount()),normalized.size(),providerReason(normalized.size(),fetched.rejectedCount()),requested);
@@ -43,6 +44,7 @@ public class InvestorFlowImportService implements ImportInvestorFlowsUseCase {
     @Override @Transactional public InvestorFlowImportHistory importMarket(InvestorFlowMarket market, LocalDate date) {
         Instant requested=clock.instant();
         if(!properties.isProviderEnabled()) return history(InvestorFlowImportScope.MARKET,null,market,date,providerType(),InvestorFlowImportStatus.SKIPPED,0,"INVESTOR_FLOW_PROVIDER_DISABLED",requested);
+        if(properties.isKisProviderWithUnverifiedAmountUnit()) return history(InvestorFlowImportScope.MARKET,null,market,date,providerType(),InvestorFlowImportStatus.SKIPPED,0,"AMOUNT_UNIT_UNVERIFIED",requested);
         try { var fetched=provider.fetchMarketInvestorFlows(market,date); var normalized=fetched.flows().stream().map(v->normalize(v,market,date)).toList();
             marketFlows.saveAll(normalized); return history(InvestorFlowImportScope.MARKET,null,market,date,providerType(),
                     providerStatus(normalized.size(),fetched.rejectedCount()),normalized.size(),providerReason(normalized.size(),fetched.rejectedCount()),requested);
@@ -55,12 +57,12 @@ public class InvestorFlowImportService implements ImportInvestorFlowsUseCase {
         return result;
     }
     @Override @Transactional public InvestorFlowImportHistory importStockCsv(String csv){
-        Instant requested=clock.instant(); try {CsvResult<StockInvestorFlow> result=parseStock(csv); stockFlows.saveAll(result.values());
+        Instant requested=clock.instant(); if(properties.isKisProviderWithUnverifiedAmountUnit()) return history(InvestorFlowImportScope.STOCK,null,null,LocalDate.now(clock),InvestorFlowProvider.CSV,InvestorFlowImportStatus.SKIPPED,0,"AMOUNT_UNIT_UNVERIFIED",requested); try {CsvResult<StockInvestorFlow> result=parseStock(csv); stockFlows.saveAll(result.values());
         return history(InvestorFlowImportScope.STOCK,null,null,result.date(),InvestorFlowProvider.CSV,result.status(),result.values().size(),result.reason(),requested);}
         catch(RuntimeException e){return history(InvestorFlowImportScope.STOCK,null,null,LocalDate.now(clock),InvestorFlowProvider.CSV,InvestorFlowImportStatus.FAILED,0,sanitize(e.getMessage()),requested);}
     }
     @Override @Transactional public InvestorFlowImportHistory importMarketCsv(String csv){
-        Instant requested=clock.instant(); try {CsvResult<MarketInvestorFlow> result=parseMarket(csv); marketFlows.saveAll(result.values());
+        Instant requested=clock.instant(); if(properties.isKisProviderWithUnverifiedAmountUnit()) return history(InvestorFlowImportScope.MARKET,null,null,LocalDate.now(clock),InvestorFlowProvider.CSV,InvestorFlowImportStatus.SKIPPED,0,"AMOUNT_UNIT_UNVERIFIED",requested); try {CsvResult<MarketInvestorFlow> result=parseMarket(csv); marketFlows.saveAll(result.values());
         return history(InvestorFlowImportScope.MARKET,null,null,result.date(),InvestorFlowProvider.CSV,result.status(),result.values().size(),result.reason(),requested);}
         catch(RuntimeException e){return history(InvestorFlowImportScope.MARKET,null,null,LocalDate.now(clock),InvestorFlowProvider.CSV,InvestorFlowImportStatus.FAILED,0,sanitize(e.getMessage()),requested);}
     }

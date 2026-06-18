@@ -16,6 +16,8 @@ import seokhoon.trade.application.service.EarlyMarketStrategyExperimentNoDataExc
 import seokhoon.trade.application.service.EarlyMarketStrategyExperimentNotFoundException;
 import seokhoon.trade.application.service.LiveTradingException;
 import seokhoon.trade.application.service.ResearchNotFoundException;
+import seokhoon.trade.application.service.InvestorFlowDiagnosticBlockedException;
+import seokhoon.trade.application.service.InvestorFlowAmountUnitUnverifiedException;
 import seokhoon.trade.config.LiveTradingDisabledException;
 
 @RestControllerAdvice
@@ -105,6 +107,22 @@ public class GlobalExceptionHandler {
     ResponseEntity<ErrorResponse> handleResearchNotFound(ResearchNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("RESEARCH_NOT_FOUND", exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvestorFlowDiagnosticBlockedException.class)
+    ResponseEntity<ErrorResponse> handleInvestorFlowDiagnosticBlocked(
+            InvestorFlowDiagnosticBlockedException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("INVESTOR_FLOW_DIAGNOSTIC_BLOCKED",
+                        exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvestorFlowAmountUnitUnverifiedException.class)
+    ResponseEntity<ErrorResponse> handleInvestorFlowAmountUnitUnverified(
+            InvestorFlowAmountUnitUnverifiedException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("INVESTOR_FLOW_AMOUNT_UNIT_UNVERIFIED",
+                        exception.getMessage()));
     }
 
     private static ResponseEntity<ErrorResponse> invalidRequest(String message) {

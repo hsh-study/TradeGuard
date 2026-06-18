@@ -13,6 +13,9 @@ public class InvestorFlowProperties {
     private boolean importAutoRun;
     private int lookbackDays=20;
     private KisInvestorFlowAmountUnit kisAmountUnit=KisInvestorFlowAmountUnit.UNVERIFIED;
+    private boolean diagnosticEnabled;
+    private boolean diagnosticAllowHttp;
+    private boolean diagnosticMaskResponse=true;
     public boolean isProviderEnabled(){return providerEnabled;}
     public void setProviderEnabled(boolean v){providerEnabled=v;}
     public String getProviderType(){return providerType;}
@@ -25,4 +28,12 @@ public class InvestorFlowProperties {
     public void setLookbackDays(int v){lookbackDays=v;}
     public KisInvestorFlowAmountUnit getKisAmountUnit(){return kisAmountUnit;}
     public void setKisAmountUnit(KisInvestorFlowAmountUnit v){kisAmountUnit=v;}
+    public boolean isKisAmountUnitVerified(){return kisAmountUnit!=KisInvestorFlowAmountUnit.UNVERIFIED;}
+    public boolean isKisProviderWithUnverifiedAmountUnit(){return providerEnabled&&"KIS".equalsIgnoreCase(providerType)&&!isKisAmountUnitVerified();}
+    public boolean isDiagnosticEnabled(){return diagnosticEnabled;}
+    public void setDiagnosticEnabled(boolean v){diagnosticEnabled=v;}
+    public boolean isDiagnosticAllowHttp(){return diagnosticAllowHttp;}
+    public void setDiagnosticAllowHttp(boolean v){diagnosticAllowHttp=v;}
+    public boolean isDiagnosticMaskResponse(){return diagnosticMaskResponse;}
+    public void setDiagnosticMaskResponse(boolean v){diagnosticMaskResponse=v;}
 }

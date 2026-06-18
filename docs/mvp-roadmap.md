@@ -74,6 +74,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | Sector Seed Import | 완료 | `sector_import_histories`, sector seed CSV import API 구현. sector master upsert, stock-sector mapping 중복 방지, sector-only row 지원, optional sector snapshot generation, Morning Note sector import/mapping action item과 metric 구현 |
 | Investor Flow / Supply Demand Auto Import | 완료 | 종목/시장 투자자별 수급, import history, provider-first import, CSV fallback, 07:40 import와 07:45 분석 scheduler, smart-money snapshot, Morning Note 및 종베/장초 점수 연동 구현. 후보 생성 중 provider 호출과 자동 주문은 없음 |
 | KIS Investor Flow Provider Adapter | 부분 완료 | 공식 샘플의 종목 TR `FHKST01010900`, 시장 TR `FHPTJ04040000`과 응답 필드 기반 read-only adapter 구현. 시장 TR은 REAL/KOSPI/KOSDAQ만 허용. 공식 샘플에 금액 단위가 명시되지 않아 기본 `UNVERIFIED`에서 호출을 차단하며 운영 실응답 단위 확인 후 활성화 필요 |
+| KIS Investor Flow Verification | 완료 | opt-in diagnostic API로 `UNVERIFIED` 상태의 제한된 read-only 호출 지원. whitelist 필드와 마스킹된 숫자 표본만 반환하며 DB/history/snapshot 저장 없음. 일반 import와 07:40/07:45 scheduler는 단위 검증 전 `AMOUNT_UNIT_UNVERIFIED`로 차단 |
 
 ## 4. 구현 단계
 
@@ -202,6 +203,6 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. disclosure evidence DART/KRX 실제 provider adapter와 rate limit 정책 구현
-2. consensus provider 범위와 합법적인 라이선스/입력 경로 결정
+1. KIS investor flow 운영 실응답과 HTS/공식 자료를 비교해 금액 단위 확정
+2. disclosure evidence DART/KRX 실제 provider adapter와 rate limit 정책 구현
 3. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현

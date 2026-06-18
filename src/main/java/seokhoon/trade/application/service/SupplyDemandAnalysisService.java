@@ -26,6 +26,7 @@ public class SupplyDemandAnalysisService implements AnalyzeSupplyDemandUseCase {
     SupplyDemandAnalysisService(StockInvestorFlowPort flows,SupplyDemandSnapshotPort snapshots,
             StockPort stocks,InvestorFlowProperties properties,OperationalMetricsPort metrics,Clock clock){this.flows=flows;this.snapshots=snapshots;this.stocks=stocks;this.properties=properties;this.metrics=metrics;this.clock=clock;}
     @Override @Transactional public StockSupplyDemandSnapshot analyzeStock(String code,LocalDate date){
+        if(properties.isKisProviderWithUnverifiedAmountUnit()){metrics.recordSupplyDemandAnalysis("blocked");throw new InvestorFlowAmountUnitUnverifiedException();}
         try {var recent=flows.findRecentByStockCode(code,date,properties.getLookbackDays()); var byDate=aggregate(recent);
             if(byDate.size()<3){var value=snapshot(code,date,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,0,0,0,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,0,SupplyDemandStatus.DATA_INSUFFICIENT,List.of("INVESTOR_FLOW_DATA_LESS_THAN_3_DAYS"));metrics.recordSupplyDemandAnalysis("insufficient");return snapshots.save(value);}
             List<LocalDate> dates=byDate.keySet().stream().sorted(Comparator.reverseOrder()).limit(properties.getLookbackDays()).toList(); Daily today=byDate.getOrDefault(date,byDate.get(dates.get(0)));

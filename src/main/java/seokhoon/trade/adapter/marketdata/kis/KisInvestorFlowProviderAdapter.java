@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import seokhoon.trade.application.port.out.InvestorFlowProviderPort;
+import seokhoon.trade.application.port.out.InvestorFlowDiagnosticPort;
 import seokhoon.trade.application.port.out.KisAccessTokenProvider;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.config.InvestorFlowProperties;
@@ -28,7 +29,7 @@ import java.util.*;
 @Component
 @ConditionalOnProperty(name = "tradeguard.investor-flow.provider-enabled", havingValue = "true")
 @ConditionalOnExpression("'${tradeguard.investor-flow.provider-type:KIS}'.equalsIgnoreCase('KIS')")
-public class KisInvestorFlowProviderAdapter implements InvestorFlowProviderPort {
+public class KisInvestorFlowProviderAdapter implements InvestorFlowProviderPort, InvestorFlowDiagnosticPort {
     static final String STOCK_TR_ID = "FHKST01010900";
     static final String MARKET_TR_ID = "FHPTJ04040000";
     static final String STOCK_PATH = "/uapi/domestic-stock/v1/quotations/inquire-investor";
@@ -36,6 +37,16 @@ public class KisInvestorFlowProviderAdapter implements InvestorFlowProviderPort 
     static final String QUANTITY_UNIT = "SHARE";
     private static final DateTimeFormatter KIS_DATE = DateTimeFormatter.BASIC_ISO_DATE;
     private static final Logger log = LoggerFactory.getLogger(KisInvestorFlowProviderAdapter.class);
+    private static final List<String> DIAGNOSTIC_AMOUNT_FIELDS = List.of(
+            "frgn_ntby_tr_pbmn", "orgn_ntby_tr_pbmn", "prsn_ntby_tr_pbmn",
+            "frgn_shnu_tr_pbmn", "orgn_shnu_tr_pbmn", "prsn_shnu_tr_pbmn",
+            "frgn_seln_tr_pbmn", "orgn_seln_tr_pbmn", "prsn_seln_tr_pbmn"
+    );
+    private static final List<String> DIAGNOSTIC_QUANTITY_FIELDS = List.of(
+            "frgn_ntby_qty", "orgn_ntby_qty", "prsn_ntby_qty",
+            "frgn_shnu_vol", "orgn_shnu_vol", "prsn_shnu_vol",
+            "frgn_seln_vol", "orgn_seln_vol", "prsn_seln_vol"
+    );
 
     private final KisHttpClient httpClient;
     private final KisAccessTokenProvider tokenProvider;
@@ -105,6 +116,37 @@ public class KisInvestorFlowProviderAdapter implements InvestorFlowProviderPort 
         return mapMarketRow(market, tradeDate, row);
     }
 
+    @Override
+    public InvestorFlowDiagnosticData diagnoseStock(String stockCode, LocalDate tradeDate) {
+        validateStockCode(stockCode);
+        Map<String, String> parameters = new LinkedHashMap<>();
+        parameters.put("FID_COND_MRKT_DIV_CODE", "J");
+        parameters.put("FID_INPUT_ISCD", stockCode);
+        JsonNode output = request(STOCK_PATH, STOCK_TR_ID, parameters, "diagnostic_stock");
+        return diagnosticData(STOCK_PATH, STOCK_TR_ID, output, tradeDate);
+    }
+
+    @Override
+    public InvestorFlowDiagnosticData diagnoseMarket(
+            InvestorFlowMarket market, LocalDate tradeDate) {
+        if (kisProperties.getEnvironment() != KisEnvironment.REAL) {
+            throw new UnsupportedOperationException(
+                    "KIS market investor flow diagnostic is verified for REAL environment only");
+        }
+        MarketParameters marketParameters = marketParameters(market);
+        String date = KIS_DATE.format(tradeDate);
+        Map<String, String> parameters = new LinkedHashMap<>();
+        parameters.put("FID_COND_MRKT_DIV_CODE", "U");
+        parameters.put("FID_INPUT_ISCD", marketParameters.industryCode());
+        parameters.put("FID_INPUT_DATE_1", date);
+        parameters.put("FID_INPUT_ISCD_1", marketParameters.marketCode());
+        parameters.put("FID_INPUT_DATE_2", date);
+        parameters.put("FID_INPUT_ISCD_2", marketParameters.industryCode());
+        JsonNode output = request(MARKET_PATH, MARKET_TR_ID, parameters,
+                "diagnostic_market");
+        return diagnosticData(MARKET_PATH, MARKET_TR_ID, output, tradeDate);
+    }
+
     private JsonNode request(String path, String trId, Map<String, String> parameters,
             String operation) {
         try {
@@ -164,6 +206,81 @@ public class KisInvestorFlowProviderAdapter implements InvestorFlowProviderPort 
             }
         }
         return new InvestorFlowFetchResult<>(flows, rejected);
+    }
+
+    private InvestorFlowDiagnosticData diagnosticData(String endpoint, String trId,
+            JsonNode output, LocalDate tradeDate) {
+        JsonNode requestedRow = findByDate(output, tradeDate);
+        JsonNode sample = requestedRow != null
+                ? requestedRow : (output.isEmpty() ? null : output.get(0));
+        if (sample == null) {
+            return new InvestorFlowDiagnosticData(endpoint, trId, 0, List.of(),
+                    List.of(), Map.of(), Map.of(), false);
+        }
+        List<String> available = new ArrayList<>();
+        if (optionalText(sample, "stck_bsop_date") != null) {
+            available.add("stck_bsop_date");
+        }
+        DIAGNOSTIC_AMOUNT_FIELDS.stream()
+                .filter(field -> optionalText(sample, field) != null)
+                .forEach(available::add);
+        DIAGNOSTIC_QUANTITY_FIELDS.stream()
+                .filter(field -> optionalText(sample, field) != null)
+                .forEach(available::add);
+        return new InvestorFlowDiagnosticData(
+                endpoint,
+                trId,
+                output.size(),
+                available,
+                diagnosticInvestorTypes(sample),
+                diagnosticValues(sample, DIAGNOSTIC_AMOUNT_FIELDS),
+                diagnosticValues(sample, DIAGNOSTIC_QUANTITY_FIELDS),
+                requestedRow != null
+        );
+    }
+
+    private Map<String, String> diagnosticValues(JsonNode sample, List<String> fields) {
+        Map<String, String> values = new LinkedHashMap<>();
+        for (String field : fields) {
+            String value = optionalText(sample, field);
+            if (value != null) {
+                values.put(field, investorFlowProperties.isDiagnosticMaskResponse()
+                        ? maskNumeric(value) : value);
+            }
+        }
+        return values;
+    }
+
+    private static List<String> diagnosticInvestorTypes(JsonNode sample) {
+        List<String> types = new ArrayList<>();
+        if (hasPrefix(sample, "frgn_")) types.add("FOREIGN");
+        if (hasPrefix(sample, "orgn_")) types.add("INSTITUTION");
+        if (hasPrefix(sample, "prsn_")) types.add("INDIVIDUAL");
+        return types;
+    }
+
+    private static boolean hasPrefix(JsonNode sample, String prefix) {
+        for (String field : DIAGNOSTIC_AMOUNT_FIELDS) {
+            if (field.startsWith(prefix) && optionalText(sample, field) != null) return true;
+        }
+        for (String field : DIAGNOSTIC_QUANTITY_FIELDS) {
+            if (field.startsWith(prefix) && optionalText(sample, field) != null) return true;
+        }
+        return false;
+    }
+
+    private static String maskNumeric(String raw) {
+        String normalized = raw.replace(",", "").trim();
+        try {
+            BigDecimal value = new BigDecimal(normalized);
+            if (value.signum() == 0) return "ZERO";
+            String digits = normalized.replaceFirst("^[+-]", "")
+                    .replace(".", "").replaceFirst("^0+", "");
+            return (value.signum() < 0 ? "NEGATIVE" : "POSITIVE")
+                    + "_DIGITS_" + Math.max(1, digits.length());
+        } catch (NumberFormatException exception) {
+            return "NON_NUMERIC_MASKED";
+        }
     }
 
     private InvestorFlowFetchResult<MarketInvestorFlow> mapMarketRow(

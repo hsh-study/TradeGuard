@@ -6,6 +6,7 @@ import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.config.InvestorFlowProperties;
 import seokhoon.trade.domain.kis.KisEnvironment;
 import seokhoon.trade.domain.market.InvestorFlowMarket;
+import seokhoon.trade.domain.market.InvestorFlowDiagnosticData;
 import seokhoon.trade.domain.market.InvestorType;
 import seokhoon.trade.domain.market.KisInvestorFlowAmountUnit;
 import tools.jackson.databind.JsonNode;
@@ -110,6 +111,41 @@ class KisInvestorFlowProviderAdapterTest {
                 .hasMessageContaining("amount unit");
         verifyNoInteractions(token);
         assertThat(client.uri).isNull();
+    }
+
+    @Test
+    void diagnosticAllowsUnverifiedUnitButReturnsOnlyWhitelistedMaskedFields() {
+        RecordingClient client = new RecordingClient(json("""
+                {"rt_cd":"0","output":[{
+                  "stck_bsop_date":"20260615",
+                  "frgn_ntby_tr_pbmn":"120","frgn_ntby_qty":"12",
+                  "orgn_ntby_tr_pbmn":"80","orgn_ntby_qty":"8",
+                  "prsn_ntby_tr_pbmn":"-200","prsn_ntby_qty":"-20",
+                  "access_token":"must-not-leak",
+                  "appsecret":"must-not-leak",
+                  "account_number":"must-not-leak",
+                  "unrelated_raw_field":"must-not-leak"
+                }]}
+                """));
+
+        InvestorFlowDiagnosticData result = adapter(client,
+                kisProperties(KisEnvironment.DEMO),
+                flowProperties(KisInvestorFlowAmountUnit.UNVERIFIED))
+                .diagnoseStock("005930", DATE);
+
+        assertThat(result.detectedRows()).isEqualTo(1);
+        assertThat(result.availableFields()).containsExactly(
+                "stck_bsop_date", "frgn_ntby_tr_pbmn", "orgn_ntby_tr_pbmn",
+                "prsn_ntby_tr_pbmn", "frgn_ntby_qty", "orgn_ntby_qty",
+                "prsn_ntby_qty");
+        assertThat(result.sampleInvestorTypes())
+                .containsExactly("FOREIGN", "INSTITUTION", "INDIVIDUAL");
+        assertThat(result.rawAmountFieldsMasked())
+                .containsEntry("frgn_ntby_tr_pbmn", "POSITIVE_DIGITS_3")
+                .containsEntry("prsn_ntby_tr_pbmn", "NEGATIVE_DIGITS_3");
+        assertThat(result.toString()).doesNotContain(
+                "must-not-leak", "access_token", "appsecret", "account_number",
+                "unrelated_raw_field", "test-token", "test-app-key", "test-app-secret");
     }
 
     @Test
