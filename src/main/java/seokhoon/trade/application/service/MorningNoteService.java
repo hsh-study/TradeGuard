@@ -24,6 +24,7 @@ import seokhoon.trade.domain.stock.Stock;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.config.InvestorFlowProperties;
 import seokhoon.trade.config.DisclosureActualProviderProperties;
+import seokhoon.trade.config.ConsensusProviderProperties;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -75,6 +76,9 @@ public class MorningNoteService implements MorningNoteUseCase {
     private InvestorFlowProperties investorFlowProperties;
     private PaperTradingReportPort paperTradingReportPort;
     private DisclosureActualProviderProperties disclosureActualProviderProperties;
+    private EarningsConsensusPort earningsConsensusPort;
+    private TargetPriceConsensusPort targetPriceConsensusPort;
+    private ConsensusProviderProperties consensusProviderProperties;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -113,6 +117,9 @@ public class MorningNoteService implements MorningNoteUseCase {
             InvestorFlowProperties investorFlowProperties,
             PaperTradingReportPort paperTradingReportPort,
             DisclosureActualProviderProperties disclosureActualProviderProperties,
+            EarningsConsensusPort earningsConsensusPort,
+            TargetPriceConsensusPort targetPriceConsensusPort,
+            ConsensusProviderProperties consensusProviderProperties,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
@@ -131,6 +138,8 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.investorFlowProperties = investorFlowProperties;
         this.paperTradingReportPort = paperTradingReportPort;
         this.disclosureActualProviderProperties = disclosureActualProviderProperties;
+        this.earningsConsensusPort=earningsConsensusPort;this.targetPriceConsensusPort=targetPriceConsensusPort;
+        this.consensusProviderProperties=consensusProviderProperties;
     }
 
     MorningNoteService(
@@ -217,6 +226,8 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.metrics = metrics;
         this.clock = clock;
         this.disclosureActualProviderProperties = new DisclosureActualProviderProperties();
+        this.earningsConsensusPort=EarningsConsensusPort.noop();this.targetPriceConsensusPort=TargetPriceConsensusPort.noop();
+        this.consensusProviderProperties=new ConsensusProviderProperties();
     }
 
     @Override
@@ -562,12 +573,29 @@ public class MorningNoteService implements MorningNoteUseCase {
         appendValuationItems(result, stocks, tradeDate);
         appendImportHistoryItems(result);
         appendEvidenceItems(result, catalysts);
+        appendConsensusItems(result,stocks,tradeDate);
         appendMarketSectorItems(result, stocks, tradeDate);
         appendSupplyDemandItems(result, stocks);
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
         return result.toString();
+    }
+
+    private void appendConsensusItems(StringBuilder result,List<Stock> stocks,LocalDate tradeDate){
+        for(Stock stock:stocks){
+            targetPriceConsensusPort.findLatest(stock.stockCode()).ifPresent(value->{
+                result.append("\n- CONSENSUS_AVAILABLE ").append(stock.stockCode()).append(" targetPrice=").append(value.targetPrice()).append(" upside=").append(value.upsideRate());
+                if(value.status()==ConsensusStatus.STALE)result.append("\n- CONSENSUS_STALE ").append(stock.stockCode()).append(" targetPrice date=").append(value.consensusDate());
+                if(value.upsideRate()!=null&&value.upsideRate().compareTo(new BigDecimal("20"))>=0)result.append("\n- TARGET_PRICE_UPSIDE_HIGH ").append(stock.stockCode()).append(" upside=").append(value.upsideRate());
+                if(value.upsideRate()!=null&&value.upsideRate().signum()<0)result.append("\n- TARGET_PRICE_DOWNSIDE_WARNING ").append(stock.stockCode()).append(" upside=").append(value.upsideRate());
+            });
+        }
+        upcomingEarningsEvents(tradeDate,tradeDate.plusDays(14)).forEach(event->{
+            var value=earningsConsensusPort.findLatest(event.stockCode(),event.fiscalYear(),event.fiscalQuarter());
+            if(value.isEmpty())result.append("\n- EARNINGS_CONSENSUS_MISSING ").append(event.stockCode()).append(" ").append(event.fiscalYear()).append("Q").append(event.fiscalQuarter());
+            else{result.append("\n- CONSENSUS_AVAILABLE ").append(event.stockCode()).append(" earnings ").append(event.fiscalYear()).append("Q").append(event.fiscalQuarter());if(value.get().status()==ConsensusStatus.STALE)result.append("\n- CONSENSUS_STALE ").append(event.stockCode()).append(" earnings date=").append(value.get().consensusDate());}
+        });
     }
 
     private void appendMarketSectorItems(StringBuilder result, List<Stock> stocks, LocalDate tradeDate) {

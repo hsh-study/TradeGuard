@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import seokhoon.trade.application.port.in.AnalyzeEarningsUseCase;
 import seokhoon.trade.application.port.in.ResearchUseCases.CreatePostEarningsReviewCommand;
 import seokhoon.trade.application.port.out.EarningsEventPort;
+import seokhoon.trade.application.port.out.EarningsConsensusPort;
 import seokhoon.trade.application.port.out.EarningsPreviewPort;
 import seokhoon.trade.application.port.out.OperationalMetricsPort;
 import seokhoon.trade.application.port.out.PostEarningsReviewPort;
@@ -24,6 +25,16 @@ class PostEarningsReviewServiceTest {
     private static final Instant NOW = Instant.parse("2026-06-15T00:00:00Z");
 
     @Test
+    void fallsBackToConsensusAndCalculatesNetIncomeSurprise() {
+        Clock clock=Clock.fixed(NOW,ZoneOffset.UTC);EarningsPreviewPort emptyPreview=new InMemoryPreviewPort(){@Override public Optional<EarningsPreview>findLatestByEarningsEventId(long id){return Optional.empty();}};
+        EarningsConsensusSnapshot consensus=new EarningsConsensusSnapshot(1L,"005930",2026,2,LocalDate.of(2026,7,20),new BigDecimal("1000"),new BigDecimal("150"),new BigDecimal("100"),null,10,ConsensusSource.CSV,"licensed",ConsensusStatus.ACTIVE,NOW,NOW);
+        EarningsConsensusPort port=new EarningsConsensusPort(){public EarningsConsensusSnapshot save(EarningsConsensusSnapshot v){return v;}public List<EarningsConsensusSnapshot>find(String c,Integer y,Integer q){return List.of(consensus);}public Optional<EarningsConsensusSnapshot>findLatest(String c,int y,int q){return Optional.of(consensus);}public List<EarningsConsensusSnapshot>findAllEarnings(){return List.of(consensus);}};
+        var service=new PostEarningsReviewService(new InMemoryReviewPort(),new InMemoryEventPort(),emptyPreview,new CountingAnalyzeUseCase(),new CatalystEvidenceService(new CatalystEvidenceServiceTest.InMemoryEvidencePort(),OperationalMetricsPort.noop(),clock),port,OperationalMetricsPort.noop(),clock);
+        var saved=service.create(new CreatePostEarningsReviewCommand(1L,"005930",LocalDate.of(2026,7,31),new BigDecimal("1100"),new BigDecimal("180"),new BigDecimal("120"),null,ThesisImpact.STRENGTHENED,"beat",List.of(),false,false));
+        assertThat(saved.netIncomeSurpriseRate()).isEqualByComparingTo("0.2000");assertThat(saved.consensusUsed()).isTrue();assertThat(saved.actionItems()).contains("CONSENSUS_SURPRISE_USED");
+    }
+
+    @Test
     void calculatesSurpriseAndDoesNotAutoMutateThesisWhenBroken() {
         InMemoryReviewPort reviews = new InMemoryReviewPort();
         InMemoryEventPort events = new InMemoryEventPort();
@@ -35,6 +46,7 @@ class PostEarningsReviewServiceTest {
         PostEarningsReviewService service = new PostEarningsReviewService(
                 reviews, events, previews, analyzer,
                 new CatalystEvidenceService(evidences, OperationalMetricsPort.noop(), clock),
+                EarningsConsensusPort.noop(),
                 OperationalMetricsPort.noop(), clock);
 
         PostEarningsReview saved = service.create(new CreatePostEarningsReviewCommand(

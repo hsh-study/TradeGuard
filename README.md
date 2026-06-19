@@ -1733,3 +1733,62 @@ Operational Dashboard의 `dartStatus`에는 다음과 같은 disclosure 상태�
   "highImportanceDisclosureCount": 2
 }
 ```
+
+## Consensus Provider v1
+
+Consensus Provider v1은 종목별 분기 실적 기대치와 목표주가 컨센서스 스냅샷을
+리서치 데이터로 저장합니다. 입력은 운영자 수동 입력, CSV, 또는 사용 권한이
+확인된 합법 provider만 허용합니다. 무단 웹 크롤링, 증권사 리포트 원문 저장,
+유료 데이터 무단 수집은 지원하지 않습니다. 외부 provider port는 향후 연동을
+위해 분리되어 있지만 v1 adapter는 disabled 상태로 빈 결과만 반환합니다.
+
+기본 설정은 다음과 같습니다.
+
+```text
+CONSENSUS_PROVIDER_ENABLED=false
+CONSENSUS_PROVIDER_TYPE=CSV
+CONSENSUS_PROVIDER_AUTO_RUN=false
+CONSENSUS_PROVIDER_TIMEOUT_SECONDS=10
+CONSENSUS_PROVIDER_LOOKBACK_DAYS=90
+CONSENSUS_PROVIDER_MAX_ITEMS_PER_STOCK=20
+```
+
+실적 컨센서스 CSV import 예시:
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/consensus/earnings/import-csv' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'file=@earnings-consensus.csv'
+```
+
+```csv
+stockCode,fiscalYear,fiscalQuarter,consensusDate,expectedRevenue,expectedOperatingIncome,expectedNetIncome,expectedOperatingMargin,analystCount,source,providerName
+005930,2026,2,2026-06-15,80000000000000,12000000000000,9000000000000,15.0,18,CSV,licensed-provider
+```
+
+목표주가 컨센서스 CSV import 예시:
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/consensus/target-price/import-csv' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'file=@target-price-consensus.csv'
+```
+
+```csv
+stockCode,consensusDate,targetPrice,currentPrice,upsideRate,analystCount,source,providerName
+005930,2026-06-15,90000,75000,20.0,18,CSV,licensed-provider
+```
+
+수동 저장은 `POST /api/research/consensus/earnings`와
+`POST /api/research/consensus/target-price`, 조회는 각 경로의 `GET`을 사용합니다.
+Earnings Preview 생성 시 해당 분기의 최신 컨센서스가 있으면 expected 값과
+사용 근거를 채웁니다. Post Earnings Review는 preview expected 값이 없는
+항목만 컨센서스로 보완하여 매출·영업이익·순이익 surprise rate를 계산하고
+컨센서스 사용 여부를 기록합니다.
+
+Morning Note에는 `CONSENSUS_AVAILABLE`, `CONSENSUS_STALE`,
+`TARGET_PRICE_UPSIDE_HIGH`, `TARGET_PRICE_DOWNSIDE_WARNING`,
+`EARNINGS_CONSENSUS_MISSING`을 표시합니다. Operational Dashboard의
+`consensusStatus`는 실적/목표주가 건수, stale 건수, 예정 실적 중 누락 건수와
+경고를 제공합니다. 이 데이터는 종베·장초 전략 점수 및 Broker/주문 경로와
+연결되지 않으며 자동매수·자동매도·실계좌 주문을 실행하지 않습니다.

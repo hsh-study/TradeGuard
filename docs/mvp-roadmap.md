@@ -78,6 +78,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | KIS Investor Flow Provider Adapter | 부분 완료 | 공식 샘플의 종목 TR `FHKST01010900`, 시장 TR `FHPTJ04040000`과 응답 필드 기반 read-only adapter 구현. 시장 TR은 REAL/KOSPI/KOSDAQ만 허용. 공식 샘플에 금액 단위가 명시되지 않아 기본 `UNVERIFIED`에서 호출을 차단하며 운영 실응답 단위 확인 후 활성화 필요 |
 | KIS Investor Flow Verification | 완료 | opt-in diagnostic API로 `UNVERIFIED` 상태의 제한된 read-only 호출 지원. whitelist 필드와 마스킹된 숫자 표본만 반환하며 DB/history/snapshot 저장 없음. 일반 import와 07:40/07:45 scheduler는 단위 검증 전 `AMOUNT_UNIT_UNVERIFIED`로 차단 |
 | Investor Flow Operational Readiness | 완료 | 설정, 금액 단위 검증 여부, diagnostic/auto-run 상태, 최근 종목·시장 import와 supply-demand scheduler 상태를 외부 호출 없이 조회하는 API와 Actuator health를 구현. 미검증 auto-run은 `OUT_OF_SERVICE`이며 Morning Note에 NOT_READY action item을 표시 |
+| Consensus Provider v1 | 완료 | 실적/목표주가 컨센서스 수동·CSV 저장/조회, disabled 외부 provider port, Earnings Preview/Post Review, Morning Note, Operational Dashboard 연동 구현. 합법 provider만 허용하며 원문 저장·무단 수집·전략 점수·자동 주문 연결 없음 |
 
 ## 4. 구현 단계
 
@@ -206,9 +207,20 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. consensus provider
-2. external metrics backend / Grafana
-3. operational dashboard UI
+1. external metrics backend / Grafana
+2. operational dashboard UI
+3. 저장된 성과를 이용한 consensus strategy score 반영 검증
+
+## Consensus Provider v1
+
+상태: 구현 완료
+
+- 실적 및 목표주가 컨센서스 스냅샷을 수동/CSV로 저장하고 최신값을 조회한다.
+- 외부 provider port는 disabled-by-default이며 합법적 사용 권한이 확인된 provider만 향후 연결한다.
+- Earnings Preview expected 값과 Post Earnings Review surprise 계산을 보강한다.
+- Morning Note와 Operational Dashboard에 가용성, stale, 예정 실적 누락, 목표가 upside/downside를 노출한다.
+- 무단 크롤링, 증권사 리포트 원문 저장, 유료 데이터 무단 수집을 하지 않는다.
+- 종베/장초 점수, BrokerPort, 자동매수·자동매도 및 실계좌 주문과 연결하지 않는다.
 
 ## Disclosure Actual Provider v1
 

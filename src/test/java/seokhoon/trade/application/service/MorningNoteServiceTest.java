@@ -26,6 +26,7 @@ import seokhoon.trade.domain.research.*;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.stock.Stock;
 import seokhoon.trade.config.InvestorFlowProperties;
+import seokhoon.trade.config.ConsensusProviderProperties;
 
 import java.math.BigDecimal;
 import java.time.*;
@@ -177,6 +178,34 @@ class MorningNoteServiceTest {
                 "bestReason=VWAP_ABOVE",
                 "dataInsufficient=1"
         );
+    }
+
+    @Test
+    void includesConsensusActionsWithoutCreatingOrders() {
+        Stock stock = new Stock("005930", "삼성전자", Market.KOSPI, true);
+        when(stocks.findAll()).thenReturn(List.of(stock));
+        TargetPriceConsensusPort targetPort = mock(TargetPriceConsensusPort.class);
+        EarningsConsensusPort earningsPort = mock(EarningsConsensusPort.class);
+        EarningsEventPort eventPort = mock(EarningsEventPort.class);
+        TargetPriceConsensusSnapshot target = new TargetPriceConsensusSnapshot(
+                1L, "005930", TRADE_DATE.minusDays(100), new BigDecimal("90000"),
+                new BigDecimal("70000"), new BigDecimal("28.5714"), 10,
+                ConsensusSource.CSV, "licensed-provider", ConsensusStatus.STALE, NOW, NOW);
+        EarningsEvent event = new EarningsEvent(1L, "005930", 2026, 2,
+                TRADE_DATE.plusDays(7), null, EarningsEventStatus.SCHEDULED, null, NOW, NOW);
+        when(targetPort.findLatest("005930")).thenReturn(Optional.of(target));
+        when(eventPort.findByStatusAndExpectedAnnouncementDateBetween(any(), any(), any()))
+                .thenReturn(List.of(event));
+        when(earningsPort.findLatest("005930", 2026, 2)).thenReturn(Optional.empty());
+        ReflectionTestUtils.setField(service, "targetPriceConsensusPort", targetPort);
+        ReflectionTestUtils.setField(service, "earningsConsensusPort", earningsPort);
+        ReflectionTestUtils.setField(service, "earningsEventPort", eventPort);
+        ReflectionTestUtils.setField(service, "consensusProviderProperties", new ConsensusProviderProperties());
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.actionItems()).contains("CONSENSUS_AVAILABLE", "CONSENSUS_STALE",
+                "TARGET_PRICE_UPSIDE_HIGH", "EARNINGS_CONSENSUS_MISSING");
     }
 
     @Test

@@ -28,6 +28,7 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
     private final AnalyzeEarningsUseCase analyzeEarningsUseCase;
     private final CatalystEvidenceService evidenceService;
     private final OperationalMetricsPort metrics;
+    private final EarningsConsensusPort consensusPort;
     private final Clock clock;
 
     @Autowired
@@ -37,10 +38,11 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
             EarningsPreviewPort previewPort,
             AnalyzeEarningsUseCase analyzeEarningsUseCase,
             CatalystEvidenceService evidenceService,
+            EarningsConsensusPort consensusPort,
             OperationalMetricsPort metrics
     ) {
         this(reviewPort, eventPort, previewPort, analyzeEarningsUseCase,
-                evidenceService, metrics, Clock.systemUTC());
+                evidenceService, consensusPort, metrics, Clock.systemUTC());
     }
 
     PostEarningsReviewService(
@@ -49,6 +51,7 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
             EarningsPreviewPort previewPort,
             AnalyzeEarningsUseCase analyzeEarningsUseCase,
             CatalystEvidenceService evidenceService,
+            EarningsConsensusPort consensusPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
@@ -57,6 +60,7 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
         this.previewPort = previewPort;
         this.analyzeEarningsUseCase = analyzeEarningsUseCase;
         this.evidenceService = evidenceService;
+        this.consensusPort = consensusPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -71,6 +75,7 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
     ) {
         this(reviewPort, eventPort, previewPort, analyzeEarningsUseCase,
                 new CatalystEvidenceService(new NoopCatalystEvidencePort(), OperationalMetricsPort.noop(), clock),
+                EarningsConsensusPort.noop(),
                 metrics, clock);
     }
 
@@ -84,12 +89,15 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
                 ? ratio(command.actualOperatingIncome(), command.actualRevenue())
                 : command.actualOperatingMargin();
         EarningsPreview preview = previewPort.findLatestByEarningsEventId(command.earningsEventId()).orElse(null);
-        BigDecimal revenueSurprise = preview == null
-                ? null
-                : surprise(command.actualRevenue(), preview.expectedRevenue());
-        BigDecimal operatingIncomeSurprise = preview == null
-                ? null
-                : surprise(command.actualOperatingIncome(), preview.expectedOperatingIncome());
+        EarningsConsensusSnapshot consensus=consensusPort.findLatest(command.stockCode(),event.fiscalYear(),event.fiscalQuarter()).orElse(null);
+        BigDecimal expectedRevenue=preview==null?null:preview.expectedRevenue();BigDecimal expectedOperating=preview==null?null:preview.expectedOperatingIncome();BigDecimal expectedNet=preview==null?null:preview.expectedNetIncome();
+        boolean consensusUsed=false;
+        if(expectedRevenue==null&&consensus!=null){expectedRevenue=consensus.expectedRevenue();consensusUsed=true;}
+        if(expectedOperating==null&&consensus!=null){expectedOperating=consensus.expectedOperatingIncome();consensusUsed=true;}
+        if(expectedNet==null&&consensus!=null){expectedNet=consensus.expectedNetIncome();consensusUsed=true;}
+        BigDecimal revenueSurprise=surprise(command.actualRevenue(),expectedRevenue);
+        BigDecimal operatingIncomeSurprise=surprise(command.actualOperatingIncome(),expectedOperating);
+        BigDecimal netIncomeSurprise=surprise(command.actualNetIncome(),expectedNet);
 
         List<String> actionItems = new ArrayList<>(command.actionItems() == null ? List.of() : command.actionItems());
         if (command.thesisImpact() == ThesisImpact.BROKEN) {
@@ -98,6 +106,7 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
         if (command.upsertQuarterlyFinancial()) {
             actionItems.add("QUARTERLY_FINANCIAL_UPSERT_REQUIRED: total assets/liabilities/equity/cash flow 입력 후 upsert");
         }
+        if(consensusUsed)actionItems.add("CONSENSUS_SURPRISE_USED");
         Instant now = clock.instant();
         PostEarningsReview saved = reviewPort.save(new PostEarningsReview(
                 null,
@@ -110,6 +119,8 @@ public class PostEarningsReviewService implements PostEarningsReviewUseCase {
                 actualOperatingMargin,
                 revenueSurprise,
                 operatingIncomeSurprise,
+                netIncomeSurprise,
+                consensusUsed,
                 command.thesisImpact(),
                 command.reviewSummary(),
                 actionItems,

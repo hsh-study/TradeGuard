@@ -17,12 +17,21 @@ public record PostEarningsReview(
         BigDecimal actualOperatingMargin,
         BigDecimal revenueSurpriseRate,
         BigDecimal operatingIncomeSurpriseRate,
+        BigDecimal netIncomeSurpriseRate,
+        boolean consensusUsed,
         ThesisImpact thesisImpact,
         String reviewSummary,
         List<String> actionItems,
         Instant createdAt,
         Instant updatedAt
 ) {
+    public PostEarningsReview(Long id,long earningsEventId,String stockCode,LocalDate reviewDate,
+            BigDecimal actualRevenue,BigDecimal actualOperatingIncome,BigDecimal actualNetIncome,
+            BigDecimal actualOperatingMargin,BigDecimal revenueSurpriseRate,BigDecimal operatingIncomeSurpriseRate,
+            ThesisImpact thesisImpact,String reviewSummary,List<String> actionItems,Instant createdAt,Instant updatedAt){
+        this(id,earningsEventId,stockCode,reviewDate,actualRevenue,actualOperatingIncome,actualNetIncome,
+                actualOperatingMargin,revenueSurpriseRate,operatingIncomeSurpriseRate,null,false,thesisImpact,
+                reviewSummary,actionItems,createdAt,updatedAt);}
     public PostEarningsReview {
         Objects.requireNonNull(stockCode, "stockCode");
         Objects.requireNonNull(reviewDate, "reviewDate");

@@ -399,6 +399,8 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
         meterRegistry.counter("tradeguard.research.disclosure_actual_evidence.count",
                 "importance", importance).increment();
     }
+    @Override public void recordConsensusImport(String type,String result){meterRegistry.counter("tradeguard.research.consensus_import.count","type",type,"result",result).increment();}
+    @Override public void recordConsensusSnapshot(String type,String result){meterRegistry.counter("tradeguard.research.consensus_snapshot.count","type",type,"result",result).increment();}
 
     @Override
     public void recordMarketIndexImport(String provider, String result) {

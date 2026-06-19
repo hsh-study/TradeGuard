@@ -28,6 +28,7 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
     private final InvestmentCatalystPort catalystPort;
     private final CatalystEvidenceService evidenceService;
     private final OperationalMetricsPort metrics;
+    private final EarningsConsensusPort consensusPort;
     private final Clock clock;
 
     @Autowired
@@ -40,10 +41,11 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
             IndicatorSnapshotPort indicatorPort,
             InvestmentCatalystPort catalystPort,
             CatalystEvidenceService evidenceService,
+            EarningsConsensusPort consensusPort,
             OperationalMetricsPort metrics
     ) {
         this(previewPort, eventPort, thesisPort, analysisPort, valuationPort,
-                indicatorPort, catalystPort, evidenceService, metrics, Clock.systemUTC());
+                indicatorPort, catalystPort, evidenceService, consensusPort, metrics, Clock.systemUTC());
     }
 
     EarningsPreviewService(
@@ -55,6 +57,7 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
             IndicatorSnapshotPort indicatorPort,
             InvestmentCatalystPort catalystPort,
             CatalystEvidenceService evidenceService,
+            EarningsConsensusPort consensusPort,
             OperationalMetricsPort metrics,
             Clock clock
     ) {
@@ -66,6 +69,7 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
         this.indicatorPort = indicatorPort;
         this.catalystPort = catalystPort;
         this.evidenceService = evidenceService;
+        this.consensusPort = consensusPort;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -84,6 +88,7 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
         this(previewPort, eventPort, thesisPort, analysisPort, valuationPort,
                 indicatorPort, catalystPort,
                 new CatalystEvidenceService(new NoopCatalystEvidencePort(), OperationalMetricsPort.noop(), clock),
+                EarningsConsensusPort.noop(),
                 metrics, clock);
     }
 
@@ -162,15 +167,17 @@ public class EarningsPreviewService implements EarningsPreviewUseCase, GenerateE
             checkpoints.add("Check revenue, operating income, margin, cash flow, and guidance manually");
         }
 
+        EarningsConsensusSnapshot consensus=consensusPort.findLatest(stockCode,event.fiscalYear(),event.fiscalQuarter()).orElse(null);
+        if(consensus!=null)checkpoints.add("CONSENSUS_USED date="+consensus.consensusDate()+" source="+consensus.source());
         return create(new CreateEarningsPreviewCommand(
                 earningsEventId,
                 stockCode,
                 previewDate,
                 checkpoints,
-                null,
-                null,
-                null,
-                null,
+                consensus==null?null:consensus.expectedRevenue(),
+                consensus==null?null:consensus.expectedOperatingIncome(),
+                consensus==null?null:consensus.expectedNetIncome(),
+                consensus==null?null:consensus.expectedOperatingMargin(),
                 risks,
                 watchPoints,
                 EarningsPreviewStatus.DRAFT

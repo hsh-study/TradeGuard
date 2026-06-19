@@ -162,3 +162,11 @@ interface MarketIndexImportHistoryJpaRepository extends JpaRepository<MarketInde
 interface SectorImportHistoryJpaRepository extends JpaRepository<SectorImportHistoryEntity, Long> {
     List<SectorImportHistoryEntity> findAllBy(org.springframework.data.domain.Pageable pageable);
 }
+
+interface EarningsConsensusSnapshotJpaRepository extends JpaRepository<EarningsConsensusSnapshotEntity,Long>,JpaSpecificationExecutor<EarningsConsensusSnapshotEntity>{
+    java.util.Optional<EarningsConsensusSnapshotEntity> findFirstByStockCodeAndFiscalYearAndFiscalQuarterOrderByConsensusDateDesc(String stockCode,int fiscalYear,int fiscalQuarter);
+}
+interface TargetPriceConsensusSnapshotJpaRepository extends JpaRepository<TargetPriceConsensusSnapshotEntity,Long>{
+    java.util.List<TargetPriceConsensusSnapshotEntity> findByStockCode(String stockCode,Sort sort);
+    java.util.Optional<TargetPriceConsensusSnapshotEntity> findFirstByStockCodeOrderByConsensusDateDesc(String stockCode);
+}

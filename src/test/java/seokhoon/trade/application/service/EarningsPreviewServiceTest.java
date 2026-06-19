@@ -19,6 +19,15 @@ class EarningsPreviewServiceTest {
     private static final Instant NOW = Instant.parse("2026-06-15T00:00:00Z");
 
     @Test
+    void usesLatestEarningsConsensusForExpectedValues() {
+        EarningsConsensusSnapshot consensus=new EarningsConsensusSnapshot(1L,"005930",2026,2,LocalDate.of(2026,7,20),new BigDecimal("1000"),new BigDecimal("150"),new BigDecimal("100"),new BigDecimal("15"),10,ConsensusSource.CSV,"licensed",ConsensusStatus.ACTIVE,NOW,NOW);
+        EarningsConsensusPort port=new EarningsConsensusPort(){public EarningsConsensusSnapshot save(EarningsConsensusSnapshot v){return v;}public List<EarningsConsensusSnapshot>find(String c,Integer y,Integer q){return List.of(consensus);}public Optional<EarningsConsensusSnapshot>findLatest(String c,int y,int q){return Optional.of(consensus);}public List<EarningsConsensusSnapshot>findAllEarnings(){return List.of(consensus);}};
+        Clock clock=Clock.fixed(NOW,ZoneOffset.UTC);var service=new EarningsPreviewService(new InMemoryPreviewPort(),eventPort(),thesisPort(),analysisPort(),valuationPort(),indicatorPort(),catalystPort(),new CatalystEvidenceService(new CatalystEvidenceServiceTest.InMemoryEvidencePort(),OperationalMetricsPort.noop(),clock),port,OperationalMetricsPort.noop(),clock);
+        EarningsPreview result=service.generate("005930",1L,LocalDate.of(2026,7,25));
+        assertThat(result.expectedRevenue()).isEqualByComparingTo("1000");assertThat(result.keyCheckpoints()).anyMatch(v->v.contains("CONSENSUS_USED"));
+    }
+
+    @Test
     void generatesDraftFromThesisLatestAnalysisValuationIndicatorAndCatalyst() {
         InMemoryPreviewPort previews = new InMemoryPreviewPort();
         CatalystEvidenceServiceTest.InMemoryEvidencePort evidences =
@@ -33,6 +42,7 @@ class EarningsPreviewServiceTest {
                 catalystPort(),
                 new CatalystEvidenceService(evidences, OperationalMetricsPort.noop(),
                         Clock.fixed(NOW, ZoneOffset.UTC)),
+                EarningsConsensusPort.noop(),
                 OperationalMetricsPort.noop(),
                 Clock.fixed(NOW, ZoneOffset.UTC));
 

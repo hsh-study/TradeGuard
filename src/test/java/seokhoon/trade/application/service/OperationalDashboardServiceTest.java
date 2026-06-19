@@ -14,7 +14,9 @@ import seokhoon.trade.domain.market.*;
 import seokhoon.trade.domain.order.LiveTradingReadinessReport;
 
 import java.time.*;
+import java.math.BigDecimal;
 import java.util.List;
+import seokhoon.trade.domain.research.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -30,6 +32,7 @@ class OperationalDashboardServiceTest {
     @Mock DartFinancialImportHistoryPort dartFinancials; @Mock DartCorpCodeImportHistoryPort dartCorpCodes;
     @Mock DartCorpMappingPort dartMappings; @Mock StockPort stocks; @Mock ValuationSnapshotPort valuations;
     @Mock DisclosureEvidenceImportHistoryPort disclosureHistories; @Mock CatalystEvidencePort catalystEvidences;
+    @Mock EarningsConsensusPort earningsConsensus;@Mock TargetPriceConsensusPort targetConsensus;
     @Mock StockSectorMappingPort stockSectors;
     @Mock SharesOutstandingSnapshotPort shares; @Mock PaperTradingReportPort papers;
     @Mock ReplayBacktestPort replays; @Mock KisTokenUseCases.ManageKisTokenUseCase tokens;
@@ -46,6 +49,7 @@ class OperationalDashboardServiceTest {
         when(dartCorpCodes.findAllCorpCodeImports()).thenReturn(List.of()); when(dartMappings.findAll()).thenReturn(List.of());
         when(disclosureHistories.findRecentDisclosureImports(100)).thenReturn(List.of());
         when(catalystEvidences.findRecent(500)).thenReturn(List.of());
+        when(earningsConsensus.findAllEarnings()).thenReturn(List.of());when(targetConsensus.findAllTargetPrices()).thenReturn(List.of());
         when(stocks.findAll()).thenReturn(List.of()); when(tokens.statuses()).thenReturn(List.of(
                 new KisTokenUseCases.KisTokenStatus(KisTokenCacheMode.DB, KisEnvironment.DEMO, true,
                         Instant.parse("2026-06-15T10:00:00Z"), 7200, DATE, false)));
@@ -60,7 +64,7 @@ class OperationalDashboardServiceTest {
         service = new OperationalDashboardService(calendar,notes,captures,followUps,performances,schedulers,
                 investorReadiness,supplyDemand,earnings,earningsEvents,dartFinancials,dartCorpCodes,dartMappings,
                 new DartProperties(),stocks,disclosureProperties,disclosureHistories,
-                catalystEvidences,stockSectors,valuations,shares,papers,replays,tokens,liveReadiness,
+                catalystEvidences,earningsConsensus,targetConsensus,stockSectors,valuations,shares,papers,replays,tokens,liveReadiness,
                 "",Clock.fixed(Instant.parse("2026-06-15T00:00:00Z"),ZoneOffset.UTC));
     }
 
@@ -88,5 +92,30 @@ class OperationalDashboardServiceTest {
                 Instant.parse("2026-06-14T00:00:00Z"),Instant.parse("2026-06-14T00:01:00Z"));
         when(disclosureHistories.findRecentDisclosureImports(100)).thenReturn(List.of(failed,failed));
         assertThat(service.getDashboard(DATE).warnings()).contains("DISCLOSURE_IMPORT_REPEATED_FAILURE");
+    }
+
+    @Test void reportsConsensusCountsStaleAndMissingUpcomingEarnings() {
+        Instant now = Instant.parse("2026-06-15T00:00:00Z");
+        EarningsConsensusSnapshot earningsSnapshot = new EarningsConsensusSnapshot(1L, "000660", 2026, 2,
+                DATE.minusDays(100), BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, null, 5,
+                ConsensusSource.CSV, "licensed", ConsensusStatus.STALE, now, now);
+        TargetPriceConsensusSnapshot targetSnapshot = new TargetPriceConsensusSnapshot(1L, "000660",
+                DATE, BigDecimal.TEN, BigDecimal.ONE, new BigDecimal("900"), 5,
+                ConsensusSource.MANUAL, null, ConsensusStatus.ACTIVE, now, now);
+        EarningsEvent upcoming = new EarningsEvent(2L, "005930", 2026, 2, DATE.plusDays(7),
+                null, EarningsEventStatus.SCHEDULED, null, now, now);
+        when(earningsConsensus.findAllEarnings()).thenReturn(List.of(earningsSnapshot));
+        when(targetConsensus.findAllTargetPrices()).thenReturn(List.of(targetSnapshot));
+        when(earningsEvents.findByStatusAndExpectedAnnouncementDateBetween(any(), any(), any()))
+                .thenReturn(List.of(upcoming));
+        when(earningsConsensus.findLatest("005930", 2026, 2)).thenReturn(java.util.Optional.empty());
+
+        OperationalDashboardSummary.ConsensusStatus result = service.getDashboard(DATE).consensusStatus();
+
+        assertThat(result.earningsConsensusCount()).isEqualTo(1);
+        assertThat(result.targetPriceConsensusCount()).isEqualTo(1);
+        assertThat(result.staleConsensusCount()).isEqualTo(1);
+        assertThat(result.missingConsensusForUpcomingEarningsCount()).isEqualTo(1);
+        assertThat(result.warnings()).contains("CONSENSUS_STALE", "EARNINGS_CONSENSUS_MISSING");
     }
 }

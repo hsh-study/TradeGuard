@@ -14,6 +14,7 @@ public record OperationalDashboardSummary(
         InvestorFlowStatus investorFlowStatus,
         EarningsStatus earningsStatus,
         DartStatus dartStatus,
+        ConsensusStatus consensusStatus,
         ValuationStatus valuationStatus,
         PaperTradingReportStatus paperTradingReportStatus,
         ReplayBacktestStatus replayBacktestStatus,
@@ -64,6 +65,10 @@ public record OperationalDashboardSummary(
             boolean disclosureProviderEnabled, String latestDisclosureImportStatus,
             int failedDisclosureImportCount, int highImportanceDisclosureCount,
             List<String> warnings) { public DartStatus { warnings = List.copyOf(warnings); } }
+
+    public record ConsensusStatus(int earningsConsensusCount,int targetPriceConsensusCount,
+            int staleConsensusCount,int missingConsensusForUpcomingEarningsCount,List<String>warnings){
+        public ConsensusStatus{warnings=List.copyOf(warnings);}}
 
     public record ValuationStatus(String latestAutoSnapshotStatus, int generatedCount,
             int insufficientCount, int sharesOutstandingMissingCount, List<String> warnings) {

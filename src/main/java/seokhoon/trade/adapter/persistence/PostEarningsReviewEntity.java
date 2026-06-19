@@ -34,6 +34,10 @@ public class PostEarningsReviewEntity {
     private BigDecimal revenueSurpriseRate;
     @Column(name = "operating_income_surprise_rate", precision = 19, scale = 4)
     private BigDecimal operatingIncomeSurpriseRate;
+    @Column(name = "net_income_surprise_rate", precision = 19, scale = 4)
+    private BigDecimal netIncomeSurpriseRate;
+    @Column(name = "consensus_used", nullable = false)
+    private boolean consensusUsed;
     @Enumerated(EnumType.STRING)
     @Column(name = "thesis_impact", nullable = false, length = 30)
     private ThesisImpact thesisImpact;
@@ -67,6 +71,8 @@ public class PostEarningsReviewEntity {
         actualOperatingMargin = value.actualOperatingMargin();
         revenueSurpriseRate = value.revenueSurpriseRate();
         operatingIncomeSurpriseRate = value.operatingIncomeSurpriseRate();
+        netIncomeSurpriseRate = value.netIncomeSurpriseRate();
+        consensusUsed = value.consensusUsed();
         thesisImpact = value.thesisImpact();
         reviewSummary = value.reviewSummary();
         actionItems = value.actionItems();
@@ -77,7 +83,8 @@ public class PostEarningsReviewEntity {
     PostEarningsReview toDomain() {
         return new PostEarningsReview(id, earningsEventId, stockCode, reviewDate,
                 actualRevenue, actualOperatingIncome, actualNetIncome, actualOperatingMargin,
-                revenueSurpriseRate, operatingIncomeSurpriseRate, thesisImpact, reviewSummary,
+                revenueSurpriseRate, operatingIncomeSurpriseRate, netIncomeSurpriseRate, consensusUsed,
+                thesisImpact, reviewSummary,
                 actionItems, createdAt, updatedAt);
     }
 }

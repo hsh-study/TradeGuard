@@ -50,6 +50,8 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
     private final DisclosureActualProviderProperties disclosureProperties;
     private final DisclosureEvidenceImportHistoryPort disclosureHistories;
     private final CatalystEvidencePort catalystEvidences;
+    private final EarningsConsensusPort earningsConsensus;
+    private final TargetPriceConsensusPort targetConsensus;
     private final StockPort stocks;
     private final StockSectorMappingPort stockSectors;
     private final ValuationSnapshotPort valuations;
@@ -71,6 +73,7 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
             DartCorpMappingPort dartMappings, DartProperties dartProperties, StockPort stocks,
             DisclosureActualProviderProperties disclosureProperties,
             DisclosureEvidenceImportHistoryPort disclosureHistories, CatalystEvidencePort catalystEvidences,
+            EarningsConsensusPort earningsConsensus,TargetPriceConsensusPort targetConsensus,
             StockSectorMappingPort stockSectors,
             ValuationSnapshotPort valuations, SharesOutstandingSnapshotPort shares,
             PaperTradingReportPort paperReports, ReplayBacktestPort replayBacktests,
@@ -79,7 +82,7 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
         this(calendar, morningNotes, captures, followUps, performances, schedulerHistories,
                 investorReadiness, supplyDemand, earningsAnalyses, earningsEvents, dartFinancials,
                 dartCorpCodes, dartMappings, dartProperties, stocks, disclosureProperties,
-                disclosureHistories, catalystEvidences, stockSectors, valuations, shares, paperReports,
+                disclosureHistories, catalystEvidences,earningsConsensus,targetConsensus, stockSectors, valuations, shares, paperReports,
                 replayBacktests, tokens, liveReadiness, discordWebhookUrl, Clock.systemUTC());
     }
 
@@ -92,6 +95,7 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
             DartCorpMappingPort dartMappings, DartProperties dartProperties, StockPort stocks,
             DisclosureActualProviderProperties disclosureProperties,
             DisclosureEvidenceImportHistoryPort disclosureHistories, CatalystEvidencePort catalystEvidences,
+            EarningsConsensusPort earningsConsensus,TargetPriceConsensusPort targetConsensus,
             StockSectorMappingPort stockSectors,
             ValuationSnapshotPort valuations, SharesOutstandingSnapshotPort shares,
             PaperTradingReportPort paperReports, ReplayBacktestPort replayBacktests,
@@ -104,6 +108,7 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
         this.dartFinancials=dartFinancials; this.dartCorpCodes=dartCorpCodes; this.dartMappings=dartMappings;
         this.dartProperties=dartProperties; this.stocks=stocks; this.disclosureProperties=disclosureProperties;
         this.disclosureHistories=disclosureHistories; this.catalystEvidences=catalystEvidences;
+        this.earningsConsensus=earningsConsensus;this.targetConsensus=targetConsensus;
         this.stockSectors=stockSectors;
         this.valuations=valuations; this.shares=shares;
         this.paperReports=paperReports; this.replayBacktests=replayBacktests; this.tokens=tokens;
@@ -126,6 +131,7 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
         EarningsStatus earnings = earnings(baseDate);
         List<Stock> activeStocks = stocks.findAll().stream().filter(Stock::active).toList();
         DartStatus dart = dart(activeStocks);
+        OperationalDashboardSummary.ConsensusStatus consensus=consensus(baseDate);
         ValuationStatus valuation = valuation(baseDate, activeStocks, runs);
         OperationalDashboardSummary.PaperTradingReportStatus paper = paper(baseDate);
         OperationalDashboardSummary.ReplayBacktestStatus replay = replay(baseDate);
@@ -155,7 +161,7 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
         if (valuation.insufficientCount() > 0) actions.add("Run valuation snapshot generation");
 
         addWarnings(warnings, market.warnings(), note.warnings(), early.warnings(), closing.warnings(),
-                investor.warnings(), earnings.warnings(), dart.warnings(), valuation.warnings(), paper.warnings(),
+                investor.warnings(), earnings.warnings(), dart.warnings(),consensus.warnings(), valuation.warnings(), paper.warnings(),
                 replay.warnings(), scheduler.warnings(), token.warnings(), live.warnings());
         Set<String> sectorMappedStocks = stockSectors.findAllMappings().stream()
                 .map(StockSectorMapping::stockCode).collect(Collectors.toSet());
@@ -163,8 +169,16 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
             warnings.add("SECTOR_MAPPING_MISSING");
         }
         return new OperationalDashboardSummary(baseDate, market, note, early, closing, investor, earnings,
-                dart, valuation, paper, replay, scheduler, token, live, distinct(blocking), distinct(warnings),
+                dart,consensus, valuation, paper, replay, scheduler, token, live, distinct(blocking), distinct(warnings),
                 distinct(actions), clock.instant());
+    }
+
+    private OperationalDashboardSummary.ConsensusStatus consensus(LocalDate date){
+        List<EarningsConsensusSnapshot> earnings=earningsConsensus.findAllEarnings();List<TargetPriceConsensusSnapshot>targets=targetConsensus.findAllTargetPrices();
+        int stale=(int)java.util.stream.Stream.concat(earnings.stream().map(EarningsConsensusSnapshot::status),targets.stream().map(TargetPriceConsensusSnapshot::status)).filter(v->v==seokhoon.trade.domain.research.ConsensusStatus.STALE).count();
+        int missing=(int)earningsEvents.findByStatusAndExpectedAnnouncementDateBetween(EarningsEventStatus.SCHEDULED,date,date.plusDays(14)).stream().filter(event->earningsConsensus.findLatest(event.stockCode(),event.fiscalYear(),event.fiscalQuarter()).isEmpty()).count();
+        List<String>warnings=new ArrayList<>();if(stale>0)warnings.add("CONSENSUS_STALE");if(missing>0)warnings.add("EARNINGS_CONSENSUS_MISSING");
+        return new OperationalDashboardSummary.ConsensusStatus(earnings.size(),targets.size(),stale,missing,warnings);
     }
 
     private MarketDateStatus market(LocalDate date) {
