@@ -96,6 +96,9 @@ public interface OperationalMetricsPort {
     void recordSupplyDemandAnalysis(String result);
     void recordSupplyDemandStrategyAdjustment(String strategy, String result);
 
+    default void recordReplayBacktest(String strategy, String result) {
+    }
+
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
             @Override

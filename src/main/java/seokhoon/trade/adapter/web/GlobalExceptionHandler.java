@@ -18,6 +18,7 @@ import seokhoon.trade.application.service.LiveTradingException;
 import seokhoon.trade.application.service.ResearchNotFoundException;
 import seokhoon.trade.application.service.InvestorFlowDiagnosticBlockedException;
 import seokhoon.trade.application.service.InvestorFlowAmountUnitUnverifiedException;
+import seokhoon.trade.application.service.ReplayBacktestNotFoundException;
 import seokhoon.trade.config.LiveTradingDisabledException;
 
 @RestControllerAdvice
@@ -107,6 +108,12 @@ public class GlobalExceptionHandler {
     ResponseEntity<ErrorResponse> handleResearchNotFound(ResearchNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("RESEARCH_NOT_FOUND", exception.getMessage()));
+    }
+
+    @ExceptionHandler(ReplayBacktestNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleReplayBacktestNotFound(ReplayBacktestNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("REPLAY_BACKTEST_NOT_FOUND", exception.getMessage()));
     }
 
     @ExceptionHandler(InvestorFlowDiagnosticBlockedException.class)

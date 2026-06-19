@@ -1634,3 +1634,25 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - API Key, App Secret, 계좌번호는 코드에 하드코딩하지 않습니다.
 - Discord Webhook URL은 환경변수로만 주입하며 코드에 하드코딩하지 않습니다.
 - 기존 mock order와 `FakeBrokerAdapter` 경로는 그대로 유지됩니다.
+## Replay Backtest v1
+
+Replay Backtest는 과거 후보 선정 시점에 DB에 저장된 데이터만 사용해 종가베팅과 장초반 전략의 후보 점수, reason, 이후 성과를 재현한다. 실행 중 KIS, DART 또는 다른 provider를 호출하지 않으며 BrokerPort나 주문 서비스와 연결되지 않는다. 따라서 자동매수·자동매도와 완전히 분리된 연구 기능이다.
+
+v1의 후보 재현 소스는 저장된 `trading_signals`다. 이 레코드에 후보 선정 당시 기술지표, 시장지수, 섹터, 실적, valuation, supply-demand 반영 결과인 score와 reasons가 보존된다. 성과 가격은 다음 저장 데이터에서만 조회한다.
+
+- 종가베팅: `daily_prices`의 신호일 종가와 N번째 후속 거래일 종가
+- 장초반: `early_market_intraday_bar_snapshots`의 entry/exit 시각 이하 최신 bar 종가
+- 종목명: `stocks`
+
+요청한 기준 가격이 없으면 실행을 중단하지 않고 해당 후보를 `DATA_INSUFFICIENT`로 저장한다. 유효한 성과만 평균, 중앙값, 승률, 최대·최소 수익률에 포함한다. reason 및 warning별 후보 수, 평가 수, 승률, 평균 수익률도 run 조회 응답에 포함된다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/backtests/replay/closing-bet?from=2026-06-01&to=2026-06-15&holdingDays=1'
+
+curl -X POST 'http://localhost:8080/api/research/backtests/replay/early-market?from=2026-06-01&to=2026-06-15&entryTime=09:05&exitTime=09:31'
+
+curl 'http://localhost:8080/api/research/backtests/replay/runs/1'
+curl 'http://localhost:8080/api/research/backtests/replay/runs/1/results'
+```
+
+운영 metric은 `tradeguard.research.replay_backtest.count`이며 `strategy`와 `result=success|failure|insufficient`만 tag로 사용한다. `stockCode`는 metric tag에 포함하지 않는다.

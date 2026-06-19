@@ -47,6 +47,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 14:00 예비 스캔 | 부분 완료 | Fake 또는 설정 기반 KIS read-only 시장 순위로 CLOSING_BET_PRE_SCAN 저장, 수동 API, DB 우선 시장 calendar 기반 14:00 scheduler, opt-in smoke test 존재 |
 | 15:00 최종 리뷰 | 부분 완료 | MarketSnapshotPort 기반 VWAP/고가권/거래대금 재평가, 거래일 15:00 scheduler, opt-in current price smoke test 존재. 더 정교한 intraday feature는 TODO |
 | 장초반 매매 후보 | 부분 완료 | 기존 08:30/09:05/09:20/09:31 분석 흐름, follow-up/성과/리포트/파라미터 실험/제한적 backtest 구현. V13에서 시장 순위, 직전 거래일 시간외 시세, 09:00~09:30 1분봉과 단계별 market snapshot을 capture 이력과 함께 아카이브하고 조회하는 API를 추가함. 동일 bar와 동일 시각 snapshot은 upsert하며 캡처 실패는 전략 실행을 막지 않고 상태·metric·warning log로 기록함. 과거 신호 재계산 replay 백테스트는 원천 데이터가 충분히 축적된 뒤 구현. 모든 기능은 자동 주문을 실행하지 않음 |
+| Replay Backtest v1 | 완료 | 저장된 trading signal, 일봉, 장초 intraday raw archive, stock master만으로 종베/장초 후보와 성과를 재현. 데이터 부족 결과와 reason/warning별 집계를 저장하며 외부 provider와 자동 주문을 호출하지 않음 |
 | 신호 저장 | 부분 완료 | 논리 키 upsert, 상태 갱신, 리스크 거절 사유 저장, 신호 조회 API와 주요 상태 변경 감사 이력 존재. 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
 | 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, order_requests.signal_id FK 추적, 승인/거절/BROKER_FAILED 결과, 동일 row 수동 재시도, 성공 시 신호 상태 동기화, RETRY_REQUESTED 정체 조회/수동 복구, 주요 상태 변경 감사 이력 존재. 자동 재시도/복구는 미구현 |
@@ -204,6 +205,15 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. KIS investor flow 운영 실응답과 HTS/공식 자료를 비교해 금액 단위 확정
-2. disclosure evidence DART/KRX 실제 provider adapter와 rate limit 정책 구현
-3. 충분한 기간이 축적된 뒤 저장 원천 데이터 기반 replay 백테스트 구현
+1. live paper trading report
+2. disclosure actual provider와 rate limit 정책
+3. consensus provider
+
+## Replay Backtest v1
+
+상태: 구현 완료
+
+- 저장된 `trading_signals`, `daily_prices`, 장초 intraday raw archive, stock master만으로 과거 후보와 성과를 재현한다.
+- 종베는 N번째 후속 거래일 종가, 장초는 지정 entry/exit 시각의 저장 bar를 사용한다.
+- 데이터 부족 후보를 `DATA_INSUFFICIENT`로 보존하고 reason/warning별 성과를 집계한다.
+- 외부 provider 호출과 자동 주문 실행 경로가 없다.
