@@ -40,6 +40,11 @@ public class ReplayBacktestPersistenceAdapter implements ReplayBacktestPort {
     }
 
     @Override @Transactional(readOnly = true)
+    public Optional<ReplayBacktestRun> findLatestRun() {
+        return runRepository.findFirstByOrderByCreatedAtDescIdDesc().map(ReplayBacktestRunEntity::toDomain);
+    }
+
+    @Override @Transactional(readOnly = true)
     public List<ReplayBacktestResult> findResults(long runId) {
         return resultRepository.findByRunIdOrderByTradeDateAscCandidateRankAsc(runId).stream()
                 .map(ReplayBacktestResultEntity::toDomain).toList();

@@ -1,5 +1,18 @@
 # TradeGuard
 
+## Operational Dashboard
+
+저장된 운영 데이터만 조회하는 읽기 전용 대시보드 API를 제공한다. 이 API는 KIS/DART 등 외부 provider를 호출하거나 주문을 생성하지 않는다.
+
+```bash
+curl http://localhost:8080/api/operations/dashboard
+curl 'http://localhost:8080/api/operations/dashboard?baseDate=2026-06-15'
+```
+
+응답은 시장 캘린더, Morning Note, 장초/종가 전략, 수급, 실적/DART/valuation,
+paper trading, replay backtest, scheduler, KIS token 및 live readiness 상태와 함께
+`blockingIssues`, `warnings`, `recommendedActions`를 반환한다.
+
 Spring Boot 기반 한국 주식 자동매매 보조 시스템입니다. MVP 1차는 한국투자증권 Open API 실주문이 아니라 모의투자, 분석, 알림 중심의 구조를 만드는 데 집중합니다.
 
 ## MVP 범위

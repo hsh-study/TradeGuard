@@ -10,5 +10,6 @@ public interface ReplayBacktestPort {
     ReplayBacktestRun saveRun(ReplayBacktestRun run);
     List<ReplayBacktestResult> saveResults(List<ReplayBacktestResult> results);
     Optional<ReplayBacktestRun> findRun(long runId);
+    default Optional<ReplayBacktestRun> findLatestRun() { return Optional.empty(); }
     List<ReplayBacktestResult> findResults(long runId);
 }

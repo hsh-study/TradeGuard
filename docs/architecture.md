@@ -272,3 +272,14 @@ Earnings Analysis는 최근 분기와 전년 동기 재무를 비교해 성장�
 `EarningsAnalysisSnapshot`을 읽어 STRONG 가점, WEAK 감점 또는 선택적 제외,
 DATA_INSUFFICIENT reason만 반영한다. 이 경로는 `OrderService`,
 `BrokerPort`, KIS 주문 adapter를 호출하지 않는다.
+
+## Operational Dashboard v1
+
+`OperationalDashboardController`는 `GetOperationalDashboardUseCase`만 호출한다. 구현 서비스는 기존
+application port를 통해 저장된 calendar, scheduler history, research snapshot, paper report,
+token 및 readiness 데이터를 읽어 하나의 `OperationalDashboardSummary`로 조합한다.
+
+- 외부 KIS/DART/provider 호출 없음
+- 주문 생성 및 자동매매 상태 변경 없음
+- 조회할 수 없는 상태는 성공으로 추정하지 않고 `UNAVAILABLE`, `NOT_RUN` 또는 warning으로 노출
+- 운영 차단 조건과 권장 조치는 서비스의 단일 정책 계층에서 계산
