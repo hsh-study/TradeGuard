@@ -81,6 +81,27 @@ public class CatalystEvidenceService implements CatalystEvidenceUseCase {
                 EvidenceCreatedBy.PROVIDER, EvidenceStatus.ACTIVE, now, now));
     }
 
+    public CatalystEvidence saveActualEvidence(DisclosureActualRecord record, Long catalystId) {
+        if (record.receiptNo() != null && !record.receiptNo().isBlank()) {
+            var duplicate = port.findByStockCodeAndReceiptNo(record.stockCode(), record.receiptNo());
+            if (duplicate.isPresent()) return duplicate.get();
+        }
+        Instant now = clock.instant();
+        Instant publishedAt = record.disclosureDate().atTime(
+                record.disclosureTime() == null ? java.time.LocalTime.NOON : record.disclosureTime())
+                .atZone(java.time.ZoneId.of("Asia/Seoul")).toInstant();
+        CatalystEvidence value = new CatalystEvidence(null, catalystId, record.stockCode(),
+                record.source() == DisclosureProvider.KRX ? CatalystEvidenceType.KRX_DISCLOSURE
+                        : CatalystEvidenceType.DART_DISCLOSURE,
+                record.title(), "공시 metadata: type=" + record.disclosureType()
+                        + ", importance=" + record.importance(), record.source().name(), record.sourceUrl(),
+                publishedAt, record.receiptNo(), record.disclosureType(), record.relatedCatalystType(),
+                record.importance(), record.rawCategory(),
+                record.importance() == CatalystImportance.HIGH ? EvidenceConfidence.HIGH : EvidenceConfidence.MEDIUM,
+                EvidenceCreatedBy.PROVIDER, EvidenceStatus.ACTIVE, now, now);
+        return saveDeduplicated(value);
+    }
+
     private CatalystEvidence saveDeduplicated(CatalystEvidence value) {
         return port.findDuplicate(value.stockCode(), value.title(), value.sourcePublishedAt(), value.sourceName())
                 .orElseGet(() -> port.save(value));

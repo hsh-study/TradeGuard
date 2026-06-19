@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import seokhoon.trade.application.port.in.*;
 import seokhoon.trade.application.port.out.*;
 import seokhoon.trade.config.DartProperties;
+import seokhoon.trade.config.DisclosureActualProviderProperties;
 import seokhoon.trade.domain.kis.*;
 import seokhoon.trade.domain.market.*;
 import seokhoon.trade.domain.order.LiveTradingReadinessReport;
@@ -28,10 +29,12 @@ class OperationalDashboardServiceTest {
     @Mock EarningsAnalysisPort earnings; @Mock EarningsEventPort earningsEvents;
     @Mock DartFinancialImportHistoryPort dartFinancials; @Mock DartCorpCodeImportHistoryPort dartCorpCodes;
     @Mock DartCorpMappingPort dartMappings; @Mock StockPort stocks; @Mock ValuationSnapshotPort valuations;
+    @Mock DisclosureEvidenceImportHistoryPort disclosureHistories; @Mock CatalystEvidencePort catalystEvidences;
     @Mock StockSectorMappingPort stockSectors;
     @Mock SharesOutstandingSnapshotPort shares; @Mock PaperTradingReportPort papers;
     @Mock ReplayBacktestPort replays; @Mock KisTokenUseCases.ManageKisTokenUseCase tokens;
     @Mock LiveTradingReadinessUseCase liveReadiness;
+    private DisclosureActualProviderProperties disclosureProperties;
     private OperationalDashboardService service;
 
     @BeforeEach void setUp() {
@@ -41,6 +44,8 @@ class OperationalDashboardServiceTest {
         when(supplyDemand.findByTradeDate(DATE)).thenReturn(List.of()); when(earnings.findByBaseDate(DATE)).thenReturn(List.of());
         when(earningsEvents.findByStatusAndExpectedAnnouncementDateBetween(any(),any(),any())).thenReturn(List.of());
         when(dartCorpCodes.findAllCorpCodeImports()).thenReturn(List.of()); when(dartMappings.findAll()).thenReturn(List.of());
+        when(disclosureHistories.findRecentDisclosureImports(100)).thenReturn(List.of());
+        when(catalystEvidences.findRecent(500)).thenReturn(List.of());
         when(stocks.findAll()).thenReturn(List.of()); when(tokens.statuses()).thenReturn(List.of(
                 new KisTokenUseCases.KisTokenStatus(KisTokenCacheMode.DB, KisEnvironment.DEMO, true,
                         Instant.parse("2026-06-15T10:00:00Z"), 7200, DATE, false)));
@@ -51,9 +56,11 @@ class OperationalDashboardServiceTest {
         LiveTradingReadinessReport live = mock(LiveTradingReadinessReport.class);
         when(live.warnings()).thenReturn(List.of()); when(live.blockingReasons()).thenReturn(List.of());
         when(liveReadiness.checkReadiness()).thenReturn(live);
+        disclosureProperties=new DisclosureActualProviderProperties();
         service = new OperationalDashboardService(calendar,notes,captures,followUps,performances,schedulers,
                 investorReadiness,supplyDemand,earnings,earningsEvents,dartFinancials,dartCorpCodes,dartMappings,
-                new DartProperties(),stocks,stockSectors,valuations,shares,papers,replays,tokens,liveReadiness,
+                new DartProperties(),stocks,disclosureProperties,disclosureHistories,
+                catalystEvidences,stockSectors,valuations,shares,papers,replays,tokens,liveReadiness,
                 "",Clock.fixed(Instant.parse("2026-06-15T00:00:00Z"),ZoneOffset.UTC));
     }
 
@@ -71,5 +78,15 @@ class OperationalDashboardServiceTest {
     @Test void usesSeoulDateForTodayDashboard() {
         service.getTodayDashboard();
         verify(calendar).load(DATE);
+    }
+
+    @Test void warnsWhenEnabledDisclosureProviderRepeatedlyFails() {
+        disclosureProperties.setEnabled(true);
+        var failed=new seokhoon.trade.domain.research.DisclosureEvidenceImportHistory(null,
+                seokhoon.trade.domain.research.DisclosureProvider.DART,"005930",DATE.minusDays(7),DATE,
+                seokhoon.trade.domain.research.DisclosureEvidenceImportStatus.FAILED,0,"failed",
+                Instant.parse("2026-06-14T00:00:00Z"),Instant.parse("2026-06-14T00:01:00Z"));
+        when(disclosureHistories.findRecentDisclosureImports(100)).thenReturn(List.of(failed,failed));
+        assertThat(service.getDashboard(DATE).warnings()).contains("DISCLOSURE_IMPORT_REPEATED_FAILURE");
     }
 }

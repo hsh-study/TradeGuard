@@ -13,12 +13,26 @@ public record CatalystEvidence(
         String sourceName,
         String sourceUrl,
         Instant sourcePublishedAt,
+        String receiptNo,
+        String disclosureType,
+        CatalystType relatedCatalystType,
+        CatalystImportance importance,
+        String rawCategory,
         EvidenceConfidence confidence,
         EvidenceCreatedBy createdBy,
         EvidenceStatus status,
         Instant createdAt,
         Instant updatedAt
 ) {
+    public CatalystEvidence(Long id, Long catalystId, String stockCode,
+            CatalystEvidenceType evidenceType, String title, String summary, String sourceName,
+            String sourceUrl, Instant sourcePublishedAt, EvidenceConfidence confidence,
+            EvidenceCreatedBy createdBy, EvidenceStatus status, Instant createdAt, Instant updatedAt) {
+        this(id, catalystId, stockCode, evidenceType, title, summary, sourceName, sourceUrl,
+                sourcePublishedAt, null, null, null, null, null, confidence, createdBy, status,
+                createdAt, updatedAt);
+    }
+
     public CatalystEvidence {
         Objects.requireNonNull(evidenceType, "evidenceType");
         Objects.requireNonNull(title, "title");

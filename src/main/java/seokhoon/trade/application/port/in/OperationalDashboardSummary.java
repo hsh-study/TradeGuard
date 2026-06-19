@@ -61,6 +61,8 @@ public record OperationalDashboardSummary(
 
     public record DartStatus(boolean providerEnabled, String latestFinancialImportStatus,
             String latestCorpCodeImportStatus, int mappingMissingCount, int failedImportCount,
+            boolean disclosureProviderEnabled, String latestDisclosureImportStatus,
+            int failedDisclosureImportCount, int highImportanceDisclosureCount,
             List<String> warnings) { public DartStatus { warnings = List.copyOf(warnings); } }
 
     public record ValuationStatus(String latestAutoSnapshotStatus, int generatedCount,

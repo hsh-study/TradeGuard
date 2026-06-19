@@ -206,9 +206,19 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. disclosure actual provider와 rate limit 정책
-2. consensus provider
-3. operational dashboards
+1. consensus provider
+2. external metrics backend / Grafana
+3. operational dashboard UI
+
+## Disclosure Actual Provider v1
+
+상태: 구현 완료
+
+- OpenDART 공시검색 API의 metadata만 수집하고 공시 원문·HTML·첨부파일은 저장하지 않는다.
+- receipt number 우선 중복 방지와 종목/날짜/제목/source fallback 중복 방지를 적용한다.
+- 실적과 수주·공급계약 제목만 catalyst 후보로 보수적으로 연결한다.
+- 증자·전환사채·감자·임원·최대주주·불성실공시 관련 제목은 high importance 경고로 분류한다.
+- Morning Note와 Operational Dashboard에 상태를 반영하지만 thesis 및 주문 상태는 변경하지 않는다.
 
 ## Replay Backtest v1
 

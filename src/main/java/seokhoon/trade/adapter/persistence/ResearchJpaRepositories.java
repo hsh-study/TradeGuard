@@ -41,6 +41,12 @@ interface CatalystEvidenceJpaRepository extends JpaRepository<CatalystEvidenceEn
             String sourceName,
             seokhoon.trade.domain.research.EvidenceStatus status
     );
+
+    Optional<CatalystEvidenceEntity> findFirstByStockCodeAndReceiptNoAndStatus(
+            String stockCode,
+            String receiptNo,
+            seokhoon.trade.domain.research.EvidenceStatus status
+    );
 }
 
 interface MorningNoteJpaRepository extends JpaRepository<MorningNoteEntity, Long> {

@@ -13,4 +13,7 @@ public interface CatalystEvidencePort {
     List<CatalystEvidence> findEvidenceByStockCode(String stockCode);
     List<CatalystEvidence> findRecent(int limit);
     Optional<CatalystEvidence> findDuplicate(String stockCode, String title, Instant sourcePublishedAt, String sourceName);
+    default Optional<CatalystEvidence> findByStockCodeAndReceiptNo(String stockCode, String receiptNo) {
+        return Optional.empty();
+    }
 }

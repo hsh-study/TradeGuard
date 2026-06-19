@@ -88,6 +88,8 @@ public interface OperationalMetricsPort {
     void recordSharesOutstandingImport(String result);
     void recordCatalystEvidence(String type, String confidence);
     void recordDisclosureEvidenceImport(String provider, String result);
+    default void recordDisclosureActualImport(String provider, String result) {}
+    default void recordDisclosureActualEvidence(String importance) {}
     void recordMarketIndexImport(String provider, String result);
     void recordSectorImport(String result);
     void recordInvestorFlowImport(String scope, String result);

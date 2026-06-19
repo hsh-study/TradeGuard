@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import seokhoon.trade.application.port.in.*;
 import seokhoon.trade.application.port.out.*;
 import seokhoon.trade.config.DartProperties;
+import seokhoon.trade.config.DisclosureActualProviderProperties;
 import seokhoon.trade.domain.kis.KisEnvironment;
 import seokhoon.trade.domain.market.*;
 import seokhoon.trade.domain.order.LiveTradingReadinessReport;
@@ -46,6 +47,9 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
     private final DartCorpCodeImportHistoryPort dartCorpCodes;
     private final DartCorpMappingPort dartMappings;
     private final DartProperties dartProperties;
+    private final DisclosureActualProviderProperties disclosureProperties;
+    private final DisclosureEvidenceImportHistoryPort disclosureHistories;
+    private final CatalystEvidencePort catalystEvidences;
     private final StockPort stocks;
     private final StockSectorMappingPort stockSectors;
     private final ValuationSnapshotPort valuations;
@@ -65,6 +69,8 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
             EarningsAnalysisPort earningsAnalyses, EarningsEventPort earningsEvents,
             DartFinancialImportHistoryPort dartFinancials, DartCorpCodeImportHistoryPort dartCorpCodes,
             DartCorpMappingPort dartMappings, DartProperties dartProperties, StockPort stocks,
+            DisclosureActualProviderProperties disclosureProperties,
+            DisclosureEvidenceImportHistoryPort disclosureHistories, CatalystEvidencePort catalystEvidences,
             StockSectorMappingPort stockSectors,
             ValuationSnapshotPort valuations, SharesOutstandingSnapshotPort shares,
             PaperTradingReportPort paperReports, ReplayBacktestPort replayBacktests,
@@ -72,7 +78,8 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
             @Value("${tradeguard.notification.discord.webhook-url:}") String discordWebhookUrl) {
         this(calendar, morningNotes, captures, followUps, performances, schedulerHistories,
                 investorReadiness, supplyDemand, earningsAnalyses, earningsEvents, dartFinancials,
-                dartCorpCodes, dartMappings, dartProperties, stocks, stockSectors, valuations, shares, paperReports,
+                dartCorpCodes, dartMappings, dartProperties, stocks, disclosureProperties,
+                disclosureHistories, catalystEvidences, stockSectors, valuations, shares, paperReports,
                 replayBacktests, tokens, liveReadiness, discordWebhookUrl, Clock.systemUTC());
     }
 
@@ -83,6 +90,8 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
             EarningsAnalysisPort earningsAnalyses, EarningsEventPort earningsEvents,
             DartFinancialImportHistoryPort dartFinancials, DartCorpCodeImportHistoryPort dartCorpCodes,
             DartCorpMappingPort dartMappings, DartProperties dartProperties, StockPort stocks,
+            DisclosureActualProviderProperties disclosureProperties,
+            DisclosureEvidenceImportHistoryPort disclosureHistories, CatalystEvidencePort catalystEvidences,
             StockSectorMappingPort stockSectors,
             ValuationSnapshotPort valuations, SharesOutstandingSnapshotPort shares,
             PaperTradingReportPort paperReports, ReplayBacktestPort replayBacktests,
@@ -93,7 +102,9 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
         this.investorReadiness=investorReadiness; this.supplyDemand=supplyDemand;
         this.earningsAnalyses=earningsAnalyses; this.earningsEvents=earningsEvents;
         this.dartFinancials=dartFinancials; this.dartCorpCodes=dartCorpCodes; this.dartMappings=dartMappings;
-        this.dartProperties=dartProperties; this.stocks=stocks; this.stockSectors=stockSectors;
+        this.dartProperties=dartProperties; this.stocks=stocks; this.disclosureProperties=disclosureProperties;
+        this.disclosureHistories=disclosureHistories; this.catalystEvidences=catalystEvidences;
+        this.stockSectors=stockSectors;
         this.valuations=valuations; this.shares=shares;
         this.paperReports=paperReports; this.replayBacktests=replayBacktests; this.tokens=tokens;
         this.liveReadiness=liveReadiness;
@@ -225,9 +236,19 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
         Set<String> mapped = dartMappings.findAll().stream().map(v -> v.stockCode()).collect(Collectors.toSet());
         int missing = (int) active.stream().filter(s -> !mapped.contains(s.stockCode())).count();
         int failed = (int) histories.stream().filter(v -> v.status()==DartFinancialImportStatus.FAILED).count();
+        List<DisclosureEvidenceImportHistory> disclosureRuns=disclosureHistories.findRecentDisclosureImports(100);
+        String latestDisclosure=disclosureRuns.stream().max(Comparator.comparing(DisclosureEvidenceImportHistory::requestedAt))
+                .map(v->v.status().name()).orElse("NOT_RUN");
+        int disclosureFailed=(int)disclosureRuns.stream().filter(v->v.status()==DisclosureEvidenceImportStatus.FAILED).count();
+        int highDisclosure=(int)catalystEvidences.findRecent(500).stream()
+                .filter(v->v.importance()==CatalystImportance.HIGH)
+                .filter(v->v.evidenceType()==CatalystEvidenceType.DART_DISCLOSURE||v.evidenceType()==CatalystEvidenceType.KRX_DISCLOSURE).count();
         List<String> warnings = new ArrayList<>(); if (!dartProperties.isProviderEnabled()) warnings.add("DART_PROVIDER_DISABLED");
         if (missing > 0) warnings.add("DART_MAPPING_MISSING");
-        return new DartStatus(dartProperties.isProviderEnabled(), latestFinancial, latestCorp, missing, failed, warnings);
+        if(!disclosureProperties.isEnabled())warnings.add("DISCLOSURE_PROVIDER_DISABLED");
+        if(disclosureProperties.isEnabled()&&disclosureFailed>=2)warnings.add("DISCLOSURE_IMPORT_REPEATED_FAILURE");
+        return new DartStatus(dartProperties.isProviderEnabled(), latestFinancial, latestCorp, missing, failed,
+                disclosureProperties.isEnabled(),latestDisclosure,disclosureFailed,highDisclosure,warnings);
     }
 
     private ValuationStatus valuation(LocalDate date, List<Stock> active, List<SchedulerExecutionHistoryRecord> runs) {

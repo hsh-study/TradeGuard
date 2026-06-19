@@ -23,6 +23,7 @@ import seokhoon.trade.domain.research.*;
 import seokhoon.trade.domain.stock.Stock;
 import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.config.InvestorFlowProperties;
+import seokhoon.trade.config.DisclosureActualProviderProperties;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -73,6 +74,7 @@ public class MorningNoteService implements MorningNoteUseCase {
     private InvestorFlowImportHistoryPort investorFlowImportHistoryPort;
     private InvestorFlowProperties investorFlowProperties;
     private PaperTradingReportPort paperTradingReportPort;
+    private DisclosureActualProviderProperties disclosureActualProviderProperties;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -110,6 +112,7 @@ public class MorningNoteService implements MorningNoteUseCase {
             InvestorFlowImportHistoryPort investorFlowImportHistoryPort,
             InvestorFlowProperties investorFlowProperties,
             PaperTradingReportPort paperTradingReportPort,
+            DisclosureActualProviderProperties disclosureActualProviderProperties,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
@@ -127,6 +130,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.investorFlowImportHistoryPort = investorFlowImportHistoryPort;
         this.investorFlowProperties = investorFlowProperties;
         this.paperTradingReportPort = paperTradingReportPort;
+        this.disclosureActualProviderProperties = disclosureActualProviderProperties;
     }
 
     MorningNoteService(
@@ -212,6 +216,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.sectorImportHistoryPort = sectorImportHistoryPort;
         this.metrics = metrics;
         this.clock = clock;
+        this.disclosureActualProviderProperties = new DisclosureActualProviderProperties();
     }
 
     @Override
@@ -722,14 +727,26 @@ public class MorningNoteService implements MorningNoteUseCase {
     }
 
     private void appendEvidenceItems(StringBuilder result, List<InvestmentCatalyst> catalysts) {
+        if(disclosureActualProviderProperties!=null&&!disclosureActualProviderProperties.isEnabled())
+            result.append("\n- DISCLOSURE_PROVIDER_DISABLED DART");
         if (catalystEvidencePort != null) {
-            catalystEvidencePort.findRecent(10).forEach(evidence -> {
+            List<CatalystEvidence> allRecent=catalystEvidencePort.findRecent(10);
+            List<CatalystEvidence> recent=allRecent.stream()
+                    .filter(evidence->evidence.evidenceType()==CatalystEvidenceType.DART_DISCLOSURE
+                            ||evidence.evidenceType()==CatalystEvidenceType.KRX_DISCLOSURE).toList();
+            long high=recent.stream().filter(evidence->evidence.importance()==CatalystImportance.HIGH).count();
+            long linked=recent.stream().filter(evidence->evidence.catalystId()!=null).count();
+            result.append("\n- DISCLOSURE_SUMMARY recent=").append(recent.size())
+                    .append(" high=").append(high).append(" catalystLinked=").append(linked);
+            allRecent.forEach(evidence -> {
                 result.append("\n- NEW_DISCLOSURE_EVIDENCE ")
                         .append(evidence.stockCode() == null ? "MARKET" : evidence.stockCode())
                         .append(" ").append(evidence.evidenceType())
                         .append(" ").append(evidence.title());
-                if (evidence.confidence() == EvidenceConfidence.HIGH) {
-                    result.append("\n- HIGH_CONFIDENCE_CATALYST_EVIDENCE ")
+                if ((evidence.evidenceType()==CatalystEvidenceType.DART_DISCLOSURE
+                        ||evidence.evidenceType()==CatalystEvidenceType.KRX_DISCLOSURE)
+                        && evidence.importance()==CatalystImportance.HIGH) {
+                    result.append("\n- HIGH_IMPORTANCE_DISCLOSURE ")
                             .append(evidence.stockCode() == null ? "MARKET" : evidence.stockCode())
                             .append(" ").append(evidence.title());
                 }
@@ -741,14 +758,19 @@ public class MorningNoteService implements MorningNoteUseCase {
             catalysts.stream()
                     .filter(catalyst -> catalyst.importance() == CatalystImportance.HIGH)
                     .filter(catalyst -> catalystEvidencePort.findByCatalystId(catalyst.id()).isEmpty())
-                    .forEach(catalyst -> result.append("\n- HIGH_IMPORTANCE_CATALYST_WITHOUT_EVIDENCE ")
+                    .forEach(catalyst -> result.append("\n- DISCLOSURE_EVIDENCE_MISSING_FOR_HIGH_CATALYST ")
                             .append(catalyst.stockCode()).append(" ").append(catalyst.title()));
         }
         if (disclosureEvidenceImportHistoryPort != null) {
-            disclosureEvidenceImportHistoryPort.findRecentDisclosureImports(10).stream()
+            List<DisclosureEvidenceImportHistory> imports=disclosureEvidenceImportHistoryPort.findRecentDisclosureImports(10);
+            imports.stream()
                     .filter(history -> history.status() == DisclosureEvidenceImportStatus.FAILED)
                     .forEach(history -> result.append("\n- DISCLOSURE_IMPORT_FAILED ")
                             .append(history.provider()).append(" ").append(history.failureReason()));
+            imports.stream().findFirst()
+                    .filter(history->history.status()==DisclosureEvidenceImportStatus.SKIPPED)
+                    .filter(history->history.failureReason()!=null&&history.failureReason().contains("provider disabled"))
+                    .ifPresent(history->result.append("\n- DISCLOSURE_PROVIDER_DISABLED ").append(history.provider()));
         }
     }
 

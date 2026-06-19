@@ -144,6 +144,8 @@ class MorningNoteServiceTest {
 
         assertThat(note.actionItems()).contains("UPCOMING_CATALYST", "2Q earnings");
         assertThat(note.actionItems()).contains("BROKEN_THESIS", "margin declines");
+        assertThat(note.actionItems()).contains("DISCLOSURE_EVIDENCE_MISSING_FOR_HIGH_CATALYST");
+        assertThat(note.actionItems()).contains("DISCLOSURE_PROVIDER_DISABLED");
     }
 
     @Test
@@ -297,7 +299,12 @@ class MorningNoteServiceTest {
                 .thenReturn(List.of(new CatalystEvidence(1L, 1L, "005930",
                         CatalystEvidenceType.POST_EARNINGS_REVIEW, "review evidence", "summary",
                         "TradeGuard", null, NOW, EvidenceConfidence.HIGH,
-                        EvidenceCreatedBy.SYSTEM, EvidenceStatus.ACTIVE, NOW, NOW)));
+                        EvidenceCreatedBy.SYSTEM, EvidenceStatus.ACTIVE, NOW, NOW),
+                        new CatalystEvidence(2L,null,"005930",CatalystEvidenceType.DART_DISCLOSURE,
+                                "유상증자 결정","공시 metadata: type=HIGH_RISK_DISCLOSURE, importance=HIGH",
+                                "DART","https://dart.fss.or.kr/view",NOW,"202606150001",
+                                "HIGH_RISK_DISCLOSURE",CatalystType.DISCLOSURE,CatalystImportance.HIGH,"I",
+                                EvidenceConfidence.HIGH,EvidenceCreatedBy.PROVIDER,EvidenceStatus.ACTIVE,NOW,NOW)));
         when(disclosureEvidenceImportHistories.findRecentDisclosureImports(anyInt()))
                 .thenReturn(List.of(new DisclosureEvidenceImportHistory(1L, DisclosureProvider.DART,
                         "005930", TRADE_DATE.minusDays(7), TRADE_DATE,
@@ -312,6 +319,7 @@ class MorningNoteServiceTest {
                 .contains("DART_CORP_MAPPING_IMPORTED")
                 .contains("SHARES_OUTSTANDING_IMPORTED")
                 .contains("NEW_DISCLOSURE_EVIDENCE")
+                .contains("HIGH_IMPORTANCE_DISCLOSURE")
                 .contains("POST_EARNINGS_REVIEW_EVIDENCE")
                 .contains("DISCLOSURE_IMPORT_FAILED");
     }

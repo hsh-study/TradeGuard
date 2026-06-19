@@ -1690,3 +1690,46 @@ curl 'http://localhost:8080/api/research/paper-trading/reports/runs/1/results'
 `PAPER_TRADING_REPORT_AUTO_RUN=true`이면 거래일 16:10 Asia/Seoul에 실행한다. 다음날 Morning Note에는 전 거래일 후보 수, 승률, 평균 수익률, 최고 reason, 최저 warning과 `DATA_INSUFFICIENT` 건수가 포함되며 Discord 전송은 기존 Morning Note opt-in 설정을 그대로 따른다.
 
 운영 metric은 `tradeguard.research.paper_trading_report.count`이고 `result=success|failure|insufficient`만 tag로 사용한다. `stockCode`는 metric tag에 포함하지 않는다.
+
+## Disclosure Actual Provider v1
+
+Disclosure Actual Provider는 관심종목과 보유종목의 OpenDART 공시검색 결과에서
+제목, 접수일, 공시 분류, 접수번호 기반 URL 등 필요한 metadata만 수집한다.
+공시 원문, HTML, 첨부파일, API 응답 전문은 저장하지 않으며 뉴스 크롤링도 수행하지 않는다.
+수집 evidence는 Morning Note와 Operational Dashboard에만 반영되고 주문 서비스와 연결되지 않는다.
+
+```env
+DISCLOSURE_ACTUAL_PROVIDER_ENABLED=false
+DISCLOSURE_ACTUAL_PROVIDER_TYPE=DART
+DISCLOSURE_ACTUAL_PROVIDER_TIMEOUT_SECONDS=10
+DISCLOSURE_ACTUAL_PROVIDER_AUTO_RUN=false
+DISCLOSURE_ACTUAL_PROVIDER_LOOKBACK_DAYS=7
+DISCLOSURE_ACTUAL_PROVIDER_MAX_ITEMS_PER_STOCK=20
+DISCLOSURE_ACTUAL_PROVIDER_RATE_LIMIT_PER_MINUTE=30
+```
+
+`DART_PROVIDER_ENABLED=true`, `DART_API_BASE_URL`, `DART_API_KEY`와 종목별 DART
+corp code mapping도 필요하다. 자동 실행은 별도 opt-in이며 거래일 07:35에 수행된다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/disclosures/import?stockCode=005930&from=2026-06-01&to=2026-06-15'
+curl -X POST 'http://localhost:8080/api/research/disclosures/import-watchlist?baseDate=2026-06-15'
+curl 'http://localhost:8080/api/research/disclosures/import-histories?stockCode=005930'
+curl 'http://localhost:8080/api/research/disclosures/evidences?stockCode=005930&from=2026-06-01&to=2026-06-15'
+```
+
+Morning Note에는 `NEW_DISCLOSURE_EVIDENCE`, `HIGH_IMPORTANCE_DISCLOSURE`,
+`DISCLOSURE_IMPORT_FAILED`, `DISCLOSURE_PROVIDER_DISABLED`,
+`DISCLOSURE_EVIDENCE_MISSING_FOR_HIGH_CATALYST`가 필요할 때 추가된다.
+수주·공급계약 및 실적 관련 제목만 catalyst 후보로 보수적으로 연결하며 thesis 상태나 주문 상태는 변경하지 않는다.
+
+Operational Dashboard의 `dartStatus`에는 다음과 같은 disclosure 상태가 함께 노출된다.
+
+```json
+{
+  "disclosureProviderEnabled": true,
+  "latestDisclosureImportStatus": "SUCCESS",
+  "failedDisclosureImportCount": 0,
+  "highImportanceDisclosureCount": 2
+}
+```

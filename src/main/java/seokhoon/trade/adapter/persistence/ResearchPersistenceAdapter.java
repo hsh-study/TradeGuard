@@ -211,6 +211,13 @@ public class ResearchPersistenceAdapter implements InvestmentThesisPort,
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Optional<CatalystEvidence> findByStockCodeAndReceiptNo(String stockCode, String receiptNo) {
+        return evidences.findFirstByStockCodeAndReceiptNoAndStatus(stockCode, receiptNo, EvidenceStatus.ACTIVE)
+                .map(CatalystEvidenceEntity::toDomain);
+    }
+
+    @Override
     @Transactional
     public MorningNote save(MorningNote value) {
         MorningNoteEntity entity = notes.findByTradeDate(value.tradeDate())

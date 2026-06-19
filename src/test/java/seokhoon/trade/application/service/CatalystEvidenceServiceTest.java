@@ -74,7 +74,9 @@ class CatalystEvidenceServiceTest {
                     value.id() == null ? (long) values.size() + 1 : value.id(),
                     value.catalystId(), value.stockCode(), value.evidenceType(),
                     value.title(), value.summary(), value.sourceName(), value.sourceUrl(),
-                    value.sourcePublishedAt(), value.confidence(), value.createdBy(),
+                    value.sourcePublishedAt(), value.receiptNo(), value.disclosureType(),
+                    value.relatedCatalystType(), value.importance(), value.rawCategory(),
+                    value.confidence(), value.createdBy(),
                     value.status(), value.createdAt(), value.updatedAt());
             values.removeIf(existing -> existing.id().equals(saved.id()));
             values.add(saved);
@@ -117,6 +119,10 @@ class CatalystEvidenceServiceTest {
                     .filter(value -> java.util.Objects.equals(value.sourcePublishedAt(), sourcePublishedAt))
                     .filter(value -> java.util.Objects.equals(value.sourceName(), sourceName))
                     .findFirst();
+        }
+        @Override public Optional<CatalystEvidence> findByStockCodeAndReceiptNo(String stockCode,String receiptNo) {
+            return values.stream().filter(value->java.util.Objects.equals(stockCode,value.stockCode()))
+                    .filter(value->java.util.Objects.equals(receiptNo,value.receiptNo())).findFirst();
         }
     }
 }

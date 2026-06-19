@@ -28,6 +28,18 @@ public class CatalystEvidenceEntity {
     private String sourceUrl;
     @Column(name = "source_published_at")
     private Instant sourcePublishedAt;
+    @Column(name = "receipt_no", length = 40)
+    private String receiptNo;
+    @Column(name = "disclosure_type", length = 100)
+    private String disclosureType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "related_catalyst_type", length = 40)
+    private CatalystType relatedCatalystType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "importance", length = 20)
+    private CatalystImportance importance;
+    @Column(name = "raw_category", length = 100)
+    private String rawCategory;
     @Enumerated(EnumType.STRING)
     @Column(name = "confidence", nullable = false, length = 20)
     private EvidenceConfidence confidence;
@@ -61,6 +73,11 @@ public class CatalystEvidenceEntity {
         sourceName = value.sourceName();
         sourceUrl = value.sourceUrl();
         sourcePublishedAt = value.sourcePublishedAt();
+        receiptNo = value.receiptNo();
+        disclosureType = value.disclosureType();
+        relatedCatalystType = value.relatedCatalystType();
+        importance = value.importance();
+        rawCategory = value.rawCategory();
         confidence = value.confidence();
         createdBy = value.createdBy();
         status = value.status();
@@ -70,7 +87,8 @@ public class CatalystEvidenceEntity {
 
     CatalystEvidence toDomain() {
         return new CatalystEvidence(id, catalystId, stockCode, evidenceType, title, summary,
-                sourceName, sourceUrl, sourcePublishedAt, confidence, createdBy, status,
+                sourceName, sourceUrl, sourcePublishedAt, receiptNo, disclosureType,
+                relatedCatalystType, importance, rawCategory, confidence, createdBy, status,
                 createdAt, updatedAt);
     }
 }
