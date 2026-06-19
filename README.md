@@ -1489,7 +1489,7 @@ curl -X POST 'http://localhost:8080/api/briefings/closing-bet?signalDate=2026-06
 
 ## 운영 Health 확인
 
-Actuator는 `health`, `info`, `metrics` endpoint를 외부에 노출하며 health 상세정보는 기본적으로 반환하지 않습니다.
+Actuator는 `health`, `info`, `metrics`, `prometheus` endpoint를 외부에 노출하며 health 상세정보는 기본적으로 반환하지 않습니다. Prometheus metric에는 고정 공통 tag `application=tradeguard`가 붙습니다.
 
 ```sh
 curl 'http://localhost:8080/actuator/health'
@@ -1497,6 +1497,7 @@ curl 'http://localhost:8080/actuator/health/liveness'
 curl 'http://localhost:8080/actuator/health/readiness'
 curl 'http://localhost:8080/actuator/info'
 curl 'http://localhost:8080/actuator/metrics'
+curl 'http://localhost:8080/actuator/prometheus'
 ```
 
 - `liveness`: Spring 애플리케이션 생존 상태만 확인한다.
@@ -1542,7 +1543,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 
 ## 운영 Metrics와 요청 추적
 
-기본 Micrometer registry로 아래 counter를 기록합니다. Prometheus/Grafana 의존성은 포함하지 않습니다.
+Micrometer Prometheus registry로 아래 counter를 기록합니다. 기존 Prometheus(`localhost:19090`) 연결과 기존 Grafana(`localhost:13000`) dashboard import 절차는 [`docs/observability.md`](docs/observability.md)를 참고하세요. 이 프로젝트는 Prometheus/Grafana 컨테이너나 Compose stack을 생성하지 않습니다.
 
 - `tradeguard.scheduler.execution.count`: `schedulerName`, `status`
 - `tradeguard.scheduler.selected.count`: `schedulerName`
