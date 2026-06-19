@@ -1656,3 +1656,24 @@ curl 'http://localhost:8080/api/research/backtests/replay/runs/1/results'
 ```
 
 운영 metric은 `tradeguard.research.replay_backtest.count`이며 `strategy`와 `result=success|failure|insufficient`만 tag로 사용한다. `stockCode`는 metric tag에 포함하지 않는다.
+
+## Live Paper Trading Report v1
+
+Paper Trading Report는 실제 주문이나 모의 체결을 생성하지 않고, 당일 저장된 후보를 reference price 기준으로 평가하는 장후 연구 리포트다. KIS, DART 및 다른 provider를 호출하지 않으며 `BrokerPort`나 주문 서비스에 의존하지 않는다.
+
+- 장초반: 저장된 09:05 이하 최신 bar를 진입가, 09:31 이하 최신 bar를 청산가로 사용하고 해당 구간의 고가·저가로 MFE/MAE를 계산한다. bar가 부족하면 기존 장초 성과 캡처를 fallback으로 사용한다.
+- 종가베팅: 당일 종가를 진입가로 사용한다. 기본 `NEXT_CLOSE` 정책은 다음 거래일 종가, 선택 가능한 `NEXT_OPEN` 정책은 다음 거래일 시가를 청산가로 사용한다.
+- Morning Note 관심 후보: 활성 관심종목의 당일 시가와 종가를 사용한다.
+
+16:10 당일 자동 실행에서는 다음 거래일 가격이 아직 없으므로 종가베팅 결과가 `DATA_INSUFFICIENT`일 수 있다. 이후 과거 날짜를 다시 생성하면 저장된 다음 거래일 데이터로 평가된다. 유효한 결과만 승률과 평균 수익률에 포함하며 전략/reason/warning별 집계와 top winners/losers를 제공한다.
+
+```sh
+curl -X POST 'http://localhost:8080/api/research/paper-trading/reports/daily?tradeDate=2026-06-15'
+curl 'http://localhost:8080/api/research/paper-trading/reports/latest?tradeDate=2026-06-15'
+curl 'http://localhost:8080/api/research/paper-trading/reports/runs/1'
+curl 'http://localhost:8080/api/research/paper-trading/reports/runs/1/results'
+```
+
+`PAPER_TRADING_REPORT_AUTO_RUN=true`이면 거래일 16:10 Asia/Seoul에 실행한다. 다음날 Morning Note에는 전 거래일 후보 수, 승률, 평균 수익률, 최고 reason, 최저 warning과 `DATA_INSUFFICIENT` 건수가 포함되며 Discord 전송은 기존 Morning Note opt-in 설정을 그대로 따른다.
+
+운영 metric은 `tradeguard.research.paper_trading_report.count`이고 `result=success|failure|insufficient`만 tag로 사용한다. `stockCode`는 metric tag에 포함하지 않는다.

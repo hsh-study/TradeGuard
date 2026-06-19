@@ -99,6 +99,9 @@ public interface OperationalMetricsPort {
     default void recordReplayBacktest(String strategy, String result) {
     }
 
+    default void recordPaperTradingReport(String result) {
+    }
+
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
             @Override

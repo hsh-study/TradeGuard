@@ -48,6 +48,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 15:00 최종 리뷰 | 부분 완료 | MarketSnapshotPort 기반 VWAP/고가권/거래대금 재평가, 거래일 15:00 scheduler, opt-in current price smoke test 존재. 더 정교한 intraday feature는 TODO |
 | 장초반 매매 후보 | 부분 완료 | 기존 08:30/09:05/09:20/09:31 분석 흐름, follow-up/성과/리포트/파라미터 실험/제한적 backtest 구현. V13에서 시장 순위, 직전 거래일 시간외 시세, 09:00~09:30 1분봉과 단계별 market snapshot을 capture 이력과 함께 아카이브하고 조회하는 API를 추가함. 동일 bar와 동일 시각 snapshot은 upsert하며 캡처 실패는 전략 실행을 막지 않고 상태·metric·warning log로 기록함. 과거 신호 재계산 replay 백테스트는 원천 데이터가 충분히 축적된 뒤 구현. 모든 기능은 자동 주문을 실행하지 않음 |
 | Replay Backtest v1 | 완료 | 저장된 trading signal, 일봉, 장초 intraday raw archive, stock master만으로 종베/장초 후보와 성과를 재현. 데이터 부족 결과와 reason/warning별 집계를 저장하며 외부 provider와 자동 주문을 호출하지 않음 |
+| Live Paper Trading Report v1 | 완료 | 당일 장초/종베/Morning Note 관심 후보를 저장 데이터의 reference price로 평가. MFE/MAE, 전략/reason/warning별 성과, top winners/losers와 다음날 Morning Note 요약을 제공하며 주문과 외부 provider를 호출하지 않음 |
 | 신호 저장 | 부분 완료 | 논리 키 upsert, 상태 갱신, 리스크 거절 사유 저장, 신호 조회 API와 주요 상태 변경 감사 이력 존재. 동시성 검증 필요 |
 | RiskManager | 부분 완료 | 기본 정책과 단위 테스트 존재. 경계/복수 위반/동시성 테스트 필요 |
 | 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, order_requests.signal_id FK 추적, 승인/거절/BROKER_FAILED 결과, 동일 row 수동 재시도, 성공 시 신호 상태 동기화, RETRY_REQUESTED 정체 조회/수동 복구, 주요 상태 변경 감사 이력 존재. 자동 재시도/복구는 미구현 |
@@ -57,7 +58,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 운영 관측성 | 부분 완료 | Actuator health/info/metrics, liveness/readiness, dependency health, scheduler 실행 이력, 핵심 Micrometer counter, 구조화 로그와 X-Request-Id 구현. 감사 이력 및 scheduler 실행 이력 correlation 연결 완료. 외부 metrics backend는 미구현 |
 | 시장 calendar | 부분 완료 | V11 `market_calendar_days`, V12 보정 audit, MANUAL_OVERRIDE 우선 정책, DB 우선 scheduler skip/이전·다음 거래일/시간외 기준일/리포트 거래일 수, 연도 sync·조회·검증·보정·audit API, 04:00 누락 연도 scheduler, health/metrics 구현. 공식 provider client/parser는 분리했으나 안정적인 KRX 무인증 endpoint가 명확하지 않아 기본은 생성 fallback이며 `MARKET_CALENDAR_HOLIDAYS` runtime fallback 관리가 필요 |
 | KIS 실매매 1단계 | 부분 완료 | 수동 지정가 매수/매도, 체결·부분체결 reconciliation, 취소, 자동취소 opt-in, 포지션 exit, kill switch 구현. REAL/DEMO OAuth token MEMORY cache와 AES-256-GCM DB cache, DB refresh lease, refresh scheduler, token health/API, 실매매 readiness 및 credential rotation/배포 체크리스트를 추가함. 자동매수·시장가·신용·미수·공매도는 미지원 |
-| DB migration | 완료 | Flyway V1~V28 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
+| DB migration | 완료 | Flyway V1~V30 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
 | 일봉·지표 warmup | 완료 | 관심종목 등록 후 KIS 일봉 120거래일 upsert, MA5/20/60·RSI·MACD·Bollinger 저장, warmup 이력/API/metrics, 종베 14:00·15:00 및 장초반 08:30·09:05 후보 사전 보강과 strict 제외 정책 구현 |
 | Action 1: Thesis | 완료 | `investment_theses`와 등록/종목별 조회/부분 수정/종료 API 구현. 핵심 가정, 무효화 조건, 목표가, 손절 조건, confidence, ACTIVE/WATCH/BROKEN/CLOSED 상태를 저장. BROKEN은 Morning Note action item만 만들고 자동매도하지 않음 |
 | Action 2: Catalyst | 완료 | `investment_catalysts`와 종목/기간 조회, 등록/부분 수정 API 구현. 실적·정책·수주·제품·섹터·공시·매크로 catalyst, 중요도와 진행 상태를 관리. UPCOMING 항목은 Morning Note에 포함되며 자동매수하지 않음 |
@@ -205,9 +206,9 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. live paper trading report
-2. disclosure actual provider와 rate limit 정책
-3. consensus provider
+1. disclosure actual provider와 rate limit 정책
+2. consensus provider
+3. operational dashboards
 
 ## Replay Backtest v1
 
@@ -217,3 +218,12 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 - 종베는 N번째 후속 거래일 종가, 장초는 지정 entry/exit 시각의 저장 bar를 사용한다.
 - 데이터 부족 후보를 `DATA_INSUFFICIENT`로 보존하고 reason/warning별 성과를 집계한다.
 - 외부 provider 호출과 자동 주문 실행 경로가 없다.
+
+## Live Paper Trading Report v1
+
+상태: 구현 완료
+
+- 저장된 장초 bar/성과 캡처, trading signal, 일봉, stock master로 reference-price 성과를 계산한다.
+- 장초 MFE/MAE와 종베 다음 거래일 정책, Morning Note 관심종목 당일 성과를 지원한다.
+- 다음날 Morning Note와 기존 opt-in Discord 본문에 전일 요약을 포함한다.
+- 외부 provider, BrokerPort, 실제·모의 주문 생성 경로가 없다.

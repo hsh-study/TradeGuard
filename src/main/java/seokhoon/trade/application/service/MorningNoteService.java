@@ -72,6 +72,7 @@ public class MorningNoteService implements MorningNoteUseCase {
     private MarketInvestorFlowPort marketInvestorFlowPort;
     private InvestorFlowImportHistoryPort investorFlowImportHistoryPort;
     private InvestorFlowProperties investorFlowProperties;
+    private PaperTradingReportPort paperTradingReportPort;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
 
@@ -108,6 +109,7 @@ public class MorningNoteService implements MorningNoteUseCase {
             MarketInvestorFlowPort marketInvestorFlowPort,
             InvestorFlowImportHistoryPort investorFlowImportHistoryPort,
             InvestorFlowProperties investorFlowProperties,
+            PaperTradingReportPort paperTradingReportPort,
             OperationalMetricsPort metrics
     ) {
         this(notePort, stockPort, dailyPricePort, indicatorPort, signalPort, positionPort,
@@ -124,6 +126,7 @@ public class MorningNoteService implements MorningNoteUseCase {
         this.marketInvestorFlowPort = marketInvestorFlowPort;
         this.investorFlowImportHistoryPort = investorFlowImportHistoryPort;
         this.investorFlowProperties = investorFlowProperties;
+        this.paperTradingReportPort = paperTradingReportPort;
     }
 
     MorningNoteService(
@@ -228,7 +231,8 @@ public class MorningNoteService implements MorningNoteUseCase {
                     null,
                     tradeDate,
                     marketSummary(previousTradingDay, signals, marketIndexPort.findByTradeDate(previousTradingDay))
-                            + marketInvestorFlowSummary(previousTradingDay),
+                            + marketInvestorFlowSummary(previousTradingDay)
+                            + paperTradingSummary(previousTradingDay),
                     sectorSummary(previousTradingDay),
                     portfolioSummary(tradeDate, positions),
                     watchlistSummary(tradeDate, stocks),
@@ -295,6 +299,43 @@ public class MorningNoteService implements MorningNoteUseCase {
             }
         }
         return result.toString();
+    }
+
+    private String paperTradingSummary(LocalDate tradeDate) {
+        if (paperTradingReportPort == null) return "";
+        return paperTradingReportPort.findLatestRun(tradeDate).map(run -> {
+            List<PaperTradingReportResult> results = paperTradingReportPort.findResults(run.id());
+            List<PaperTradingReportResult> evaluated = results.stream().filter(result -> result.returnRate() != null).toList();
+            long wins = evaluated.stream().filter(result -> result.resultStatus() == PaperTradingResultStatus.WIN).count();
+            BigDecimal winRate = evaluated.isEmpty() ? null : BigDecimal.valueOf(wins * 100)
+                    .divide(BigDecimal.valueOf(evaluated.size()), 2, RoundingMode.HALF_UP);
+            String bestReason = bestPaperTradingKey(results, PaperTradingReportResult::reasons, true);
+            String worstWarning = bestPaperTradingKey(results, PaperTradingReportResult::warnings, false);
+            long insufficient = results.stream().filter(result -> result.resultStatus() == PaperTradingResultStatus.DATA_INSUFFICIENT).count();
+            return "\n전일 Paper Trading Report candidates=" + run.totalCandidates()
+                    + " winRate=" + (winRate == null ? "N/A" : winRate + "%")
+                    + " averageReturn=" + (run.averageReturnRate() == null ? "N/A" : run.averageReturnRate() + "%")
+                    + " bestReason=" + bestReason
+                    + " worstWarning=" + worstWarning
+                    + " dataInsufficient=" + insufficient;
+        }).orElse("\n전일 Paper Trading Report DATA_UNAVAILABLE");
+    }
+
+    private static String bestPaperTradingKey(
+            List<PaperTradingReportResult> results,
+            Function<PaperTradingReportResult, List<String>> keys,
+            boolean best
+    ) {
+        Map<String, List<BigDecimal>> grouped = new java.util.TreeMap<>();
+        results.stream().filter(result -> result.returnRate() != null).forEach(result ->
+                keys.apply(result).forEach(key -> grouped.computeIfAbsent(key, ignored -> new java.util.ArrayList<>())
+                        .add(result.returnRate())));
+        Comparator<Map.Entry<String, List<BigDecimal>>> comparator = Comparator.comparing(entry ->
+                entry.getValue().stream().reduce(BigDecimal.ZERO, BigDecimal::add)
+                        .divide(BigDecimal.valueOf(entry.getValue().size()), 6, RoundingMode.HALF_UP));
+        if (best) comparator = comparator.reversed();
+        return grouped.entrySet().stream().sorted(comparator.thenComparing(Map.Entry::getKey))
+                .map(Map.Entry::getKey).findFirst().orElse("N/A");
     }
 
     private static BigDecimal flowAmount(List<MarketInvestorFlow> flows, InvestorType type) {

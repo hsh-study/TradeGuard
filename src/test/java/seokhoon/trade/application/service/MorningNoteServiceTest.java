@@ -147,6 +147,37 @@ class MorningNoteServiceTest {
     }
 
     @Test
+    void includesPreviousTradingDayPaperTradingSummary() {
+        LocalDate previous = LocalDate.of(2026, 6, 12);
+        PaperTradingReportRun run = new PaperTradingReportRun(7L, previous,
+                PaperTradingReportStatus.COMPLETED, 2, new BigDecimal("1.500000"),
+                1, 0, 0, null, NOW, NOW);
+        List<PaperTradingReportResult> results = List.of(
+                new PaperTradingReportResult(1L, 7L, previous, PaperTradingStrategy.EARLY_MARKET,
+                        "005930", "삼성전자", 1, 10L, 80, List.of("VWAP_ABOVE"), List.of(),
+                        new BigDecimal("100"), new BigDecimal("103"), new BigDecimal("104"), new BigDecimal("99"),
+                        new BigDecimal("4"), new BigDecimal("-1"), new BigDecimal("3"),
+                        PaperTradingResultStatus.WIN, NOW),
+                new PaperTradingReportResult(2L, 7L, previous, PaperTradingStrategy.CLOSING_BET,
+                        "000660", "SK하이닉스", 2, 11L, 70, List.of("CLOSE_NEAR_HIGH"), List.of("MISSING_REFERENCE_EXIT_PRICE"),
+                        new BigDecimal("100"), null, null, null, null, null, null,
+                        PaperTradingResultStatus.DATA_INSUFFICIENT, NOW));
+        PaperTradingReportPort paperPort = mock(PaperTradingReportPort.class);
+        when(paperPort.findLatestRun(previous)).thenReturn(Optional.of(run));
+        when(paperPort.findResults(7L)).thenReturn(results);
+        ReflectionTestUtils.setField(service, "paperTradingReportPort", paperPort);
+
+        MorningNote note = service.generate(TRADE_DATE);
+
+        assertThat(note.marketSummary()).contains(
+                "전일 Paper Trading Report candidates=2",
+                "winRate=100.00%",
+                "bestReason=VWAP_ABOVE",
+                "dataInsufficient=1"
+        );
+    }
+
+    @Test
     void includesIndicatorStatesForWatchlist() {
         when(stocks.findAll()).thenReturn(List.of(new Stock("005930", "Samsung", Market.KOSPI, true)));
         when(prices.findByStockCodeAndTradeDateBetween(eq("005930"), any(), eq(TRADE_DATE)))
