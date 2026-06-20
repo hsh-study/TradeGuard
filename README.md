@@ -2,7 +2,17 @@
 
 ## Operational Dashboard
 
-저장된 운영 데이터만 조회하는 읽기 전용 대시보드 API를 제공한다. 이 API는 KIS/DART 등 외부 provider를 호출하거나 주문을 생성하지 않는다.
+저장된 운영 데이터만 조회하는 읽기 전용 대시보드 UI와 API를 제공한다. UI는 현재 상태를 빠르게 확인하는 사람용 화면이고, API는 같은 상태의 JSON 표현이다. 둘 다 KIS/DART 등 외부 provider를 호출하거나 주문을 생성하지 않으며 자동 주문 흐름과 분리되어 있다.
+
+브라우저에서 `http://localhost:8080/operations/dashboard`에 접속한다. 기본 조회일은 오늘이며 과거 운영일은 `baseDate`로 선택할 수 있다.
+
+```text
+http://localhost:8080/operations/dashboard?baseDate=2026-06-15
+```
+
+화면은 전체 `OK`/`WARNING`/`BLOCKED` 상태, blocking issues, warnings, recommended actions와 각 운영 영역의 요약을 표시한다. 수동 새로고침과 기본값이 꺼진 60초 자동 새로고침을 지원한다. 자격증명, 계좌번호, webhook/source URL, 접수번호, provider 상세와 종목 코드 목록은 출력하지 않는다.
+
+JSON 연동에는 기존 API를 사용한다.
 
 ```bash
 curl http://localhost:8080/api/operations/dashboard

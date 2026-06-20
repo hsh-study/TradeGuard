@@ -4,12 +4,20 @@ TradeGuard exports Micrometer metrics for the Prometheus and Grafana containers 
 
 ## Endpoints and local ports
 
+- Spring operational state UI: `http://localhost:8080/operations/dashboard`
+- Operational state API: `http://localhost:8080/api/operations/dashboard`
 - TradeGuard metrics: `http://localhost:8080/actuator/prometheus`
 - TradeGuard health: `http://localhost:8080/actuator/health`
 - Existing Prometheus: `http://localhost:19090`
 - Existing Grafana: `http://localhost:13000`
 
 The application exposes `health`, `info`, `metrics`, and `prometheus`. Exported series include the common `application="tradeguard"` label.
+
+## Grafana and Spring dashboard roles
+
+Grafana is the metric-trend view: it answers how counters and failure signals changed over a selected time window. The Spring Operational Dashboard UI is the current-state view: it summarizes the selected date's blocking issues, warnings, recommended actions, readiness, scheduler, research, and paper/backtest status from the existing dashboard use case.
+
+Use Grafana to investigate timing and trends, then use `/operations/dashboard` (or its JSON API) to confirm the current operational state. The Spring UI is read-only, defaults to today, accepts `baseDate=yyyy-MM-dd`, and has an optional 60-second refresh that is off by default. It does not call external providers, create orders, or change automatic-trading state. Its renderer only includes approved summary fields and omits credentials, account identifiers, webhook/source URLs, receipt numbers, provider details, raw scheduler failure reasons, and bulk stock-code lists.
 
 ## Connect the existing Prometheus container
 
