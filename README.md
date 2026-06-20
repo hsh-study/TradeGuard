@@ -1543,7 +1543,7 @@ curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
 
 ## 운영 Metrics와 요청 추적
 
-Micrometer Prometheus registry로 아래 counter를 기록합니다. 기존 Prometheus(`localhost:19090`) 연결과 기존 Grafana(`localhost:13000`) dashboard import 절차는 [`docs/observability.md`](docs/observability.md)를 참고하세요. 이 프로젝트는 Prometheus/Grafana 컨테이너나 Compose stack을 생성하지 않습니다.
+Micrometer Prometheus registry로 아래 counter를 기록합니다. 기존 Prometheus(`localhost:19090`) 연결, alert rule 적용과 기존 Grafana(`localhost:13000`) dashboard/alert reference 사용 절차는 [`docs/observability.md`](docs/observability.md)를 참고하세요. Prometheus alert 예시는 [`observability/prometheus/tradeguard-alert-rules.example.yml`](observability/prometheus/tradeguard-alert-rules.example.yml), 운영 대응 절차는 [`docs/runbooks/alerts.md`](docs/runbooks/alerts.md)에 있습니다. Alert는 자동매매 trigger가 아니라 운영자의 수동 확인을 위한 신호입니다. 이 프로젝트는 Prometheus/Grafana/Alertmanager 컨테이너나 Compose stack을 생성하지 않습니다.
 
 - `tradeguard.scheduler.execution.count`: `schedulerName`, `status`
 - `tradeguard.scheduler.selected.count`: `schedulerName`

@@ -1,0 +1,91 @@
+{
+  "kind": "GrafanaManagedAlertReference",
+  "apiVersion": 1,
+  "title": "TradeGuard operational alerts",
+  "description": "Version-neutral reference for manually creating Grafana managed alerts. Prometheus rule YAML is the recommended source of truth.",
+  "datasource": {
+    "type": "prometheus",
+    "uid": "REPLACE_WITH_EXISTING_PROMETHEUS_DATASOURCE_UID"
+  },
+  "evaluationInterval": "1m",
+  "defaults": {
+    "condition": "last(query) > 0",
+    "pendingFor": "0s",
+    "noDataState": "OK",
+    "execErrState": "Error",
+    "manualActionOnly": true,
+    "runbook": "docs/runbooks/alerts.md"
+  },
+  "rules": [
+    {
+      "uid": "tg-scheduler-failure",
+      "title": "TradeGuardSchedulerFailureIncreased",
+      "expr": "increase(tradeguard_scheduler_execution_count_total{application=\"tradeguard\",status=\"FAILED\"}[10m])",
+      "labels": { "severity": "critical" },
+      "annotations": { "summary": "TradeGuard scheduler failures increased", "description": "Check the operational dashboard and scheduler execution history manually." }
+    },
+    {
+      "uid": "tg-kis-read-failure",
+      "title": "TradeGuardKisReadOnlyFailureIncreased",
+      "expr": "increase(tradeguard_kis_read_only_count_total{application=\"tradeguard\",result=\"failure\"}[10m])",
+      "labels": { "severity": "critical" },
+      "annotations": { "summary": "TradeGuard KIS read-only failures increased", "description": "Check provider status, rate limits, network, and the dashboard manually." }
+    },
+    {
+      "uid": "tg-kis-token-failure",
+      "title": "TradeGuardKisTokenIssueFailure",
+      "expr": "increase(tradeguard_kis_token_issue_count_total{application=\"tradeguard\",result=\"failure\"}[10m])",
+      "labels": { "severity": "critical" },
+      "annotations": { "summary": "TradeGuard KIS token issuance failed", "description": "Check the token status API and credential configuration manually without printing secret values." }
+    },
+    {
+      "uid": "tg-flow-not-ready",
+      "title": "TradeGuardInvestorFlowNotReady",
+      "expr": "increase(tradeguard_research_investor_flow_readiness_count_total{application=\"tradeguard\",result=\"not_ready\"}[15m])",
+      "labels": { "severity": "warning" },
+      "annotations": { "summary": "TradeGuard investor flow is not ready", "description": "Confirm the current state through the readiness API and dashboard manually." }
+    },
+    {
+      "uid": "tg-dart-financial-failure",
+      "title": "TradeGuardDartFinancialImportFailure",
+      "expr": "increase(tradeguard_research_dart_financial_import_count_total{application=\"tradeguard\",result=\"failure\"}[30m])",
+      "labels": { "severity": "warning" },
+      "annotations": { "summary": "TradeGuard DART financial import failed", "description": "Check provider configuration and mapping status manually." }
+    },
+    {
+      "uid": "tg-disclosure-failure",
+      "title": "TradeGuardDisclosureActualImportFailure",
+      "expr": "increase(tradeguard_research_disclosure_actual_import_count_total{application=\"tradeguard\",result=\"failure\"}[30m])",
+      "labels": { "severity": "warning" },
+      "annotations": { "summary": "TradeGuard disclosure actual import failed", "description": "Check OpenDART availability, mapping, and rate limits manually." }
+    },
+    {
+      "uid": "tg-consensus-failure",
+      "title": "TradeGuardConsensusImportFailure",
+      "expr": "increase(tradeguard_research_consensus_import_count_total{application=\"tradeguard\",result=\"failure\"}[30m])",
+      "labels": { "severity": "warning" },
+      "annotations": { "summary": "TradeGuard consensus import failed", "description": "Validate the input format and required columns manually." }
+    },
+    {
+      "uid": "tg-paper-report-failure",
+      "title": "TradeGuardPaperTradingReportFailure",
+      "expr": "increase(tradeguard_research_paper_trading_report_count_total{application=\"tradeguard\",result=\"failure\"}[30m])",
+      "labels": { "severity": "warning" },
+      "annotations": { "summary": "TradeGuard paper trading report failed", "description": "Check the dashboard and required stored analysis data manually." }
+    },
+    {
+      "uid": "tg-replay-failure",
+      "title": "TradeGuardReplayBacktestFailure",
+      "expr": "increase(tradeguard_research_replay_backtest_count_total{application=\"tradeguard\",result=\"failure\"}[30m])",
+      "labels": { "severity": "warning" },
+      "annotations": { "summary": "TradeGuard replay backtest failed", "description": "Check the dashboard and stored backtest source data manually." }
+    },
+    {
+      "uid": "tg-live-readiness-blocked",
+      "title": "TradeGuardLiveTradingReadinessBlocked",
+      "expr": "increase(tradeguard_live_trading_readiness_count_total{application=\"tradeguard\",result=\"blocked\"}[10m])",
+      "labels": { "severity": "critical" },
+      "annotations": { "summary": "TradeGuard live trading readiness is blocked", "description": "Confirm current readiness manually. Never auto-enable flags, clear the kill switch, or submit an order." }
+    }
+  ]
+}

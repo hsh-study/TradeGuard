@@ -1,0 +1,95 @@
+# Example rules for the existing Prometheus instance.
+# These alerts request manual investigation only. They never trigger orders or state changes.
+groups:
+  - name: tradeguard-operational-alerts
+    interval: 1m
+    rules:
+      - alert: TradeGuardSchedulerFailureIncreased
+        expr: increase(tradeguard_scheduler_execution_count_total{application="tradeguard",status="FAILED"}[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: TradeGuard scheduler failures increased
+          description: A scheduler failure was recorded during the last 10 minutes. Check the operational dashboard and scheduler execution history manually.
+          runbook_hint: Follow the SchedulerFailure procedure in docs/runbooks/alerts.md. Do not trigger an order from this alert.
+
+      - alert: TradeGuardKisReadOnlyFailureIncreased
+        expr: increase(tradeguard_kis_read_only_count_total{application="tradeguard",result="failure"}[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: TradeGuard KIS read-only failures increased
+          description: A KIS read-only request failed during the last 10 minutes. Check provider status, rate limits, network, and the dashboard manually.
+          runbook_hint: Follow the KISReadOnlyFailure procedure in docs/runbooks/alerts.md. Do not expose credentials or token values.
+
+      - alert: TradeGuardKisTokenIssueFailure
+        expr: increase(tradeguard_kis_token_issue_count_total{application="tradeguard",result="failure"}[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: TradeGuard KIS token issuance failed
+          description: KIS token issuance failed during the last 10 minutes. Check the token status API and credential configuration manually without printing secret values.
+          runbook_hint: Follow the KISTokenIssueFailure procedure in docs/runbooks/alerts.md. Never copy token values into logs or alerts.
+
+      - alert: TradeGuardInvestorFlowNotReady
+        expr: increase(tradeguard_research_investor_flow_readiness_count_total{application="tradeguard",result="not_ready"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: TradeGuard investor flow is not ready
+          description: Investor flow readiness recorded not_ready during the last 15 minutes. Confirm the current state through the readiness API and dashboard manually.
+          runbook_hint: Follow the InvestorFlowNotReady procedure in docs/runbooks/alerts.md. The counter event alone is not the authoritative current state.
+
+      - alert: TradeGuardDartFinancialImportFailure
+        expr: increase(tradeguard_research_dart_financial_import_count_total{application="tradeguard",result="failure"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: TradeGuard DART financial import failed
+          description: A DART financial import failure was recorded during the last 30 minutes. Check provider configuration and mapping status manually.
+          runbook_hint: Follow the DartFinancialImportFailure procedure in docs/runbooks/alerts.md. Do not include API credentials in diagnostics.
+
+      - alert: TradeGuardDisclosureActualImportFailure
+        expr: increase(tradeguard_research_disclosure_actual_import_count_total{application="tradeguard",result="failure"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: TradeGuard disclosure actual import failed
+          description: A disclosure actual import failure was recorded during the last 30 minutes. Check OpenDART availability, mapping, and rate limits manually.
+          runbook_hint: Follow the DisclosureActualImportFailure procedure in docs/runbooks/alerts.md. Keep source and credential details out of alert text.
+
+      - alert: TradeGuardConsensusImportFailure
+        expr: increase(tradeguard_research_consensus_import_count_total{application="tradeguard",result="failure"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: TradeGuard consensus import failed
+          description: A consensus import failure was recorded during the last 30 minutes. Validate the input format and required columns manually.
+          runbook_hint: Follow the ConsensusImportFailure procedure in docs/runbooks/alerts.md. Do not attach sensitive source content to notifications.
+
+      - alert: TradeGuardPaperTradingReportFailure
+        expr: increase(tradeguard_research_paper_trading_report_count_total{application="tradeguard",result="failure"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: TradeGuard paper trading report failed
+          description: A paper trading report failure was recorded during the last 30 minutes. Check the dashboard and required stored analysis data manually.
+          runbook_hint: Follow the PaperTradingReportFailure procedure in docs/runbooks/alerts.md. This alert must not submit an order.
+
+      - alert: TradeGuardReplayBacktestFailure
+        expr: increase(tradeguard_research_replay_backtest_count_total{application="tradeguard",result="failure"}[30m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: TradeGuard replay backtest failed
+          description: A replay backtest failure was recorded during the last 30 minutes. Check the dashboard and stored backtest source data manually.
+          runbook_hint: Follow the ReplayBacktestFailure procedure in docs/runbooks/alerts.md. This alert is informational and never changes trading state.
+
+      - alert: TradeGuardLiveTradingReadinessBlocked
+        expr: increase(tradeguard_live_trading_readiness_count_total{application="tradeguard",result="blocked"}[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: TradeGuard live trading readiness is blocked
+          description: Live trading readiness recorded blocked during the last 10 minutes. Confirm the current state through the readiness API and dashboard manually.
+          runbook_hint: Follow the LiveTradingReadinessBlocked procedure in docs/runbooks/alerts.md. Never auto-enable flags, clear the kill switch, or submit an order.

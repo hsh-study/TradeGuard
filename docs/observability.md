@@ -61,18 +61,30 @@ The dashboard uses these current counters:
 
 Counters exist only after their event first occurs. A blank panel can therefore mean no event has yet registered since application startup, not a zero result. Dashboard panels show increases over the selected time range and filter on `application="tradeguard"`.
 
-## Alert candidates
+## Apply operational alert rules
 
-- Scheduler `FAILED` count increases.
-- KIS read-only API `failure` count increases.
-- KIS token issue `failure` count increases after a refresh attempt.
-- Investor flow readiness records `not_ready`.
-- DART financial or disclosure actual import failure increases.
-- Consensus import failure increases.
-- Paper trading report or replay backtest failure increases.
-- Live trading readiness records `blocked` (the current metric value corresponding to false/not ready).
+The recommended source of truth is the Prometheus rule file [`tradeguard-alert-rules.example.yml`](../observability/prometheus/tradeguard-alert-rules.example.yml). It contains ten event-based operational alerts and no receiver or notification secret configuration.
 
-For readiness counters, alert on a recent undesirable event only with an agreed evaluation window. A counter cannot by itself prove the current state after a later recovery; use the readiness API/health endpoint for authoritative current-state checks.
+1. Inspect the existing `prometheus` container to find its effective configuration file and mounted paths, for example with `docker inspect prometheus`.
+2. Make the rule file available inside that existing container. Depending on the current deployment, add a read-only host bind mount through its existing launch configuration or copy the file as a temporary local setup. The operator must verify the actual persistent mount/configuration; this repository does not change it.
+3. Add `rule_files` to the existing `prometheus.yml`, using the path as seen inside the container:
+
+   ```yaml
+   rule_files:
+     - /etc/prometheus/tradeguard-alert-rules.example.yml
+   ```
+
+4. Validate the complete effective Prometheus configuration and rule syntax with the `promtool` version bundled with that Prometheus installation when available.
+5. Reload configuration through the existing lifecycle endpoint only when it is already enabled, or restart only the existing container with `docker restart prometheus`.
+6. Open `http://localhost:19090/rules` to confirm the group loaded and `http://localhost:19090/alerts` to inspect alert state.
+
+Adding a rule file does not configure delivery. Connect an already approved notification path separately; never place a real Slack/Discord webhook, token, or account identifier in this repository. No Alertmanager container is added by this project.
+
+### Grafana managed alert reference
+
+[`tradeguard-alerts.example.json`](../observability/grafana/alerting/tradeguard-alerts.example.json) is a version-neutral reference, not a guaranteed one-click export for every Grafana version. Grafana managed-alert export/import schemas vary. Prefer the Prometheus rules above. If Grafana-managed alerts are required, open `http://localhost:13000`, select the existing Prometheus datasource, and manually create each rule from the reference expression and `last(query) > 0` condition. Replace the datasource UID placeholder locally; do not commit environment-specific identifiers or contact-point secrets.
+
+All rules use counter `increase(...)` over a recent window. A firing alert proves that an undesirable event occurred in that window; it does not prove the condition is still current after recovery. The readiness APIs and `/api/operations/dashboard` are authoritative for current state. Follow the manual procedures in [`runbooks/alerts.md`](runbooks/alerts.md).
 
 ## Operations checklist
 
@@ -82,5 +94,7 @@ For readiness counters, alert on a recent undesirable event only with an agreed 
 - Scheduler and provider failures have not increased in the operating window.
 - Investor flow and live trading readiness show no recent undesirable result; confirm current state through the corresponding API.
 - Token refresh failures are investigated without logging token or credential values.
+- Prometheus rules are loaded and visible at `http://localhost:19090/rules`; alert state is visible at `http://localhost:19090/alerts`.
+- Alert responders follow [`runbooks/alerts.md`](runbooks/alerts.md) and confirm current readiness before acting.
 - Metrics contain only approved bounded tags and no stock, account, secret, webhook, URL, receipt, title, or correlation identifiers.
-- Observability remains read-only; it never enables or submits automatic orders.
+- Observability and alerting remain read-only; they never enable flags, clear readiness blocks, or submit automatic orders.
