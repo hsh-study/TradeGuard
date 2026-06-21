@@ -27,6 +27,7 @@ import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.domain.stock.Stock;
 import seokhoon.trade.config.InvestorFlowProperties;
 import seokhoon.trade.config.ConsensusProviderProperties;
+import seokhoon.trade.config.NaverNewsProperties;
 
 import java.math.BigDecimal;
 import java.time.*;
@@ -94,7 +95,8 @@ class MorningNoteServiceTest {
         when(notes.save(any())).thenAnswer(invocation -> {
             MorningNote note = invocation.getArgument(0);
             return new MorningNote(1L, note.tradeDate(), note.marketSummary(), note.sectorSummary(),
-                    note.portfolioImpactSummary(), note.watchlistSummary(), note.actionItems(), note.createdAt());
+                    note.portfolioImpactSummary(), note.watchlistSummary(), note.newsSummary(),
+                    note.actionItems(), note.createdAt());
         });
         when(stocks.findAll()).thenReturn(List.of());
         when(positions.findOpenPositions()).thenReturn(List.of());
@@ -224,6 +226,27 @@ class MorningNoteServiceTest {
                 .contains("vsMA20=ABOVE", "vsMA60=ABOVE", "ma20>ma60=true")
                 .contains("RSI=NEUTRAL", "MACD=BULLISH", "Bollinger=INSIDE")
                 .contains("반도체(SEMICONDUCTOR)");
+    }
+
+    @Test
+    void includesHighImportanceNewsAsManualReviewWithoutOrderCommand() {
+        when(stocks.findAll()).thenReturn(List.of(new Stock("005930", "삼성전자", Market.KOSPI, true)));
+        NewsRepositoryPort news = mock(NewsRepositoryPort.class);
+        NaverNewsProperties properties = new NaverNewsProperties(); properties.setProviderEnabled(true);
+        when(news.findArticles(eq("005930"), any(), any())).thenReturn(List.of(new NewsArticle(
+                1L,"NAVER","규제 조사 착수","수동 확인 필요",null,"https://news.naver.com/1","example.com",
+                NOW,NOW,"삼성전자","a","b",NewsCategory.REGULATORY,NewsSentiment.NEGATIVE,
+                NewsImportance.HIGH,"KEYWORD_RULE",NOW,NOW)));
+        when(news.findHistories(isNull(),anyInt())).thenReturn(List.of());
+        ReflectionTestUtils.setField(service,"newsRepositoryPort",news);
+        ReflectionTestUtils.setField(service,"naverNewsProperties",properties);
+
+        MorningNote note=service.generate(TRADE_DATE);
+
+        assertThat(note.actionItems()).contains("HIGH_IMPORTANCE_NEWS 삼성전자","NEWS_RISK_DETECTED",
+                "NEWS_REQUIRES_MANUAL_REVIEW","NEW_NEWS_EVIDENCE").doesNotContain("ORDER_COMMAND");
+        assertThat(note.newsSummary()).contains("삼성전자", "REGULATORY", "NEGATIVE", "HIGH",
+                "규제 조사 착수", "https://news.naver.com/1", "KEYWORD_RULE");
     }
 
     @Test

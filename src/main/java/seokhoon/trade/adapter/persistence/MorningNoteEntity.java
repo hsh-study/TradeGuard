@@ -23,6 +23,8 @@ public class MorningNoteEntity {
     private String portfolioImpactSummary;
     @Column(name = "watchlist_summary", nullable = false, columnDefinition = "TEXT")
     private String watchlistSummary;
+    @Column(name = "news_summary", columnDefinition = "TEXT")
+    private String newsSummary;
     @Column(name = "action_items", nullable = false, columnDefinition = "TEXT")
     private String actionItems;
     @Column(name = "created_at", nullable = false)
@@ -44,12 +46,14 @@ public class MorningNoteEntity {
         sectorSummary = value.sectorSummary();
         portfolioImpactSummary = value.portfolioImpactSummary();
         watchlistSummary = value.watchlistSummary();
+        newsSummary = value.newsSummary();
         actionItems = value.actionItems();
         createdAt = value.createdAt();
     }
 
     MorningNote toDomain() {
         return new MorningNote(id, tradeDate, marketSummary, sectorSummary,
-                portfolioImpactSummary, watchlistSummary, actionItems, createdAt);
+                portfolioImpactSummary, watchlistSummary, newsSummary == null ? "" : newsSummary,
+                actionItems, createdAt);
     }
 }

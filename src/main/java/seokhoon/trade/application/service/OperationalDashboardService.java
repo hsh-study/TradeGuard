@@ -8,6 +8,7 @@ import seokhoon.trade.application.port.in.*;
 import seokhoon.trade.application.port.out.*;
 import seokhoon.trade.config.DartProperties;
 import seokhoon.trade.config.DisclosureActualProviderProperties;
+import seokhoon.trade.config.NaverNewsProperties;
 import seokhoon.trade.domain.kis.KisEnvironment;
 import seokhoon.trade.domain.market.*;
 import seokhoon.trade.domain.order.LiveTradingReadinessReport;
@@ -62,6 +63,10 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
     private final LiveTradingReadinessUseCase liveReadiness;
     private final boolean discordEnabled;
     private final Clock clock;
+    private NewsRepositoryPort newsRepository;
+    private NaverNewsProperties newsProperties;
+
+    @Autowired(required=false) void setNewsIntegration(NewsRepositoryPort repository,NaverNewsProperties properties){this.newsRepository=repository;this.newsProperties=properties;}
 
     @Autowired
     public OperationalDashboardService(LoadMarketCalendarUseCase calendar, MorningNotePort morningNotes,
@@ -133,6 +138,7 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
         DartStatus dart = dart(activeStocks);
         OperationalDashboardSummary.ConsensusStatus consensus=consensus(baseDate);
         ValuationStatus valuation = valuation(baseDate, activeStocks, runs);
+        NewsStatus news = news(baseDate);
         OperationalDashboardSummary.PaperTradingReportStatus paper = paper(baseDate);
         OperationalDashboardSummary.ReplayBacktestStatus replay = replay(baseDate);
         SchedulerStatus scheduler = scheduler(runs);
@@ -159,9 +165,12 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
         if (dart.failedImportCount() >= 2) { blocking.add("DART_IMPORT_REPEATED_FAILURE"); actions.add("Run DART financial import"); }
         if (!paper.generated()) { blocking.add("PAPER_TRADING_REPORT_NOT_GENERATED"); actions.add("Generate Paper Trading Report"); }
         if (valuation.insufficientCount() > 0) actions.add("Run valuation snapshot generation");
+        if(!news.providerEnabled())actions.add("Configure Naver News provider");
+        if(news.failedImportCount()>0)actions.add("Review failed news imports");
+        if(news.highImportanceNewsCount()>0||news.riskNewsCount()>0)actions.add("Review high importance and risk news");
 
         addWarnings(warnings, market.warnings(), note.warnings(), early.warnings(), closing.warnings(),
-                investor.warnings(), earnings.warnings(), dart.warnings(),consensus.warnings(), valuation.warnings(), paper.warnings(),
+                investor.warnings(), earnings.warnings(), dart.warnings(),consensus.warnings(), valuation.warnings(),news.warnings(), paper.warnings(),
                 replay.warnings(), scheduler.warnings(), token.warnings(), live.warnings());
         Set<String> sectorMappedStocks = stockSectors.findAllMappings().stream()
                 .map(StockSectorMapping::stockCode).collect(Collectors.toSet());
@@ -169,8 +178,21 @@ public class OperationalDashboardService implements GetOperationalDashboardUseCa
             warnings.add("SECTOR_MAPPING_MISSING");
         }
         return new OperationalDashboardSummary(baseDate, market, note, early, closing, investor, earnings,
-                dart,consensus, valuation, paper, replay, scheduler, token, live, distinct(blocking), distinct(warnings),
+                dart,consensus, valuation, news, paper, replay, scheduler, token, live, distinct(blocking), distinct(warnings),
                 distinct(actions), clock.instant());
+    }
+
+    private NewsStatus news(LocalDate date){
+        boolean enabled=newsProperties!=null&&newsProperties.isProviderEnabled();
+        if(newsRepository==null)return new NewsStatus(enabled,"NOT_RUN",0,0,0,0,List.of(enabled?"NEWS_STATUS_UNAVAILABLE":"NEWS_PROVIDER_DISABLED"));
+        Instant from=date.atStartOfDay(SEOUL).toInstant(),to=date.plusDays(1).atStartOfDay(SEOUL).toInstant();
+        List<NewsImportHistory> histories=newsRepository.findHistories(null,100);
+        String latest=histories.isEmpty()?"NOT_RUN":histories.getFirst().status().name();
+        int failed=(int)histories.stream().filter(h->h.status()==NewsImportStatus.FAILED&&!h.startedAt().isBefore(from)&&h.startedAt().isBefore(to)).count();
+        List<String>warnings=new ArrayList<>();if(!enabled)warnings.add("NEWS_PROVIDER_DISABLED");if(failed>0)warnings.add("NEWS_IMPORT_FAILED");
+        if(!histories.isEmpty()&&histories.getFirst().duplicatedCount()>=Math.max(5,histories.getFirst().savedCount()*2))warnings.add("NEWS_DUPLICATE_SPIKE");
+        return new NewsStatus(enabled,latest,(int)newsRepository.countCollectedBetween(from,to),
+                (int)newsRepository.countByImportanceBetween(NewsImportance.HIGH,from,to),(int)newsRepository.countRiskBetween(from,to),failed,warnings);
     }
 
     private OperationalDashboardSummary.ConsensusStatus consensus(LocalDate date){

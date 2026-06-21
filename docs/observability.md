@@ -66,6 +66,8 @@ The dashboard uses these current counters:
 - `tradeguard.research.dart_financial_import.count` — `result=success|partial|failure|skipped`
 - `tradeguard.research.disclosure_actual_import.count` — `provider`, `result=success|partial|failure|skipped`
 - `tradeguard.research.consensus_import.count` — `type`, `result=success|failure`
+- `tradeguard.research.news_import.count` — `provider=naver`, `result=success|partial|failure|skipped`
+- `tradeguard.research.news_classification.count` — bounded `category`, `sentiment`, `result=classified|unclassified`
 - `tradeguard.research.paper_trading_report.count` — `result=success|failure|insufficient`
 - `tradeguard.research.replay_backtest.count` — `strategy`, `result=success|failure|insufficient`
 - `tradeguard.live_trading.readiness.count` — `result=ready|blocked`
@@ -111,4 +113,5 @@ All rules use counter `increase(...)` over a recent window. A firing alert prove
 - Prometheus rules are loaded and visible at `http://localhost:19090/rules`; alert state is visible at `http://localhost:19090/alerts`.
 - Alert responders follow [`runbooks/alerts.md`](runbooks/alerts.md) and confirm current readiness before acting.
 - Metrics contain only approved bounded tags and no stock, account, secret, webhook, URL, receipt, title, or correlation identifiers.
+- News metrics never include a query, stock code, title, link/source URL, publisher, or Naver credential.
 - Observability and alerting remain read-only; they never enable flags, clear readiness blocks, or submit automatic orders.

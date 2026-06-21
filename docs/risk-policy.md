@@ -1,5 +1,12 @@
 # TradeGuard Risk Policy
 
+## 뉴스 사용 제한
+
+- 뉴스는 operator-facing research evidence와 수동 확인 대상으로만 사용한다.
+- 뉴스 또는 sentiment만으로 자동매수·자동매도, 수량·지정가 결정, readiness/kill switch 변경을 금지한다.
+- 동일 사건에 공시 evidence가 있으면 공시를 우선한다.
+- HIGH/RISK 뉴스도 thesis를 자동으로 `BROKEN` 처리하지 않고 Morning Note에 수동 검토 항목으로 남긴다.
+
 ## 1. 목적
 
 RiskManager는 전략 신호를 주문으로 전환하기 전에 손실 가능성과 잘못된 주문을 제한하는 최종 도메인 정책이다. 전략 점수가 높더라도 리스크 검증을 우회할 수 없다.

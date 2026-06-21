@@ -25,11 +25,16 @@ import seokhoon.trade.domain.stock.Market;
 import seokhoon.trade.config.InvestorFlowProperties;
 import seokhoon.trade.config.DisclosureActualProviderProperties;
 import seokhoon.trade.config.ConsensusProviderProperties;
+import seokhoon.trade.config.NaverNewsProperties;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -79,8 +84,15 @@ public class MorningNoteService implements MorningNoteUseCase {
     private EarningsConsensusPort earningsConsensusPort;
     private TargetPriceConsensusPort targetPriceConsensusPort;
     private ConsensusProviderProperties consensusProviderProperties;
+    private NewsRepositoryPort newsRepositoryPort;
+    private NaverNewsProperties naverNewsProperties;
     private final OperationalMetricsPort metrics;
     private final Clock clock;
+
+    @Autowired(required=false)
+    void setNewsIntegration(NewsRepositoryPort newsRepositoryPort,NaverNewsProperties properties){
+        this.newsRepositoryPort=newsRepositoryPort;this.naverNewsProperties=properties;
+    }
 
     @Autowired
     public MorningNoteService(
@@ -252,6 +264,7 @@ public class MorningNoteService implements MorningNoteUseCase {
                     sectorSummary(previousTradingDay),
                     portfolioSummary(tradeDate, positions),
                     watchlistSummary(tradeDate, stocks),
+                    newsSummary(stocks, tradeDate),
                     actionItems(catalysts, brokenTheses, stocks, signals, tradeDate),
                     clock.instant()
             ));
@@ -576,10 +589,51 @@ public class MorningNoteService implements MorningNoteUseCase {
         appendConsensusItems(result,stocks,tradeDate);
         appendMarketSectorItems(result, stocks, tradeDate);
         appendSupplyDemandItems(result, stocks);
+        appendNewsItems(result, stocks, tradeDate);
         if (catalysts.isEmpty() && brokenTheses.isEmpty() && stocks.isEmpty()) {
             result.append("\n- 등록된 리서치 대상 없음");
         }
         return result.toString();
+    }
+
+    private void appendNewsItems(StringBuilder result,List<Stock> stocks,LocalDate tradeDate){
+        if(naverNewsProperties==null||!naverNewsProperties.isProviderEnabled()){
+            result.append("\n- NEWS_PROVIDER_DISABLED Naver News Search API");return;
+        }
+        if(newsRepositoryPort==null)return;
+        Instant to=tradeDate.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        Instant from=to.minusSeconds((long)naverNewsProperties.getLookbackHours()*3600);
+        int limit=Math.max(1,naverNewsProperties.getMorningNoteTopN());int added=0;Set<Long> seen=new HashSet<>();
+        outer:for(Stock stock:stocks){for(NewsArticle article:newsRepositoryPort.findArticles(stock.stockCode(),from,to)){
+            if(!seen.add(article.id()))continue;if(article.importance()==NewsImportance.HIGH){
+                result.append("\n- HIGH_IMPORTANCE_NEWS ").append(stock.stockName()).append(" [")
+                        .append(article.category()).append("/").append(article.sentiment()).append("] ")
+                        .append(article.title()).append(" ").append(article.link());
+                if(article.sentiment()==NewsSentiment.NEGATIVE||article.category()==NewsCategory.RISK||article.category()==NewsCategory.REGULATORY)
+                    result.append(" NEWS_RISK_DETECTED NEWS_REQUIRES_MANUAL_REVIEW");
+                if(++added>=limit)break outer;}}}
+        if(added>0)result.append("\n- NEW_NEWS_EVIDENCE count=").append(added).append(" 공시 evidence 우선, 수동 검토 필요");
+        newsRepositoryPort.findHistories(null,20).stream().filter(h->h.status()==NewsImportStatus.FAILED).findFirst()
+                .ifPresent(h->result.append("\n- NEWS_IMPORT_FAILED NEWS_REQUIRES_MANUAL_REVIEW"));
+    }
+
+    private String newsSummary(List<Stock> stocks,LocalDate tradeDate){
+        if(naverNewsProperties==null||!naverNewsProperties.isProviderEnabled())return "NEWS_PROVIDER_DISABLED";
+        if(newsRepositoryPort==null)return "NEWS_STATUS_UNAVAILABLE";
+        Instant to=tradeDate.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        Instant from=to.minusSeconds((long)naverNewsProperties.getLookbackHours()*3600);
+        int limit=Math.max(1,naverNewsProperties.getMorningNoteTopN());
+        StringBuilder result=new StringBuilder();Set<Long> seen=new HashSet<>();int added=0;
+        outer:for(Stock stock:stocks){for(NewsArticle article:newsRepositoryPort.findArticles(stock.stockCode(),from,to)){
+            if(!seen.add(article.id())||article.importance()==NewsImportance.LOW)continue;
+            if(added++>0)result.append('\n');
+            result.append(stock.stockName()).append(" [").append(article.category()).append('/')
+                    .append(article.sentiment()).append('/').append(article.importance()).append("] ")
+                    .append(article.title()).append(" | ").append(article.publishedAt()).append(" | ")
+                    .append(article.link()).append(" | ").append(article.shortReason());
+            if(added>=limit)break outer;
+        }}
+        return result.isEmpty()?"NO_RELEVANT_NEWS":result.toString();
     }
 
     private void appendConsensusItems(StringBuilder result,List<Stock> stocks,LocalDate tradeDate){

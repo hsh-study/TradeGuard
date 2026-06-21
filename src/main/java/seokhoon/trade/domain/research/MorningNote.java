@@ -11,6 +11,7 @@ public record MorningNote(
         String sectorSummary,
         String portfolioImpactSummary,
         String watchlistSummary,
+        String newsSummary,
         String actionItems,
         Instant createdAt
 ) {
@@ -20,7 +21,14 @@ public record MorningNote(
         Objects.requireNonNull(sectorSummary, "sectorSummary");
         Objects.requireNonNull(portfolioImpactSummary, "portfolioImpactSummary");
         Objects.requireNonNull(watchlistSummary, "watchlistSummary");
+        Objects.requireNonNull(newsSummary, "newsSummary");
         Objects.requireNonNull(actionItems, "actionItems");
         Objects.requireNonNull(createdAt, "createdAt");
+    }
+
+    public MorningNote(Long id, LocalDate tradeDate, String marketSummary, String sectorSummary,
+            String portfolioImpactSummary, String watchlistSummary, String actionItems, Instant createdAt) {
+        this(id, tradeDate, marketSummary, sectorSummary, portfolioImpactSummary, watchlistSummary,
+                "", actionItems, createdAt);
     }
 }

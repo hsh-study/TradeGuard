@@ -18,6 +18,25 @@ http://localhost:18080/operations/dashboard?baseDate=2026-06-15
 
 관심종목과 보유종목 화면은 기준일 이하 최신 `valuation_snapshots`의 PER/PBR을 표시한다. 저장된 valuation이 없으면 임의 계산하지 않고 `-`로 표시한다. 종가, 거래량, PER/PBR, 평균단가, 평가금액, 평가손익과 주요 기술지표 용어는 마우스를 올리면 설명을 보여준다.
 
+### Naver News Search API
+
+뉴스는 웹 크롤링이 아니라 공식 Naver News Search API만 사용하며 기본값은
+`NAVER_NEWS_PROVIDER_ENABLED=false`이다. 제목, 짧은 요약, 언론사 host, 링크,
+발행시각, 검색어, 수집시각과 중복 hash만 저장하고 기사 본문·HTML·이미지는 저장하지
+않는다. 뉴스는 research evidence와 Morning Note 수동 검토 항목일 뿐 주문 신호나
+자동매수·자동매도 입력으로 사용하지 않는다.
+
+필수 설정은 `NAVER_NEWS_CLIENT_ID`, `NAVER_NEWS_CLIENT_SECRET`이며 자동 수집은
+별도로 `NAVER_NEWS_AUTO_RUN=true`일 때만 거래일 07:20/12:20/16:20에 실행된다.
+client id/secret은 API, UI, 로그, metric tag에 출력하지 않는다.
+
+```sh
+curl -X POST 'http://localhost:18080/api/research/news/import-stock?stockCode=005930'
+curl -X POST 'http://localhost:18080/api/research/news/import-watchlist'
+curl 'http://localhost:18080/api/research/news?stockCode=005930&from=2026-06-21T00:00:00Z&to=2026-06-22T00:00:00Z'
+curl 'http://localhost:18080/api/research/news/import-histories?query=삼성전자'
+```
+
 같은 화면의 수동 주문 영역은 활성 계좌를 명시 선택한 지정가 매수·매도만 지원한다. 선택 계좌가 `DEMO`이면 KIS 모의 TR ID, `REAL`이면 실전 TR ID와 자격정보를 사용한다. 실전 계좌는 `realTradingConfirmed=true`가 없으면 서버에서 차단한다. 주문 전에는 기존 Live Trading Readiness, kill switch, 장 운영시간, 주문금액 제한을 모두 통과해야 한다. UI 주문 API는 `/api/operations/orders/buy`와 `/api/operations/orders/sell`이다.
 
 거래 계좌와 외부 API 설정은 `http://localhost:18080/operations/accounts`에서 관리한다. 모의(`DEMO`)와 실전(`REAL`) 계좌를 여러 개 등록하고 현재 거래 기본 계좌를 하나 선택할 수 있다. 기본 계좌가 `DEMO`면 KIS 모의 base URL·자격정보·token·TR ID를 사용하고, `REAL`이면 실전 설정을 사용한다. KIS App Key/Secret은 환경별로, DART API Key/Base URL은 단일 설정으로 DB에서 관리한다. 계좌번호와 API secret은 `KIS_TOKEN_ENCRYPTION_KEY`를 사용하는 AES-256-GCM 암호문으로 저장되며 API와 UI에는 마스킹 값만 표시된다. 키가 없으면 설정 저장과 실거래 readiness가 차단된다. 계좌 API는 `/api/trading-accounts`, 외부 API 설정은 `/api/external-api-configurations`이며 실제 주문은 기존 kill switch와 Live Trading Readiness를 계속 통과해야 한다.

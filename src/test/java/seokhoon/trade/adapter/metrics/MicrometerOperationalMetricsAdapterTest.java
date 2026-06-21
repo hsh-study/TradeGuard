@@ -44,6 +44,8 @@ class MicrometerOperationalMetricsAdapterTest {
         metrics.recordInvestorFlowDiagnostic("stock", "success");
         metrics.recordInvestorFlowReadiness("not_ready");
         metrics.recordBootReadiness("ready");
+        metrics.recordResearchNewsImport("naver", "success");
+        metrics.recordResearchNewsClassification("earnings", "positive", "classified");
 
         assertThat(counter(
                 registry,
@@ -155,6 +157,8 @@ class MicrometerOperationalMetricsAdapterTest {
         )).isEqualTo(1.0);
         assertThat(counter(registry,"tradeguard.operations.boot_readiness.count","result","ready"))
                 .isEqualTo(1.0);
+        assertThat(counter(registry,"tradeguard.research.news_import.count","provider","naver")).isEqualTo(1.0);
+        assertThat(counter(registry,"tradeguard.research.news_classification.count","category","earnings")).isEqualTo(1.0);
 
         assertThat(registry.getMeters())
                 .flatExtracting(meter -> meter.getId().getTags())
@@ -164,6 +168,11 @@ class MicrometerOperationalMetricsAdapterTest {
                 .noneMatch(tag -> tag.contains("005930"))
                 .noneMatch(tag -> tag.contains("app-key"))
                 .noneMatch(tag -> tag.contains("app-secret"))
+                .noneMatch(tag -> tag.contains("삼성전자"))
+                .noneMatch(tag -> tag.contains("https://"))
+                .noneMatch(tag -> tag.toLowerCase().contains("query"))
+                .noneMatch(tag -> tag.toLowerCase().contains("title"))
+                .noneMatch(tag -> tag.toLowerCase().contains("client-secret"))
                 .noneMatch(tag -> tag.contains("webhook"));
     }
 

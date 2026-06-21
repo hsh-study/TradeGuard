@@ -1,0 +1,3 @@
+package seokhoon.trade.application.service;
+import org.junit.jupiter.api.Test; import seokhoon.trade.application.port.out.BrokerPort; import java.util.Arrays; import static org.assertj.core.api.Assertions.assertThat;
+class NewsTradingIsolationTest {@Test void newsServicesHaveNoBrokerOrOrderDependency(){for(Class<?> type:ListHolder.TYPES)for(var constructor:type.getDeclaredConstructors())assertThat(Arrays.asList(constructor.getParameterTypes())).noneMatch(BrokerPort.class::isAssignableFrom).noneMatch(t->t.getSimpleName().contains("OrderService"));}private static class ListHolder{static final Class<?>[] TYPES={NewsImportService.class,NewsClassificationService.class,NewsCatalystCandidateService.class,NewsImportScheduler.class};}}

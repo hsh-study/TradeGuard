@@ -110,6 +110,8 @@ class OperationalDashboardPageControllerTest {
         mvc.perform(get("/operations/dashboard").param("view","research"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Earnings consensus")))
+                .andExpect(content().string(containsString("News")))
+                .andExpect(content().string(containsString("NEWS_PROVIDER_DISABLED")))
                 .andExpect(content().string(not(containsString("주문·포지션 조회 API"))));
     }
 

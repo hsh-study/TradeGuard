@@ -16,6 +16,7 @@ public record OperationalDashboardSummary(
         DartStatus dartStatus,
         ConsensusStatus consensusStatus,
         ValuationStatus valuationStatus,
+        NewsStatus newsStatus,
         PaperTradingReportStatus paperTradingReportStatus,
         ReplayBacktestStatus replayBacktestStatus,
         SchedulerStatus schedulerStatus,
@@ -30,6 +31,18 @@ public record OperationalDashboardSummary(
         blockingIssues = List.copyOf(blockingIssues);
         warnings = List.copyOf(warnings);
         recommendedActions = List.copyOf(recommendedActions);
+    }
+
+    public OperationalDashboardSummary(LocalDate baseDate,MarketDateStatus marketDateStatus,MorningNoteStatus morningNoteStatus,
+            EarlyMarketStatus earlyMarketStatus,ClosingBetStatus closingBetStatus,InvestorFlowStatus investorFlowStatus,
+            EarningsStatus earningsStatus,DartStatus dartStatus,ConsensusStatus consensusStatus,ValuationStatus valuationStatus,
+            PaperTradingReportStatus paperTradingReportStatus,ReplayBacktestStatus replayBacktestStatus,SchedulerStatus schedulerStatus,
+            KisTokenStatus kisTokenStatus,LiveTradingReadinessStatus liveTradingReadinessStatus,List<String> blockingIssues,
+            List<String> warnings,List<String> recommendedActions,Instant generatedAt){
+        this(baseDate,marketDateStatus,morningNoteStatus,earlyMarketStatus,closingBetStatus,investorFlowStatus,earningsStatus,
+                dartStatus,consensusStatus,valuationStatus,new NewsStatus(false,"NOT_RUN",0,0,0,0,List.of("NEWS_PROVIDER_DISABLED")),
+                paperTradingReportStatus,replayBacktestStatus,schedulerStatus,kisTokenStatus,liveTradingReadinessStatus,
+                blockingIssues,warnings,recommendedActions,generatedAt);
     }
 
     public record MarketDateStatus(LocalDate baseDate, boolean isTradingDay,
@@ -74,6 +87,9 @@ public record OperationalDashboardSummary(
             int insufficientCount, int sharesOutstandingMissingCount, List<String> warnings) {
         public ValuationStatus { warnings = List.copyOf(warnings); }
     }
+    public record NewsStatus(boolean providerEnabled,String latestImportStatus,int importedTodayCount,
+            int highImportanceNewsCount,int riskNewsCount,int failedImportCount,List<String>warnings){
+        public NewsStatus{warnings=List.copyOf(warnings);}}
 
     public record PaperTradingReportStatus(Long latestRunId, boolean generated, int totalCandidates,
             BigDecimal winRate, BigDecimal averageReturnRate, int dataInsufficientCount,

@@ -297,6 +297,13 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
         ).increment();
     }
 
+    @Override public void recordResearchNewsImport(String provider,String result){
+        meterRegistry.counter("tradeguard.research.news_import.count","provider",provider,"result",result).increment();
+    }
+    @Override public void recordResearchNewsClassification(String category,String sentiment,String result){
+        meterRegistry.counter("tradeguard.research.news_classification.count","category",category,"sentiment",sentiment,"result",result).increment();
+    }
+
     @Override
     public void recordResearchValuationAutoSnapshot(String result) {
         meterRegistry.counter(

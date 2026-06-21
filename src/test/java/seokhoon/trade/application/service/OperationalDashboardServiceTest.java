@@ -9,6 +9,7 @@ import seokhoon.trade.application.port.in.*;
 import seokhoon.trade.application.port.out.*;
 import seokhoon.trade.config.DartProperties;
 import seokhoon.trade.config.DisclosureActualProviderProperties;
+import seokhoon.trade.config.NaverNewsProperties;
 import seokhoon.trade.domain.kis.*;
 import seokhoon.trade.domain.market.*;
 import seokhoon.trade.domain.order.LiveTradingReadinessReport;
@@ -37,6 +38,7 @@ class OperationalDashboardServiceTest {
     @Mock SharesOutstandingSnapshotPort shares; @Mock PaperTradingReportPort papers;
     @Mock ReplayBacktestPort replays; @Mock KisTokenUseCases.ManageKisTokenUseCase tokens;
     @Mock LiveTradingReadinessUseCase liveReadiness;
+    @Mock NewsRepositoryPort newsRepository;
     private DisclosureActualProviderProperties disclosureProperties;
     private OperationalDashboardService service;
 
@@ -117,5 +119,28 @@ class OperationalDashboardServiceTest {
         assertThat(result.staleConsensusCount()).isEqualTo(1);
         assertThat(result.missingConsensusForUpcomingEarningsCount()).isEqualTo(1);
         assertThat(result.warnings()).contains("CONSENSUS_STALE", "EARNINGS_CONSENSUS_MISSING");
+    }
+
+    @Test void reportsNewsStatusWithoutCallingTheProvider() {
+        NaverNewsProperties properties = new NaverNewsProperties();
+        properties.setProviderEnabled(true);
+        service.setNewsIntegration(newsRepository, properties);
+        Instant from = DATE.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        Instant to = DATE.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        NewsImportHistory latest = new NewsImportHistory(1L,"삼성전자",20,8,6,2,
+                NewsImportStatus.SUCCESS,null,from.plusSeconds(60),from.plusSeconds(61));
+        when(newsRepository.findHistories(null,100)).thenReturn(List.of(latest));
+        when(newsRepository.countCollectedBetween(from,to)).thenReturn(6L);
+        when(newsRepository.countByImportanceBetween(NewsImportance.HIGH,from,to)).thenReturn(2L);
+        when(newsRepository.countRiskBetween(from,to)).thenReturn(1L);
+
+        OperationalDashboardSummary result = service.getDashboard(DATE);
+
+        assertThat(result.newsStatus().providerEnabled()).isTrue();
+        assertThat(result.newsStatus().latestImportStatus()).isEqualTo("SUCCESS");
+        assertThat(result.newsStatus().importedTodayCount()).isEqualTo(6);
+        assertThat(result.newsStatus().highImportanceNewsCount()).isEqualTo(2);
+        assertThat(result.newsStatus().riskNewsCount()).isEqualTo(1);
+        assertThat(result.recommendedActions()).contains("Review high importance and risk news");
     }
 }
