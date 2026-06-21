@@ -2,6 +2,9 @@ package seokhoon.trade.adapter.marketdata.kis;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import seokhoon.trade.application.port.in.ExternalApiConfigurationUseCase;
+import seokhoon.trade.application.port.in.TradingAccountManagementUseCase;
 import seokhoon.trade.domain.kis.KisEnvironment;
 import seokhoon.trade.domain.kis.KisTokenCacheMode;
 import seokhoon.trade.application.port.out.KisConfigurationPort;
@@ -15,10 +18,17 @@ public class KisProperties implements KisConfigurationPort {
             "https://openapi.koreainvestment.com:9443";
     public static final String DEMO_BASE_URL =
             "https://openapivts.koreainvestment.com:29443";
+    public static final String REAL_WEBSOCKET_URL =
+            "ws://ops.koreainvestment.com:21000/tryitout";
+    public static final String DEMO_WEBSOCKET_URL =
+            "ws://ops.koreainvestment.com:31000/tryitout";
 
     private KisEnvironment environment = KisEnvironment.DEMO;
     private String realBaseUrl = REAL_BASE_URL;
     private String demoBaseUrl = DEMO_BASE_URL;
+    private String realWebsocketUrl = REAL_WEBSOCKET_URL;
+    private String demoWebsocketUrl = DEMO_WEBSOCKET_URL;
+    private String websocketApprovalPath = "/oauth2/Approval";
     private String tokenPath = "/oauth2/tokenP";
     private String appKey = "";
     private String appSecret = "";
@@ -30,9 +40,18 @@ public class KisProperties implements KisConfigurationPort {
     private String tokenEncryptionKey = "";
     private int tokenRefreshLockTimeoutSeconds = 120;
     private int tokenRefreshLockWaitSeconds = 10;
+    private ExternalApiConfigurationUseCase databaseConfigurations;
+    private TradingAccountManagementUseCase tradingAccounts;
+
+    @Autowired(required = false)
+    public void setDatabaseConfigurations(ExternalApiConfigurationUseCase value) {
+        this.databaseConfigurations = value;
+    }
+    @Autowired(required = false)
+    public void setTradingAccounts(TradingAccountManagementUseCase value) { this.tradingAccounts=value; }
 
     public String getBaseUrl() {
-        return baseUrl(environment);
+        return baseUrl(getEnvironment());
     }
 
     public void setBaseUrl(String baseUrl) {
@@ -40,7 +59,11 @@ public class KisProperties implements KisConfigurationPort {
     }
 
     public String getAppKey() {
-        return appKey;
+        return appKey(getEnvironment());
+    }
+
+    public String appKey(KisEnvironment requestedEnvironment) {
+        return configuration(requestedEnvironment).map(ExternalApiConfigurationUseCase.KisCredentials::appKey).orElse(appKey);
     }
 
     public void setAppKey(String appKey) {
@@ -48,7 +71,11 @@ public class KisProperties implements KisConfigurationPort {
     }
 
     public String getAppSecret() {
-        return appSecret;
+        return appSecret(getEnvironment());
+    }
+
+    public String appSecret(KisEnvironment requestedEnvironment) {
+        return configuration(requestedEnvironment).map(ExternalApiConfigurationUseCase.KisCredentials::appSecret).orElse(appSecret);
     }
 
     public void setAppSecret(String appSecret) {
@@ -56,14 +83,14 @@ public class KisProperties implements KisConfigurationPort {
     }
 
     public void validateForRequest() {
-        validateForRequest(environment);
+        validateForRequest(getEnvironment());
     }
 
     public void validateForRequest(KisEnvironment requestedEnvironment) {
-        if (appKey == null || appKey.isBlank()) {
+        if (appKey(requestedEnvironment) == null || appKey(requestedEnvironment).isBlank()) {
             throw new IllegalStateException("KIS app key is not configured");
         }
-        if (appSecret == null || appSecret.isBlank()) {
+        if (appSecret(requestedEnvironment) == null || appSecret(requestedEnvironment).isBlank()) {
             throw new IllegalStateException("KIS app secret is not configured");
         }
         if (tokenRefreshBeforeSeconds < 0) {
@@ -88,16 +115,35 @@ public class KisProperties implements KisConfigurationPort {
         if (baseUrlOverride != null && !baseUrlOverride.isBlank()) {
             return baseUrlOverride;
         }
+        var configured = configuration(requestedEnvironment);
+        if (configured.isPresent()) return configured.get().baseUrl();
         return requestedEnvironment == KisEnvironment.REAL
                 ? realBaseUrl : demoBaseUrl;
     }
 
-    public KisEnvironment getEnvironment() { return environment; }
+    public String websocketUrl(KisEnvironment requestedEnvironment) {
+        return requestedEnvironment == KisEnvironment.REAL
+                ? realWebsocketUrl : demoWebsocketUrl;
+    }
+
+    private java.util.Optional<ExternalApiConfigurationUseCase.KisCredentials> configuration(KisEnvironment environment) {
+        return databaseConfigurations == null ? java.util.Optional.empty()
+                : databaseConfigurations.kisCredentials(environment);
+    }
+
+    public KisEnvironment getEnvironment() { return tradingAccounts == null ? environment
+            : tradingAccounts.primaryCredentials().map(TradingAccountManagementUseCase.AccountCredentials::environment).orElse(environment); }
     public void setEnvironment(KisEnvironment value) { environment = value; }
     public String getRealBaseUrl() { return realBaseUrl; }
     public void setRealBaseUrl(String value) { realBaseUrl = value; }
     public String getDemoBaseUrl() { return demoBaseUrl; }
     public void setDemoBaseUrl(String value) { demoBaseUrl = value; }
+    public String getRealWebsocketUrl() { return realWebsocketUrl; }
+    public void setRealWebsocketUrl(String value) { realWebsocketUrl = value; }
+    public String getDemoWebsocketUrl() { return demoWebsocketUrl; }
+    public void setDemoWebsocketUrl(String value) { demoWebsocketUrl = value; }
+    public String getWebsocketApprovalPath() { return websocketApprovalPath; }
+    public void setWebsocketApprovalPath(String value) { websocketApprovalPath = value; }
     public String getTokenPath() { return tokenPath; }
     public void setTokenPath(String value) { tokenPath = value; }
     public int getTokenRefreshBeforeSeconds() { return tokenRefreshBeforeSeconds; }
@@ -123,13 +169,13 @@ public class KisProperties implements KisConfigurationPort {
 
     @Override
     public KisEnvironment readOnlyEnvironment() {
-        return environment;
+        return getEnvironment();
     }
 
     @Override
     public boolean credentialsConfigured() {
-        return appKey != null && !appKey.isBlank()
-                && appSecret != null && !appSecret.isBlank();
+        return appKey(getEnvironment()) != null && !appKey(getEnvironment()).isBlank()
+                && appSecret(getEnvironment()) != null && !appSecret(getEnvironment()).isBlank();
     }
 
     @Override
@@ -145,5 +191,10 @@ public class KisProperties implements KisConfigurationPort {
     @Override
     public boolean tokenEncryptionConfigured() {
         return tokenEncryptionKey != null && !tokenEncryptionKey.isBlank();
+    }
+
+    @Override
+    public boolean tokenDailyRefreshEnabled() {
+        return tokenDailyRefreshEnabled;
     }
 }

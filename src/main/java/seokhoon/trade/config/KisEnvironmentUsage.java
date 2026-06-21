@@ -34,7 +34,7 @@ public class KisEnvironmentUsage {
     public Set<KisEnvironment> enabledEnvironments() {
         EnumSet<KisEnvironment> result=EnumSet.noneOf(KisEnvironment.class);
         if (readOnlyKisEnabled) result.add(kis.getEnvironment());
-        if (live.isKisTradingEnabled()) result.add(live.environment());
+        if (live.isKisTradingEnabled()) result.add(kis.getEnvironment());
         return Set.copyOf(result);
     }
 

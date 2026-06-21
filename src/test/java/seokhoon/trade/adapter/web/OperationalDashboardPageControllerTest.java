@@ -4,14 +4,17 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import seokhoon.trade.application.port.in.GetOperationalDashboardUseCase;
+import seokhoon.trade.application.port.in.GetBootReadinessReportUseCase;
 import seokhoon.trade.application.port.in.OperationalDashboardSummary;
 import seokhoon.trade.application.port.in.RequestMockOrderUseCase;
 import seokhoon.trade.application.port.out.BrokerPort;
+import seokhoon.trade.domain.operations.BootReadinessReport;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
@@ -24,8 +27,9 @@ class OperationalDashboardPageControllerTest {
 
     @Test void rendersTodayDashboardWithPrioritySections() throws Exception {
         GetOperationalDashboardUseCase useCase = mock(GetOperationalDashboardUseCase.class);
+        GetBootReadinessReportUseCase boot = emptyBootReadiness();
         when(useCase.getTodayDashboard()).thenReturn(summary());
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new OperationalDashboardPageController(useCase)).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new OperationalDashboardPageController(useCase,boot)).build();
 
         mvc.perform(get("/operations/dashboard"))
                 .andExpect(status().isOk())
@@ -36,17 +40,19 @@ class OperationalDashboardPageControllerTest {
                 .andExpect(content().string(containsString("Warnings")))
                 .andExpect(content().string(containsString("DISCORD_DISABLED")))
                 .andExpect(content().string(containsString("Recommended Actions")))
-                .andExpect(content().string(containsString("Run Morning Note")));
+                .andExpect(content().string(containsString("Run Morning Note")))
+                .andExpect(content().string(containsString("/api/operations/boot-readiness")));
 
         verify(useCase).getTodayDashboard();
     }
 
     @Test void delegatesBaseDateAndDoesNotTouchOrderBoundaries() throws Exception {
         GetOperationalDashboardUseCase useCase = mock(GetOperationalDashboardUseCase.class);
+        GetBootReadinessReportUseCase boot = emptyBootReadiness();
         BrokerPort broker = mock(BrokerPort.class);
         RequestMockOrderUseCase orders = mock(RequestMockOrderUseCase.class);
         when(useCase.getDashboard(DATE)).thenReturn(summary());
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new OperationalDashboardPageController(useCase)).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new OperationalDashboardPageController(useCase,boot)).build();
 
         mvc.perform(get("/operations/dashboard").param("baseDate", DATE.toString()))
                 .andExpect(status().isOk())
@@ -58,8 +64,9 @@ class OperationalDashboardPageControllerTest {
 
     @Test void excludesSensitiveValuesAndUnapprovedFailureDetails() throws Exception {
         GetOperationalDashboardUseCase useCase = mock(GetOperationalDashboardUseCase.class);
+        GetBootReadinessReportUseCase boot = emptyBootReadiness();
         when(useCase.getTodayDashboard()).thenReturn(summary());
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new OperationalDashboardPageController(useCase)).build();
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new OperationalDashboardPageController(useCase,boot)).build();
 
         mvc.perform(get("/operations/dashboard"))
                 .andExpect(status().isOk())
@@ -68,6 +75,48 @@ class OperationalDashboardPageControllerTest {
                 .andExpect(content().string(not(containsString("https://discord.example/secret"))))
                 .andExpect(content().string(not(containsString("receipt-secret"))))
                 .andExpect(content().string(not(containsString("external-provider-secret"))));
+    }
+
+    @Test void showsBlockedBootReadinessAction() throws Exception {
+        GetOperationalDashboardUseCase dashboard=mock(GetOperationalDashboardUseCase.class);
+        when(dashboard.getTodayDashboard()).thenReturn(summary());
+        GetBootReadinessReportUseCase boot=mock(GetBootReadinessReportUseCase.class);
+        BootReadinessReport report=mock(BootReadinessReport.class);
+        when(report.overallStatus()).thenReturn(BootReadinessReport.OverallStatus.BLOCKED);
+        when(report.checkedAt()).thenReturn(Instant.parse("2026-06-15T03:00:00Z"));
+        when(boot.getLatestReport()).thenReturn(Optional.of(report));
+        MockMvc mvc=MockMvcBuilders.standaloneSetup(new OperationalDashboardPageController(dashboard,boot)).build();
+
+        mvc.perform(get("/operations/dashboard"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Boot readiness: BLOCKED")))
+                .andExpect(content().string(containsString("Review blocked Boot Readiness Report")));
+    }
+
+    @Test void separatesTradingAndResearchViews() throws Exception {
+        GetOperationalDashboardUseCase dashboard=mock(GetOperationalDashboardUseCase.class);
+        when(dashboard.getTodayDashboard()).thenReturn(summary());
+        MockMvc mvc=MockMvcBuilders.standaloneSetup(
+                new OperationalDashboardPageController(dashboard,emptyBootReadiness())).build();
+
+        mvc.perform(get("/operations/dashboard").param("view","trading"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("투자 운영 메뉴")))
+                .andExpect(content().string(containsString("/operations/portfolio")))
+                .andExpect(content().string(containsString("/operations/trading")))
+                .andExpect(content().string(containsString("/api/live-orders/open")))
+                .andExpect(content().string(not(containsString("Earnings consensus"))));
+
+        mvc.perform(get("/operations/dashboard").param("view","research"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Earnings consensus")))
+                .andExpect(content().string(not(containsString("주문·포지션 조회 API"))));
+    }
+
+    private static GetBootReadinessReportUseCase emptyBootReadiness() {
+        GetBootReadinessReportUseCase useCase=mock(GetBootReadinessReportUseCase.class);
+        when(useCase.getLatestReport()).thenReturn(Optional.empty());
+        return useCase;
     }
 
     private static OperationalDashboardSummary summary() {

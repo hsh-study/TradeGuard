@@ -2,6 +2,8 @@
 
 These alerts are prompts for manual investigation. They do not authorize automatic orders, retries, flag changes, kill-switch changes, or any other state mutation.
 
+`/operations/dashboard`와 Grafana는 조회 전용 조사 화면이다. `/operations/watchlist`는 외부 데이터 수집과 수동 주문 기능이 있으므로 alert 확인만을 위해 사용하지 않는다.
+
 ## Safety rules
 
 - Never print, paste, or attach API keys, app secrets, access/refresh token values, account identifiers, or webhook URLs.
@@ -13,8 +15,9 @@ These alerts are prompts for manual investigation. They do not authorize automat
 Start every investigation with:
 
 ```sh
-curl 'http://localhost:8080/api/operations/dashboard'
-curl 'http://localhost:8080/actuator/health'
+curl 'http://localhost:18080/api/operations/dashboard'
+curl 'http://localhost:18080/api/operations/boot-readiness'
+curl 'http://localhost:18080/actuator/health'
 ```
 
 ## TradeGuardSchedulerFailureIncreased
@@ -50,7 +53,7 @@ curl 'http://localhost:8080/actuator/health'
 ## TradeGuardDartFinancialImportFailure
 
 1. Check the operational dashboard and recent DART import history/logs.
-2. Confirm `DART_API_KEY` is configured without printing it.
+2. `/operations/accounts`에서 DB 관리 DART 설정이 활성 상태인지 확인하되 API key를 출력하지 않는다.
 3. Verify stock-to-corporation mapping coverage and the requested reporting period.
 4. Confirm the DART provider is enabled and OpenDART is reachable.
 5. Review rate-limit or schema errors with secret and source details redacted.
@@ -85,8 +88,16 @@ curl 'http://localhost:8080/actuator/health'
 
 ## TradeGuardLiveTradingReadinessBlocked
 
-1. Check `/api/live-trading/readiness` for the authoritative current report.
+1. Check `/api/operations/boot-readiness` first, then `/api/live-trading/readiness` for the detailed current report.
 2. Review the kill switch and the configured values of `LIVE_TRADING_ENABLED` and `KIS_TRADING_ENABLED` without changing them.
 3. Check KIS trading configuration, account metadata presence, market session requirements, and other readiness reasons without exposing account or credential values.
 4. Keep the system blocked until an operator separately verifies and deliberately resolves every reason under the live-trading operating procedure.
 5. Never auto-enable flags, clear the kill switch, or submit an order from this alert.
+
+## Boot readiness BLOCKED
+
+1. Read `/api/operations/boot-readiness` and record only bounded issue codes and component statuses.
+2. Keep live-trading flags disabled and the kill switch unchanged while reviewing DB/Flyway, KIS cache/encryption, provider, scheduler, and observability configuration.
+3. For investor flow, verify the amount unit before enabling auto-run. For DART/disclosure, confirm required settings exist without printing their values.
+4. If live flags are enabled, also inspect `/api/live-trading/readiness`; do not treat boot readiness as authorization to trade.
+5. Restart only after an operator deliberately corrects configuration. Boot Readiness never changes settings, refreshes a token, clears the kill switch, or submits an order.

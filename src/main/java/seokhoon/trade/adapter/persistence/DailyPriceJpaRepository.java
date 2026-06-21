@@ -15,6 +15,8 @@ public interface DailyPriceJpaRepository extends JpaRepository<DailyPriceEntity,
 
     Optional<DailyPriceEntity> findByStockCodeAndTradeDate(String stockCode, LocalDate tradeDate);
 
+    Optional<DailyPriceEntity> findFirstByStockCodeOrderByTradeDateDesc(String stockCode);
+
     List<DailyPriceEntity> findByStockCodeAndTradeDateGreaterThanOrderByTradeDateAsc(
             String stockCode,
             LocalDate tradeDate

@@ -26,7 +26,7 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 - 중복 주문이 애플리케이션과 DB 양쪽에서 차단된다.
 - 거절 신호를 포함한 모든 판정 이력을 조회할 수 있다.
 - 핵심 도메인과 주요 application flow가 자동 테스트로 보호된다.
-- 실제 주문 API를 호출하는 실행 경로가 없다.
+- 자동 주문 실행 경로가 없고, 실전 주문은 운영자 확인형 수동 지정가 경로로 격리된다.
 - 로컬 실행, MySQL 실행, API 사용법이 문서화되어 있다.
 
 ## 3. 현재 상태
@@ -39,8 +39,8 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 
 | 영역 | 상태 | 현재 내용 |
 | --- | --- | --- |
-| 관심종목 등록/조회 | 부분 완료 | Port와 persistence adapter 경계 적용. validation, 중복 응답 정책이 필요 |
-| 일봉 모델/저장 구조 | 부분 완료 | KIS 읽기 전용 수집, 100건 초과 분할 조회, 저장/기간 조회 존재. Web API 없음 |
+| 관심종목 등록/조회 | 완료 | 등록/조회/활성화, 120거래일 warmup, 최신 종가·거래량, 추천·보유 중복 태그와 운영 UI 구현 |
+| 일봉 모델/저장 구조 | 완료 | KIS 읽기 전용 분할 수집, upsert, 기간 조회, 차트 API와 UI 구현 |
 | 기술지표 | 완료 | MA, RSI, MACD, Bollinger Band와 단위 테스트 존재 |
 | 지표 저장 | 부분 완료 | 계산·저장 orchestration과 종목·거래일 upsert 존재. 조회 API 없음 |
 | 종가베팅 전략 | 완료 | 단건·활성 관심종목 분석 API에 연결됐으며 점수 계산과 테스트 존재 |
@@ -54,11 +54,13 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 | 모의 주문 | 부분 완료 | 논리 키 및 signalId 기반 요청 API, order_requests.signal_id FK 추적, 승인/거절/BROKER_FAILED 결과, 동일 row 수동 재시도, 성공 시 신호 상태 동기화, RETRY_REQUESTED 정체 조회/수동 복구, 주요 상태 변경 감사 이력 존재. 자동 재시도/복구는 미구현 |
 | 중복 주문 방지 | 완료 | 사전 조회, DB 복합 unique constraint, 충돌의 도메인 거절 변환과 통합 테스트 존재 |
 | 알림 | 부분 완료 | Discord Webhook 기반 종가베팅 브리핑 API와 no-op 처리 존재. 일반 알림 정책은 미구현 |
-| KIS 연동 | 부분 완료 | 모의투자 OAuth, 일봉/순위/current price read-only 조회와 opt-in smoke test 구현. 계좌/주문 연동은 의도적으로 제외 |
-| 운영 관측성 | 부분 완료 | Actuator health/info/metrics, liveness/readiness, dependency health, scheduler 실행 이력, 핵심 Micrometer counter, 구조화 로그와 X-Request-Id 구현. 감사 이력 및 scheduler 실행 이력 correlation 연결 완료. 외부 metrics backend는 미구현 |
+| KIS 연동 | 부분 완료 | REAL/DEMO별 DB credential, OAuth cache, 일봉/순위/current price/분봉 read-only와 수동 현금 지정가 주문·조회·취소 구현. 매매 호가용 native WebSocket(H0STASP0/H0STCNT0)을 구현했으며 잔고 자동 대사와 차트 WebSocket은 미구현 |
+| 운영 관측성 | 완료 | Actuator, Prometheus metrics/rules, Grafana import JSON, dashboard/readiness UI/API, scheduler/audit correlation과 runbook 구현. 로컬 Prometheus/Grafana는 별도 컨테이너로 운영 |
 | 시장 calendar | 부분 완료 | V11 `market_calendar_days`, V12 보정 audit, MANUAL_OVERRIDE 우선 정책, DB 우선 scheduler skip/이전·다음 거래일/시간외 기준일/리포트 거래일 수, 연도 sync·조회·검증·보정·audit API, 04:00 누락 연도 scheduler, health/metrics 구현. 공식 provider client/parser는 분리했으나 안정적인 KRX 무인증 endpoint가 명확하지 않아 기본은 생성 fallback이며 `MARKET_CALENDAR_HOLIDAYS` runtime fallback 관리가 필요 |
-| KIS 실매매 1단계 | 부분 완료 | 수동 지정가 매수/매도, 체결·부분체결 reconciliation, 취소, 자동취소 opt-in, 포지션 exit, kill switch 구현. REAL/DEMO OAuth token MEMORY cache와 AES-256-GCM DB cache, DB refresh lease, refresh scheduler, token health/API, 실매매 readiness 및 credential rotation/배포 체크리스트를 추가함. 자동매수·시장가·신용·미수·공매도는 미지원 |
-| DB migration | 완료 | Flyway V1~V30 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
+| KIS 실매매 1단계 | 부분 완료 | DB 계좌 선택형 수동 지정가 매수/매도, 실전 재확인, 체결·부분체결 reconciliation, 취소, 자동취소 opt-in, 포지션 exit, kill switch와 선택 계좌 KIS 잔고 읽기 구현. 자동매수·시장가·신용·미수·공매도는 미지원. accountId 주문 영속화와 잔고-로컬 포지션 대사는 TODO |
+| DB migration | 완료 | Flyway V1~V36 schema migration, Hibernate validate, H2 및 MySQL Testcontainers 검증 존재 |
+| 운영자 Web UI | 완료 | Dashboard, Accounts, Watchlist/차트/재료/포지션/수동 주문 UI 구현. 외부 프론트엔드 build chain 없음 |
+| 관심종목 실시간 차트 v1 | 부분 완료 | KIS current-price REST를 종목별 공유 polling하고 SSE로 전달. 평일 09:00~15:30, 기본 5초, 최대 3종목 제한. native KIS WebSocket은 TODO |
 | 일봉·지표 warmup | 완료 | 관심종목 등록 후 KIS 일봉 120거래일 upsert, MA5/20/60·RSI·MACD·Bollinger 저장, warmup 이력/API/metrics, 종베 14:00·15:00 및 장초반 08:30·09:05 후보 사전 보강과 strict 제외 정책 구현 |
 | Action 1: Thesis | 완료 | `investment_theses`와 등록/종목별 조회/부분 수정/종료 API 구현. 핵심 가정, 무효화 조건, 목표가, 손절 조건, confidence, ACTIVE/WATCH/BROKEN/CLOSED 상태를 저장. BROKEN은 Morning Note action item만 만들고 자동매도하지 않음 |
 | Action 2: Catalyst | 완료 | `investment_catalysts`와 종목/기간 조회, 등록/부분 수정 API 구현. 실적·정책·수주·제품·섹터·공시·매크로 catalyst, 중요도와 진행 상태를 관리. UPCOMING 항목은 Morning Note에 포함되며 자동매수하지 않음 |
@@ -177,10 +179,10 @@ MVP 1차는 다음 조건을 모두 만족할 때 완료로 본다.
 - 시장가 주문
 - 자동매수
 - 주문 정정과 장기 미체결 고도화
-- 실시간 체결/호가 스트리밍
+- 차트 polling을 KIS native WebSocket 체결 스트리밍으로 교체
 - 다중 전략 포트폴리오 최적화
 - 과거 원천 데이터 기반 replay 백테스트 엔진
-- 운영자용 Web UI
+- 다중 사용자 운영 UI와 권한/인증
 - MSA, Kafka, Kubernetes
 
 실매매 1단계 이후에도 데이터 품질, 전략 재현성, 리스크 이력과 주문 안전성을 우선한다.
@@ -207,9 +209,12 @@ KST 일별 갱신, scheduler, health/API/metrics와 AES-256-GCM DB cache까지
 구현했다. 운영 환경은 외부 secret manager와 다중 인스턴스가 없는 단일
 로컬 실행을 기준으로 한다.
 
-1. external metrics backend / Grafana
-2. operational dashboard UI
-3. 저장된 성과를 이용한 consensus strategy score 반영 검증
+1. 조회된 KIS 잔고와 로컬 포지션의 안전한 대사
+2. 주문·포지션에 선택 `accountId` 영속화
+3. SSE polling을 KIS native WebSocket 체결 스트림으로 교체
+4. `LIVE_POSITION_EXIT_MONITOR` 전용 enable flag로 수동 주문과 자동매도 활성화 분리
+5. DART provider 요청 검증이 DB 활성 설정을 일관되게 사용하도록 보강
+6. 저장된 성과를 이용한 consensus strategy score 반영 검증
 
 ## Consensus Provider v1
 

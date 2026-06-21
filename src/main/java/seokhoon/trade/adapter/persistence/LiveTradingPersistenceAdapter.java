@@ -46,6 +46,7 @@ public class LiveTradingPersistenceAdapter implements LiveOrderRequestPort,
     @Transactional(readOnly=true) public List<LivePosition> findOpenPositions(){return positions.findByStatusOrderByOpenedAtAsc(LivePositionStatus.OPEN).stream().map(LivePositionEntity::toDomain).toList();}
     @Transactional(readOnly=true) public Optional<LivePosition> findPositionById(long id){return positions.findById(id).map(LivePositionEntity::toDomain);}
     @Transactional(readOnly=true) public Optional<LivePosition> findByStockCode(String code){return positions.findFirstByStockCodeAndStatusNotOrderByOpenedAtDesc(code,LivePositionStatus.CLOSED).map(LivePositionEntity::toDomain);}
+    @Transactional(readOnly=true) public Optional<LivePosition> findByStockCodeAndEnvironment(String code,seokhoon.trade.domain.kis.KisEnvironment environment){return positions.findFirstByStockCodeAndEnvironmentAndStatusNotOrderByOpenedAtDesc(code,environment,LivePositionStatus.CLOSED).map(LivePositionEntity::toDomain);}
     @Transactional public LivePosition updatePosition(LivePosition v){var e=positions.findById(v.id()).orElseThrow();e.update(v);return positions.saveAndFlush(e).toDomain();}
 
     @Transactional public LivePositionExitRule save(LivePositionExitRule v){var e=rules.findByPositionId(v.positionId()).orElseGet(()->LivePositionExitRuleEntity.from(v));e.update(v);return rules.saveAndFlush(e).toDomain();}

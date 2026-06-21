@@ -132,7 +132,7 @@ public class InMemoryKisAccessTokenProvider
         properties.validateForRequest(environment);
         try {
             KisAccessToken token=tokenClient.issueToken(environment,
-                    properties.getAppKey(),properties.getAppSecret());
+                    properties.appKey(environment),properties.appSecret(environment));
             metrics.recordKisTokenIssue(environment.name(),"success");
             return token;
         } catch (RuntimeException exception) {

@@ -106,6 +106,9 @@ public interface OperationalMetricsPort {
     default void recordPaperTradingReport(String result) {
     }
 
+    default void recordBootReadiness(String result) {
+    }
+
     static OperationalMetricsPort noop() {
         return new OperationalMetricsPort() {
             @Override

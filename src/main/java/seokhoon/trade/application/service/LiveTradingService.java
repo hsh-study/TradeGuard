@@ -39,6 +39,7 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
     private final LivePricePort prices;
     private final MarketCalendarPort calendar;
     private final OperationalMetricsPort metrics;
+    private final TradingAccountManagementUseCase accounts;
     private final Clock clock;
 
     @Autowired
@@ -49,9 +50,10 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
             LiveOrderCancelRequestPort cancellations,
             LiveTradingRuntimeStatePort runtime, LiveTradingOrderPort broker,
             LivePricePort prices, MarketCalendarPort calendar,
-            OperationalMetricsPort metrics) {
+            OperationalMetricsPort metrics,
+            TradingAccountManagementUseCase accounts) {
         this(properties,orders,positions,rules,fills,histories,cancellations,runtime,broker,
-                prices,calendar,metrics,Clock.system(SEOUL));
+                prices,calendar,metrics,accounts,Clock.system(SEOUL));
     }
 
     LiveTradingService(LiveTradingProperties properties,
@@ -62,11 +64,25 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
             LiveTradingRuntimeStatePort runtime, LiveTradingOrderPort broker,
             LivePricePort prices, MarketCalendarPort calendar,
             OperationalMetricsPort metrics, Clock clock) {
+        this(properties,orders,positions,rules,fills,histories,cancellations,runtime,broker,
+                prices,calendar,metrics,null,clock);
+    }
+
+    LiveTradingService(LiveTradingProperties properties,
+            LiveOrderRequestPort orders, LivePositionPort positions,
+            LivePositionExitRulePort rules, LiveTradeFillPort fills,
+            LiveOrderStatusHistoryPort histories,
+            LiveOrderCancelRequestPort cancellations,
+            LiveTradingRuntimeStatePort runtime, LiveTradingOrderPort broker,
+            LivePricePort prices, MarketCalendarPort calendar,
+            OperationalMetricsPort metrics,
+            TradingAccountManagementUseCase accounts, Clock clock) {
         this.properties=properties;this.orders=orders;this.positions=positions;
         this.rules=rules;this.fills=fills;this.histories=histories;
         this.cancellations=cancellations;
         this.runtime=runtime;this.broker=broker;this.prices=prices;
         this.calendar=calendar;this.metrics=metrics;this.clock=clock;
+        this.accounts=accounts;
     }
 
     @Override @Transactional
@@ -186,11 +202,12 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
     private LivePosition applyFillToPosition(LiveTradeFill fill,
             LiveOrderStatus fillStatus) {
         if (fill.side() == OrderSide.BUY) {
-            LivePosition position = positions.findByStockCode(fill.stockCode())
+            seokhoon.trade.domain.kis.KisEnvironment environment = tradingEnvironment();
+            LivePosition position = findPosition(fill.stockCode(), environment)
                     .filter(existing -> existing.status() == LivePositionStatus.OPEN)
                     .map(existing -> mergeBuyFill(existing, fill))
                     .orElseGet(() -> positions.savePosition(new LivePosition(
-                            null, fill.stockCode(), fill.filledQuantity(),
+                            null, fill.stockCode(), environment, fill.filledQuantity(),
                             fill.filledPrice(), fill.filledAmount(), fill.fee(),
                             LivePositionStatus.OPEN, fill.filledAt(), null)));
             rules.save(defaultRule(position));
@@ -204,7 +221,7 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
                     .divide(BigDecimal.valueOf(position.quantity()), 8,
                             RoundingMode.HALF_UP);
             return positions.updatePosition(new LivePosition(
-                    position.id(), position.stockCode(),
+                    position.id(), position.stockCode(), position.environment(),
                     remainingQuantity,
                     position.averageBuyPrice(),
                     position.buyAmount().multiply(remainingRatio),
@@ -448,7 +465,8 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
     private LivePosition resolvePosition(Long id,String code) {
         if(id!=null)return position(id);
         if(code==null||code.isBlank())throw new LiveTradingException("positionId or stockCode is required");
-        return positions.findByStockCode(code).orElseThrow(()->new LiveTradingException("Open position not found"));
+        return findPosition(code, tradingEnvironment())
+                .orElseThrow(()->new LiveTradingException("Open position not found"));
     }
 
     private LivePositionExitRule defaultRule(LivePosition position) {
@@ -478,10 +496,28 @@ public class LiveTradingService implements RequestLiveBuyUseCase,
                 RoundingMode.HALF_UP
         );
         return positions.updatePosition(new LivePosition(
-                existing.id(), existing.stockCode(), quantity, average, amount,
+                existing.id(), existing.stockCode(), existing.environment(), quantity, average, amount,
                 existing.buyCommission().add(fill.fee()),
                 LivePositionStatus.OPEN, existing.openedAt(), null
         ));
+    }
+
+    private seokhoon.trade.domain.kis.KisEnvironment tradingEnvironment() {
+        if (accounts != null) {
+            return accounts.primaryCredentials()
+                    .map(TradingAccountManagementUseCase.AccountCredentials::environment)
+                    .orElseGet(properties::environment);
+        }
+        return properties.environment();
+    }
+
+    private java.util.Optional<LivePosition> findPosition(String stockCode,
+            seokhoon.trade.domain.kis.KisEnvironment environment) {
+        java.util.Optional<LivePosition> exact =
+                positions.findByStockCodeAndEnvironment(stockCode, environment);
+        if (exact.isPresent()) return exact;
+        return positions.findByStockCode(stockCode)
+                .filter(position -> position.environment() == null);
     }
 
     private boolean shouldAutoCancel(LiveOrderRequest order) {

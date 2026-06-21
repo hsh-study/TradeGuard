@@ -2,6 +2,8 @@ package seokhoon.trade.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import seokhoon.trade.application.port.in.ExternalApiConfigurationUseCase;
 
 import java.time.Duration;
 
@@ -18,9 +20,14 @@ public class DartProperties {
     private String corpCodeZipUrl = "";
     private int corpCodeImportTimeoutSeconds = 20;
     private boolean corpCodeImportAutoMatchListedOnly = true;
+    private ExternalApiConfigurationUseCase databaseConfigurations;
+
+    @Autowired(required = false)
+    public void setDatabaseConfigurations(ExternalApiConfigurationUseCase value) { this.databaseConfigurations=value; }
 
     public boolean isProviderEnabled() {
-        return providerEnabled;
+        return databaseConfigurations == null ? providerEnabled
+                : databaseConfigurations.dartConfig().map(ExternalApiConfigurationUseCase.DartConfigView::active).orElse(providerEnabled);
     }
 
     public void setProviderEnabled(boolean providerEnabled) {
@@ -28,7 +35,8 @@ public class DartProperties {
     }
 
     public String getApiBaseUrl() {
-        return apiBaseUrl;
+        return databaseConfigurations == null ? apiBaseUrl
+                : databaseConfigurations.dartCredentials().map(ExternalApiConfigurationUseCase.DartCredentials::baseUrl).orElse(apiBaseUrl);
     }
 
     public void setApiBaseUrl(String apiBaseUrl) {
@@ -36,7 +44,8 @@ public class DartProperties {
     }
 
     public String getApiKey() {
-        return apiKey;
+        return databaseConfigurations == null ? apiKey
+                : databaseConfigurations.dartCredentials().map(ExternalApiConfigurationUseCase.DartCredentials::apiKey).orElse(apiKey);
     }
 
     public void setApiKey(String apiKey) {
@@ -111,10 +120,10 @@ public class DartProperties {
         if (!providerEnabled) {
             throw new DartProviderException("DART provider is disabled");
         }
-        if (apiBaseUrl == null || apiBaseUrl.isBlank()) {
+        if (getApiBaseUrl() == null || getApiBaseUrl().isBlank()) {
             throw new DartProviderException("DART API base URL is not configured");
         }
-        if (apiKey == null || apiKey.isBlank()) {
+        if (getApiKey() == null || getApiKey().isBlank()) {
             throw new DartProviderException("DART API key is not configured");
         }
         if (requestTimeoutSeconds <= 0) {

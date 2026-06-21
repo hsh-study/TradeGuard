@@ -156,7 +156,7 @@ public class DbKisAccessTokenProvider implements KisAccessTokenProvider {
     private KisAccessToken issue(KisEnvironment environment) {
         try {
             KisAccessToken token=client.issueToken(environment,
-                    properties.getAppKey(),properties.getAppSecret());
+                    properties.appKey(environment),properties.appSecret(environment));
             metrics.recordKisTokenIssue(environment.name(),"success");
             return token;
         } catch (RuntimeException exception) {

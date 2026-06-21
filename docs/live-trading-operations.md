@@ -1,9 +1,19 @@
 # Live Trading Operations
 
+## Account-selected manual orders
+
+`/operations/watchlist`에서 활성 계좌를 선택해 지정가 매수·매도를 요청할 수 있다. 서버는 로컬 단일 운영자 요청을 직렬화하고 선택 계좌를 현재 거래 계좌로 설정한 뒤 기존 KIS 주문 경로를 호출한다. `DEMO` 계좌는 모의 API, `REAL` 계좌는 실전 API를 사용한다. 실전 요청은 `realTradingConfirmed=true`가 필수이며 시장가 주문은 지원하지 않는다. 기존 readiness, kill switch, 시장시간, 최대 주문금액 정책은 그대로 적용된다.
+
+현재 주문/포지션 row에는 선택한 `accountId`를 영속화하지 않는다. 따라서 이 기능은 단일 JVM·로컬 단일 운영자 전용이며 다중 사용자 또는 병렬 운영으로 확장하면 안 된다. Watchlist의 보유종목 목록은 선택 계좌의 KIS 잔고를 읽기 전용으로 표시하지만, 그 결과를 TradeGuard 포지션에 자동 반영하거나 대사하지 않는다.
+
 ## Scope
 
-TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 지원한다.
-시장가, 자동매수, 공매도, 신용, 미수 주문은 지원하지 않는다.
+TradeGuard의 신규 진입은 운영자가 승인한 현금 지정가 주문만 지원한다.
+시장가, 자동매수, 공매도, 신용, 미수 주문은 지원하지 않는다. 기존
+`LIVE_POSITION_EXIT_MONITOR`는 두 live flag가 켜진 장중에 저장된 OPEN
+포지션의 익절·손절 규칙을 평가하고 현재가 지정가 매도를 요청할 수 있다.
+현재 별도의 exit-monitor enable flag는 없으므로 live flag 활성화 전에 이
+자동매도 경로까지 함께 검토해야 한다.
 
 운영 점검과 credential 교체 중에는 신규 주문을 실행하지 않는다.
 
@@ -18,30 +28,20 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 
 2. 대상 환경을 확인한다.
 
-   ```text
-   KIS_TRADING_ENVIRONMENT=REAL|DEMO
-   KIS_READ_ONLY_ENVIRONMENT=REAL|DEMO
-   ```
+   `/operations/accounts`에서 현재 거래 기본 계좌를 선택한다. 계좌 환경이
+   `REAL`이면 실전 KIS 설정을, `DEMO`이면 모의 KIS 설정을 사용한다.
+   두 환경의 자격정보와 access token cache는 서로 분리된다.
 
-   `REAL`은 실전 도메인, `DEMO`는 모의 도메인을 사용한다.
-   두 환경의 access token cache는 서로 분리된다.
-
-3. 다음 secret이 로컬 환경변수 또는 저장소에서 추적하지 않는 설정 파일에
-   설정됐는지 확인한다.
-
-   ```text
-   KIS_APP_KEY
-   KIS_APP_SECRET
-   KIS_ACCOUNT_NUMBER
-   KIS_ACCOUNT_PRODUCT_CODE
-   ```
+3. `/operations/accounts`에서 계좌와 환경별 KIS App Key/Secret을 등록하고
+   암호화 설정 상태를 확인한다. `.env`에는 DB 암호화를 위한
+   `KIS_TOKEN_ENCRYPTION_KEY`만 둔다.
 
    원문 값을 로그, 이슈, 메신저 또는 readiness 응답에 기록하지 않는다.
 
 4. DB kill switch를 활성화한 상태로 배포한다.
 
    ```sh
-   curl -X POST 'http://localhost:8080/api/live-trading/kill-switch' \
+   curl -X POST 'http://localhost:18080/api/live-trading/kill-switch' \
      -H 'Content-Type: application/json' \
      -d '{"enabled":true,"reason":"PRE_DEPLOYMENT_CHECK"}'
    ```
@@ -50,9 +50,9 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 
    ```sh
    curl -X POST \
-     'http://localhost:8080/api/market-calendar/sync?year=2026'
+     'http://localhost:18080/api/market-calendar/sync?year=2026'
    curl \
-     'http://localhost:8080/api/market-calendar/validation?year=2026'
+     'http://localhost:18080/api/market-calendar/validation?year=2026'
    ```
 
 6. 다음 주문 정책 설정을 검토한다.
@@ -71,8 +71,8 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 7. token 상태와 종합 readiness를 확인한다.
 
    ```sh
-   curl 'http://localhost:8080/api/kis/token/status'
-   curl 'http://localhost:8080/api/live-trading/readiness'
+   curl 'http://localhost:18080/api/kis/token/status'
+   curl 'http://localhost:18080/api/live-trading/readiness'
    ```
 
 8. 모의환경 smoke test를 먼저 수행한다. 실전환경에서는 자동 smoke
@@ -106,9 +106,8 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 2. 미체결 주문을 조회하고 필요하면 취소한다.
 3. `LIVE_TRADING_ENABLED=false` 또는 배포 플랫폼의 traffic 차단 정책으로
    신규 요청을 중지한다.
-4. 로컬 환경변수 또는 비추적 설정 파일에서 `KIS_APP_KEY`,
-   `KIS_APP_SECRET`을 교체한다.
-5. 필요하면 계좌번호와 계좌상품코드도 같은 절차로 교체한다.
+4. `/operations/accounts`에서 해당 REAL/DEMO 환경의 KIS App Key/Secret을 교체한다.
+5. 필요하면 같은 화면에서 계좌번호와 계좌상품코드를 교체한다. `.env`에는 계좌 및 provider credential을 두지 않는다.
 6. 애플리케이션을 재시작한다.
 
    MEMORY 모드는 재시작하면 REAL/DEMO cache가 모두 무효화된다.
@@ -118,9 +117,9 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 
    ```sh
    curl -X DELETE \
-     'http://localhost:8080/api/kis/token?environment=DEMO'
+     'http://localhost:18080/api/kis/token?environment=DEMO'
    curl -X DELETE \
-     'http://localhost:8080/api/kis/token?environment=REAL'
+     'http://localhost:18080/api/kis/token?environment=REAL'
    ```
 
    실제 사용하는 환경만 제거한다. DB 모드에서는 해당 row의 ciphertext,
@@ -130,9 +129,9 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 
    ```sh
    curl -X POST \
-     'http://localhost:8080/api/kis/token/refresh?environment=DEMO'
+     'http://localhost:18080/api/kis/token/refresh?environment=DEMO'
    curl -X POST \
-     'http://localhost:8080/api/kis/token/refresh?environment=REAL'
+     'http://localhost:18080/api/kis/token/refresh?environment=REAL'
    ```
 
    실제로 사용하는 환경만 호출한다. 수동 refresh는 기존 cache를 새
@@ -141,8 +140,8 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 9. token status와 readiness를 확인한다.
 
    ```sh
-   curl 'http://localhost:8080/api/kis/token/status'
-   curl 'http://localhost:8080/api/live-trading/readiness'
+   curl 'http://localhost:18080/api/kis/token/status'
+   curl 'http://localhost:18080/api/live-trading/readiness'
    ```
 
 10. 모의환경에서 read-only 및 주문 smoke test를 수행한다.
@@ -157,9 +156,7 @@ TradeGuard의 live trading은 운영자가 승인한 현금 지정가 주문만 
 - REAL/DEMO 환경 설정 변경
 - KIS에서 token이 강제 폐기됐다는 응답 수신
 
-credential 교체는 런타임 환경변수 변경만으로 반영되지 않으므로 서버를
-재시작하고 환경별 invalidate API를 호출한다. 단순 만료 임박은 재시작이나
-invalidate 대신 수동 refresh 또는 `KIS_TOKEN_REFRESH` scheduler로 처리한다.
+DB credential 교체 후에는 환경별 token을 invalidate/refresh한다. 단순 만료 임박은 재시작이나 invalidate 대신 수동 refresh 또는 `KIS_TOKEN_REFRESH` scheduler로 처리한다. 암호화 키 자체를 바꾸는 경우에만 기존 암호문을 복호화할 수 없으므로 별도 rotation 절차와 재시작이 필요하다.
 
 ## Local DB Token Cache
 

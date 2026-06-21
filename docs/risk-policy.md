@@ -4,15 +4,18 @@
 
 RiskManager는 전략 신호를 주문으로 전환하기 전에 손실 가능성과 잘못된 주문을 제한하는 최종 도메인 정책이다. 전략 점수가 높더라도 리스크 검증을 우회할 수 없다.
 
-현재 정책은 모의투자 MVP 전용이며 수익을 보장하거나 투자 판단을 대신하지 않는다.
+전략 기반 `OrderService` 정책은 모의 주문용이고, 별도의 live trading 정책은 운영자 수동 주문을 보호한다. 어느 경로도 수익을 보장하거나 투자 판단을 대신하지 않는다.
 
 ## 2. 기본 원칙
 
 - 전략은 `TradingSignal`만 생성한다.
 - `RiskManager`가 승인한 신호만 `OrderService`가 브로커로 전달한다.
 - 모든 주문은 지정가여야 한다.
-- 현재는 매수 후보와 매수 주문만 허용한다.
-- 실계좌 주문은 어떤 설정에서도 허용하지 않는다.
+- 전략 신호 기반 모의 주문은 매수 후보와 매수 주문만 허용한다.
+- live UI는 선택 계좌의 수동 지정가 매수·매도를 지원한다.
+- 실계좌 주문은 REAL 계좌 선택과 `realTradingConfirmed=true`가 있는 수동 요청만 허용한다.
+- 전략, scheduler, alert 및 리서치 결과는 자동매수 주문을 생성하지 않는다.
+- 기존 `LIVE_POSITION_EXIT_MONITOR`는 두 live flag가 켜진 장중에 저장된 OPEN 포지션의 익절·손절 규칙에 따른 자동 지정가 매도만 수행할 수 있다.
 - Earnings Analysis는 후보 reason과 점수 보강만 수행하며 자동 주문을 실행하지 않는다.
 - 한 번의 판정에서 발견된 모든 거절 사유를 반환한다.
 
@@ -163,15 +166,14 @@ OrderRequest:  broker에 전달하지 않음
 
 따라서 일부 잘못된 입력은 `RiskDecision`이 만들어지기 전에 `IllegalArgumentException` 또는 `NullPointerException`으로 실패한다. Web API 추가 시 Bean Validation과 일관된 오류 응답을 앞단에 적용해야 한다.
 
-## 8. 실거래 차단 정책
+## 8. 실거래 제한 정책
 
-- `KisBrokerAdapter`에는 실제 주문 호출을 구현하지 않는다.
-- 기본 브로커 Bean은 `FakeBrokerAdapter`다.
-- `tradeguard.real-trading-enabled=true`여도 실제 주문으로 전환하지 않는다.
-- 실거래용 토큰, 계좌번호, 주문 endpoint를 MVP 코드 경로에 연결하지 않는다.
-- 시장가 주문 enum이나 우회 endpoint를 추가하지 않는다.
-
-실거래 지원은 별도의 보안 및 운영 검토를 거친 신규 범위로만 다룬다.
+- 전략 기반 모의 주문은 `FakeBrokerAdapter`를 유지한다.
+- 수동 live 주문은 두 feature flag가 활성화된 경우 `KisLiveTradingOrderAdapter`를 사용한다.
+- REAL 주문은 계좌 선택, 확인값, readiness, kill switch, 거래시간, 금액 한도와 LIMIT 조건을 모두 검사한다.
+- 시장가, 자동매수, 공매도, 신용, 미수 주문과 확인 없는 실전 주문은 허용하지 않는다.
+- 계좌번호와 KIS/DART secret은 DB 암호문으로 저장하고 API/UI에는 마스킹 값만 반환한다.
+- 계좌 선택 주문은 로컬 단일 운영자용으로 직렬화한다. 다중 사용자 환경은 지원하지 않는다.
 
 ## 9. 향후 리스크 정책
 

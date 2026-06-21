@@ -3,6 +3,7 @@ package seokhoon.trade.adapter.persistence;
 import org.springframework.data.jpa.repository.JpaRepository;
 import seokhoon.trade.domain.order.*;
 import seokhoon.trade.domain.position.LivePositionStatus;
+import seokhoon.trade.domain.kis.KisEnvironment;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +22,8 @@ interface LiveOrderCancelRequestJpaRepository
 interface LivePositionJpaRepository extends JpaRepository<LivePositionEntity,Long> {
     List<LivePositionEntity> findByStatusOrderByOpenedAtAsc(LivePositionStatus status);
     Optional<LivePositionEntity> findFirstByStockCodeAndStatusNotOrderByOpenedAtDesc(String stockCode, LivePositionStatus status);
+    Optional<LivePositionEntity> findFirstByStockCodeAndEnvironmentAndStatusNotOrderByOpenedAtDesc(
+            String stockCode, KisEnvironment environment, LivePositionStatus status);
 }
 interface LivePositionExitRuleJpaRepository extends JpaRepository<LivePositionExitRuleEntity,Long> {
     Optional<LivePositionExitRuleEntity> findByPositionId(long positionId);

@@ -486,6 +486,12 @@ public class MicrometerOperationalMetricsAdapter implements OperationalMetricsPo
     }
 
     @Override
+    public void recordBootReadiness(String result) {
+        meterRegistry.counter("tradeguard.operations.boot_readiness.count",
+                "result", result).increment();
+    }
+
+    @Override
     public void recordIndicatorWarmUp(String result) {
         meterRegistry.counter("tradeguard.indicator.warmup.count",
                 "result", result).increment();

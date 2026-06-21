@@ -54,6 +54,8 @@ class StockServiceTest {
         assertThat(warmUpCalled).isTrue();
         assertThat(result.status())
                 .isEqualTo(IndicatorWarmUpStatus.SUCCEEDED);
+
+        assertThat(stockService.removeFromWatchlist("005930").active()).isFalse();
     }
 
     private static class InMemoryStockPort implements StockPort {

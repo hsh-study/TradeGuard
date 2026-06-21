@@ -43,6 +43,7 @@ class MicrometerOperationalMetricsAdapterTest {
         metrics.recordEarlyMarketFollowUpPersist("saved");
         metrics.recordInvestorFlowDiagnostic("stock", "success");
         metrics.recordInvestorFlowReadiness("not_ready");
+        metrics.recordBootReadiness("ready");
 
         assertThat(counter(
                 registry,
@@ -152,6 +153,8 @@ class MicrometerOperationalMetricsAdapterTest {
                 "result",
                 "not_ready"
         )).isEqualTo(1.0);
+        assertThat(counter(registry,"tradeguard.operations.boot_readiness.count","result","ready"))
+                .isEqualTo(1.0);
 
         assertThat(registry.getMeters())
                 .flatExtracting(meter -> meter.getId().getTags())

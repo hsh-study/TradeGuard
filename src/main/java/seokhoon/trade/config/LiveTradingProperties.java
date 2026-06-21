@@ -66,12 +66,6 @@ public class LiveTradingProperties {
         if (!kisTradingEnabled) {
             throw new LiveTradingDisabledException("KIS_TRADING_ENABLED is false");
         }
-        if (accountNumber == null || accountNumber.isBlank()) {
-            throw new LiveTradingDisabledException("KIS account number is not configured");
-        }
-        if (accountProductCode == null || accountProductCode.isBlank()) {
-            throw new LiveTradingDisabledException("KIS account product code is not configured");
-        }
         try {
             environment();
         } catch (IllegalArgumentException exception) {

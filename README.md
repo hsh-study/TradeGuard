@@ -4,26 +4,54 @@
 
 저장된 운영 데이터만 조회하는 읽기 전용 대시보드 UI와 API를 제공한다. UI는 현재 상태를 빠르게 확인하는 사람용 화면이고, API는 같은 상태의 JSON 표현이다. 둘 다 KIS/DART 등 외부 provider를 호출하거나 주문을 생성하지 않으며 자동 주문 흐름과 분리되어 있다.
 
-브라우저에서 `http://localhost:8080/operations/dashboard`에 접속한다. 기본 조회일은 오늘이며 과거 운영일은 `baseDate`로 선택할 수 있다.
+브라우저에서 `http://localhost:18080/operations/dashboard`에 접속한다. 기본 조회일은 오늘이며 과거 운영일은 `baseDate`로 선택할 수 있다.
 
 ```text
-http://localhost:8080/operations/dashboard?baseDate=2026-06-15
+http://localhost:18080/operations/dashboard?baseDate=2026-06-15
 ```
 
 화면은 전체 `OK`/`WARNING`/`BLOCKED` 상태, blocking issues, warnings, recommended actions와 각 운영 영역의 요약을 표시한다. 수동 새로고침과 기본값이 꺼진 60초 자동 새로고침을 지원한다. 자격증명, 계좌번호, webhook/source URL, 접수번호, provider 상세와 종목 코드 목록은 출력하지 않는다.
 
+관심종목·차트·재료는 `http://localhost:18080/operations/watchlist`, 선택 계좌의 KIS 보유종목 조회는 `http://localhost:18080/operations/portfolio`, 수동 지정가 매수·매도는 `http://localhost:18080/operations/trading`으로 분리한다. 보유종목 화면은 DEMO/REAL 계좌의 KIS 잔고를 읽기 전용으로 조회하며 로컬 포지션 저장이나 주문을 생성하지 않는다. 매매 화면만 계좌 선택형 주문 API를 호출하고 기존 실전 확인, readiness, kill switch, 장시간과 주문금액 정책을 적용한다.
+
+관심종목의 `삭제`는 과거 일봉·지표·신호 이력을 지우지 않고 watchlist에서 비활성화하는 soft-delete다. `매매` 버튼은 해당 종목을 선택한 `/operations/trading`으로 이동한다. 매매 화면의 서버는 선택 계좌 환경의 KIS WebSocket에서 `H0STASP0` 실시간 호가와 `H0STCNT0` 체결가를 구독하고, 접속키를 노출하지 않도록 안전한 호가 snapshot만 `/api/stocks/orderbook/stream` SSE로 브라우저에 전달한다. 매도호가를 선택하면 매수 지정가에, 매수호가를 선택하면 매도 지정가에 반영한다. 관심종목과 보유종목의 `실시간 차트`는 `/operations/chart` 팝업에서 기존 SSE 현재가를 반영한다.
+
+관심종목과 보유종목 화면은 기준일 이하 최신 `valuation_snapshots`의 PER/PBR을 표시한다. 저장된 valuation이 없으면 임의 계산하지 않고 `-`로 표시한다. 종가, 거래량, PER/PBR, 평균단가, 평가금액, 평가손익과 주요 기술지표 용어는 마우스를 올리면 설명을 보여준다.
+
+같은 화면의 수동 주문 영역은 활성 계좌를 명시 선택한 지정가 매수·매도만 지원한다. 선택 계좌가 `DEMO`이면 KIS 모의 TR ID, `REAL`이면 실전 TR ID와 자격정보를 사용한다. 실전 계좌는 `realTradingConfirmed=true`가 없으면 서버에서 차단한다. 주문 전에는 기존 Live Trading Readiness, kill switch, 장 운영시간, 주문금액 제한을 모두 통과해야 한다. UI 주문 API는 `/api/operations/orders/buy`와 `/api/operations/orders/sell`이다.
+
+거래 계좌와 외부 API 설정은 `http://localhost:18080/operations/accounts`에서 관리한다. 모의(`DEMO`)와 실전(`REAL`) 계좌를 여러 개 등록하고 현재 거래 기본 계좌를 하나 선택할 수 있다. 기본 계좌가 `DEMO`면 KIS 모의 base URL·자격정보·token·TR ID를 사용하고, `REAL`이면 실전 설정을 사용한다. KIS App Key/Secret은 환경별로, DART API Key/Base URL은 단일 설정으로 DB에서 관리한다. 계좌번호와 API secret은 `KIS_TOKEN_ENCRYPTION_KEY`를 사용하는 AES-256-GCM 암호문으로 저장되며 API와 UI에는 마스킹 값만 표시된다. 키가 없으면 설정 저장과 실거래 readiness가 차단된다. 계좌 API는 `/api/trading-accounts`, 외부 API 설정은 `/api/external-api-configurations`이며 실제 주문은 기존 kill switch와 Live Trading Readiness를 계속 통과해야 한다.
+
 JSON 연동에는 기존 API를 사용한다.
 
 ```bash
-curl http://localhost:8080/api/operations/dashboard
-curl 'http://localhost:8080/api/operations/dashboard?baseDate=2026-06-15'
+curl http://localhost:18080/api/operations/dashboard
+curl 'http://localhost:18080/api/operations/dashboard?baseDate=2026-06-15'
 ```
 
 응답은 시장 캘린더, Morning Note, 장초/종가 전략, 수급, 실적/DART/valuation,
 paper trading, replay backtest, scheduler, KIS token 및 live readiness 상태와 함께
 `blockingIssues`, `warnings`, `recommendedActions`를 반환한다.
 
-Spring Boot 기반 한국 주식 자동매매 보조 시스템입니다. MVP 1차는 한국투자증권 Open API 실주문이 아니라 모의투자, 분석, 알림 중심의 구조를 만드는 데 집중합니다.
+## Boot Readiness Report
+
+애플리케이션이 `ApplicationReadyEvent`에 도달하면 운영 설정을 한 번 점검하고 최근 결과를 메모리에 보관한다. 이 startup configuration check는 DB/Flyway, Actuator/Prometheus 노출, KIS 환경과 token cache 설정, investor flow, DART/disclosure, consensus, scheduler auto-run, live trading flag와 kill switch를 요약한다.
+
+```bash
+curl http://localhost:18080/api/operations/boot-readiness
+```
+
+이벤트 처리 전에는 HTTP 503과 `{"status":"NOT_READY_TO_REPORT"}`를 반환한다. 생성 후에는 `READY`, `WARNING`, `BLOCKED` 중 하나와 `blockingIssues`, `warnings`, `recommendedActions`를 반환한다. 시작 로그는 값 자체 대신 다음처럼 상태와 개수만 남긴다.
+
+```text
+Boot readiness report generated overallStatus=READY blockingIssuesCount=0 warningsCount=0 recommendedActionsCount=0
+```
+
+DB 연결/Flyway 미적용, DB token cache의 암호화 설정 누락, 활성 KIS 기능의 credential 누락, 미검증 수급 단위로 auto-run 활성화, DART/disclosure 필수 설정 누락, 실거래 flag 활성화 또는 live readiness 실패는 `BLOCKED`다. diagnostic HTTP 허용, 외부 consensus provider, REAL read-only 환경, 불완전한 Actuator/Prometheus 노출은 `WARNING`이다. Hibernate schema validation 실패는 기존과 같이 애플리케이션 시작 자체를 실패시킨다.
+
+Boot Readiness는 KIS/DART/provider를 호출하거나 token을 refresh하지 않는다. 설정을 변경하거나 kill switch를 해제하지 않으며 BrokerPort, 주문 서비스, 자동매수/자동매도와 연결되지 않는다. `/operations/dashboard`는 Boot Readiness 링크와 badge를 표시하고, boot 상태가 `BLOCKED`이면 운영 전 확인 조치를 추가한다.
+
+Spring Boot 기반 한국 주식 매매 보조 시스템입니다. 초기 MVP의 모의투자·분석·알림 구조를 유지하면서, 현재는 로컬 단일 운영자가 계좌를 직접 선택하고 확인한 KIS 모의/실전 현금 지정가 주문까지 지원합니다. 전략, alert와 리서치 기능은 주문을 자동 생성하지 않습니다. 예외적으로 기존 `LIVE_POSITION_EXIT_MONITOR`는 두 live flag가 켜진 경우 저장 포지션의 손익 규칙에 따라 자동 지정가 매도를 요청할 수 있다.
 
 ## MVP 범위
 
@@ -55,19 +83,38 @@ set +a
 
 DB 스키마는 Flyway migration으로 생성합니다. Hibernate는 기본적으로 `ddl-auto=validate`로 동작하므로 JPA가 테이블을 자동 생성하지 않습니다.
 
-KIS 모의투자 일봉 조회에는 `KIS_APP_KEY`, `KIS_APP_SECRET`이 필요합니다. 100건을 초과하는 기간은 자동으로 분할 조회합니다. 구현은 모의투자 호스트만 허용하며 실제 주문 API를 호출하지 않습니다.
+### Docker 이미지 실행
 
-14:00 시장 순위와 15:00 현재가 snapshot은 기본적으로 fake adapter를 사용합니다. KIS 읽기 전용 조회로 전환하려면 `MARKET_DATA_REALTIME_PROVIDER=kis`와 `KIS_APP_KEY`, `KIS_APP_SECRET`을 설정합니다. 이 전환은 순위/현재가 조회만 활성화하며 주문 endpoint는 호출하지 않습니다.
+Java 21 multi-stage 이미지이며 최종 컨테이너는 non-root UID `10001`로 실행된다. `.env`는 build context에서 제외된다.
+
+```sh
+docker build -t tradeguard:local .
+docker run --name tradeguard --env-file .env -p 127.0.0.1:18080:8080 tradeguard:local
+```
+
+MySQL이 다른 컨테이너에 있으면 같은 Docker network에 연결하고 `DB_URL`의 host를 MySQL 컨테이너 이름으로 지정한다. 예를 들어 MySQL 컨테이너 이름이 `mysql-container`이고 network가 `study_default`라면 다음과 같다.
+
+```sh
+docker run --name tradeguard --network study_default --env-file .env \
+  -e 'DB_URL=jdbc:mysql://mysql-container:3306/tradeguard?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8' \
+  -p 127.0.0.1:18080:8080 tradeguard:local
+```
+
+기동 후 `/actuator/health`, `/api/operations/boot-readiness`, `/operations/dashboard` 순서로 확인한다. 이미지 build와 Boot Readiness는 실제 provider 호출이나 주문을 실행하지 않는다.
+
+애플리케이션의 KIS 계좌, 환경별 App Key/Secret과 base URL은 `/operations/accounts`에서 등록해 DB 암호문으로 관리합니다. 현재 기본 계좌가 `DEMO`이면 모의 호스트, `REAL`이면 실전 호스트를 시세 조회와 수동 주문에 일관되게 사용합니다. 일봉 조회는 100건을 초과하는 기간을 자동으로 분할합니다.
+
+14:00 시장 순위와 15:00 현재가 snapshot은 provider 설정에 따라 fake 또는 KIS 읽기 전용 adapter를 사용합니다. KIS로 전환하려면 `.env`에서 `MARKET_DATA_REALTIME_PROVIDER=kis`를 설정하고 계정 화면에서 해당 환경의 KIS 설정을 등록합니다. 이 provider 전환 자체는 주문 endpoint를 호출하지 않습니다.
 
 장초반 분봉은 기본적으로 `FakeIntradayBarAdapter`를 사용합니다. KIS 읽기 전용 당일 분봉으로 전환하려면 다음과 같이 설정합니다.
 
 ```sh
 MARKET_DATA_INTRADAY_PROVIDER=kis
-KIS_APP_KEY=...
-KIS_APP_SECRET=...
 ```
 
-KIS 분봉 adapter는 공식 `주식당일분봉조회[v1_국내주식-022]`의 `/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice`, TR ID `FHKST03010200`만 사용합니다. 당일 데이터만 제공되는 endpoint이므로 과거 거래일 요청은 빈 결과를 반환하여 기존 snapshot fallback이 적용됩니다. 주문, 계좌, 잔고, 정정/취소 endpoint는 호출하지 않습니다.
+KIS 분봉 adapter는 공식 `주식당일분봉조회[v1_국내주식-022]`의 `/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice`, TR ID `FHKST03010200`만 사용합니다. 당일 데이터만 제공되는 endpoint이므로 과거 거래일 요청은 빈 결과를 반환하여 기존 snapshot fallback이 적용됩니다. 이 adapter는 주문 endpoint를 호출하지 않습니다.
+
+관심종목 상세 화면은 `/api/stocks/chart/stream` SSE로 평일 정규장 09:00~15:30에만 현재가를 갱신합니다. 동일 종목 구독은 서버에서 하나의 KIS 조회로 공유하며 기본 5초 간격, 최대 3개 동시 종목으로 제한합니다. `CHART_STREAM_INTERVAL_MS`(최소 2000)와 `CHART_STREAM_MAX_SYMBOLS`로 조정할 수 있습니다. 조회 전용이며 주문 및 자동매매 흐름과 연결되지 않습니다.
 
 ## 테스트
 
@@ -137,8 +184,8 @@ DB에 날짜가 있으면 `MarketCalendarPort`는 저장된 `tradingDay`를 사�
 Calendar 동기화:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/market-calendar/sync?year=2026'
-curl 'http://localhost:8080/api/market-calendar/days?from=2026-01-01&to=2026-12-31'
+curl -X POST 'http://localhost:18080/api/market-calendar/sync?year=2026'
+curl 'http://localhost:18080/api/market-calendar/days?from=2026-01-01&to=2026-12-31'
 ```
 
 동기화 응답은 `syncedCount`, `tradingDayCount`, `holidayCount`, `source`, `warnings`를 반환합니다. `source`는 `KRX_OFFICIAL` 또는 `FALLBACK_GENERATED`입니다.
@@ -148,7 +195,7 @@ curl 'http://localhost:8080/api/market-calendar/days?from=2026-01-01&to=2026-12-
 Calendar 수동 보정:
 
 ```sh
-curl -X PATCH 'http://localhost:8080/api/market-calendar/days/2026-08-17' \
+curl -X PATCH 'http://localhost:18080/api/market-calendar/days/2026-08-17' \
   -H 'Content-Type: application/json' \
   -d '{
     "market": "KRX_STOCK",
@@ -164,8 +211,8 @@ curl -X PATCH 'http://localhost:8080/api/market-calendar/days/2026-08-17' \
 Calendar 검증 및 audit 조회:
 
 ```sh
-curl 'http://localhost:8080/api/market-calendar/validation?year=2026'
-curl 'http://localhost:8080/api/market-calendar/audits?from=2026-01-01&to=2026-12-31'
+curl 'http://localhost:18080/api/market-calendar/validation?year=2026'
+curl 'http://localhost:18080/api/market-calendar/audits?from=2026-01-01&to=2026-12-31'
 ```
 
 검증 응답은 연중 누락 날짜, 주말 거래일, 평일 휴장일, source별 개수와 향후 30일 거래일 존재 여부 warning을 제공합니다. Audit은 `createdAt`, `id` 최신순입니다. 동기화, 검증, 수동 보정은 calendar 기준정보만 관리하며 자동 주문을 실행하지 않습니다.
@@ -173,7 +220,7 @@ curl 'http://localhost:8080/api/market-calendar/audits?from=2026-01-01&to=2026-1
 거래일 계산 운영 확인:
 
 ```sh
-curl 'http://localhost:8080/api/market-calendar/trading-days?date=2026-02-19'
+curl 'http://localhost:18080/api/market-calendar/trading-days?date=2026-02-19'
 ```
 
 응답에는 요청일의 `tradingDay`, 입력일을 제외한 `previousTradingDay`와 `nextTradingDay`가 포함됩니다.
@@ -190,7 +237,7 @@ catalyst가 발생해도 자동매수/자동매도를 실행하지 않습니다.
 Thesis 등록과 상태 변경:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/theses' \
+curl -X POST 'http://localhost:18080/api/research/theses' \
   -H 'Content-Type: application/json' \
   -d '{
     "stockCode": "005930",
@@ -203,19 +250,19 @@ curl -X POST 'http://localhost:8080/api/research/theses' \
     "status": "WATCH"
   }'
 
-curl 'http://localhost:8080/api/research/theses?stockCode=005930'
+curl 'http://localhost:18080/api/research/theses?stockCode=005930'
 
-curl -X PATCH 'http://localhost:8080/api/research/theses/1' \
+curl -X PATCH 'http://localhost:18080/api/research/theses/1' \
   -H 'Content-Type: application/json' \
   -d '{"confidence":85,"status":"ACTIVE"}'
 
-curl -X POST 'http://localhost:8080/api/research/theses/1/close'
+curl -X POST 'http://localhost:18080/api/research/theses/1/close'
 ```
 
 Catalyst 등록과 조회:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/catalysts' \
+curl -X POST 'http://localhost:18080/api/research/catalysts' \
   -H 'Content-Type: application/json' \
   -d '{
     "stockCode": "005930",
@@ -228,17 +275,17 @@ curl -X POST 'http://localhost:8080/api/research/catalysts' \
     "memo": "메모리 영업이익률과 HBM 출하량 확인"
   }'
 
-curl 'http://localhost:8080/api/research/catalysts?from=2026-07-01&to=2026-08-15'
-curl 'http://localhost:8080/api/research/catalysts?stockCode=005930'
+curl 'http://localhost:18080/api/research/catalysts?from=2026-07-01&to=2026-08-15'
+curl 'http://localhost:18080/api/research/catalysts?stockCode=005930'
 ```
 
 Morning Note 생성과 조회:
 
 ```sh
 curl -X POST \
-  'http://localhost:8080/api/research/morning-note?tradeDate=2026-06-15'
+  'http://localhost:18080/api/research/morning-note?tradeDate=2026-06-15'
 curl \
-  'http://localhost:8080/api/research/morning-note?tradeDate=2026-06-15'
+  'http://localhost:18080/api/research/morning-note?tradeDate=2026-06-15'
 ```
 
 Earnings Analysis v1은 뉴스/공시/컨센서스 자동 수집 없이 운영자가 입력한
@@ -246,7 +293,7 @@ Earnings Analysis v1은 뉴스/공시/컨센서스 자동 수집 없이 운영�
 종가베팅/장초반 후보 reason에 반영되지만 자동매수/자동매도는 실행하지 않습니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/financials/quarterly' \
+curl -X POST 'http://localhost:18080/api/research/financials/quarterly' \
   -H 'Content-Type: application/json' \
   -d '[{
     "stockCode": "005930",
@@ -262,19 +309,19 @@ curl -X POST 'http://localhost:8080/api/research/financials/quarterly' \
     "freeCashFlow": 4000000000000
   }]'
 
-curl -X POST 'http://localhost:8080/api/research/valuations' \
+curl -X POST 'http://localhost:18080/api/research/valuations' \
   -H 'Content-Type: application/json' \
   -d '{"stockCode":"005930","tradeDate":"2026-06-15","marketCap":500000000000000,"per":12,"pbr":1.2,"psr":1.8}'
 
 curl -X POST \
-  'http://localhost:8080/api/research/earnings-analysis?stockCode=005930&baseDate=2026-06-15'
+  'http://localhost:18080/api/research/earnings-analysis?stockCode=005930&baseDate=2026-06-15'
 
-curl -X POST 'http://localhost:8080/api/research/earnings-analysis/batch?baseDate=2026-06-15' \
+curl -X POST 'http://localhost:18080/api/research/earnings-analysis/batch?baseDate=2026-06-15' \
   -H 'Content-Type: application/json' \
   -d '{"stockCodes":["005930","000660"]}'
 
-curl 'http://localhost:8080/api/research/earnings-analysis?stockCode=005930'
-curl 'http://localhost:8080/api/research/earnings-analysis?baseDate=2026-06-15'
+curl 'http://localhost:18080/api/research/earnings-analysis?stockCode=005930'
+curl 'http://localhost:18080/api/research/earnings-analysis?baseDate=2026-06-15'
 ```
 
 Valuation Auto Snapshot v1은 운영자가 `valuation_snapshots`를 직접 입력하지
@@ -293,7 +340,7 @@ VALUATION_AUTO_SNAPSHOT_AUTO_ANALYZE=true
 발행주식수 저장과 조회:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/valuations/shares-outstanding' \
+curl -X POST 'http://localhost:18080/api/research/valuations/shares-outstanding' \
   -H 'Content-Type: application/json' \
   -d '{
     "stockCode": "005930",
@@ -302,21 +349,21 @@ curl -X POST 'http://localhost:8080/api/research/valuations/shares-outstanding' 
     "source": "MANUAL"
   }'
 
-curl 'http://localhost:8080/api/research/valuations/shares-outstanding?stockCode=005930'
+curl 'http://localhost:18080/api/research/valuations/shares-outstanding?stockCode=005930'
 ```
 
 Valuation snapshot 생성:
 
 ```sh
 curl -X POST \
-  'http://localhost:8080/api/research/valuations/generate?stockCode=005930&baseDate=2026-06-15'
+  'http://localhost:18080/api/research/valuations/generate?stockCode=005930&baseDate=2026-06-15'
 
-curl -X POST 'http://localhost:8080/api/research/valuations/generate-batch?baseDate=2026-06-15' \
+curl -X POST 'http://localhost:18080/api/research/valuations/generate-batch?baseDate=2026-06-15' \
   -H 'Content-Type: application/json' \
   -d '{"stockCodes":["005930","000660"]}'
 
 curl -X POST \
-  'http://localhost:8080/api/research/valuations/generate-watchlist?baseDate=2026-06-15'
+  'http://localhost:18080/api/research/valuations/generate-watchlist?baseDate=2026-06-15'
 ```
 
 계산식은 `marketCap = closePrice * sharesOutstanding`,
@@ -341,7 +388,7 @@ Earnings Preview & Post-Earnings Review v1도 운영자 입력 기반입니다. 
 변경이나 자동매도는 수행하지 않습니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/earnings-events' \
+curl -X POST 'http://localhost:18080/api/research/earnings-events' \
   -H 'Content-Type: application/json' \
   -d '{
     "stockCode": "005930",
@@ -351,16 +398,16 @@ curl -X POST 'http://localhost:8080/api/research/earnings-events' \
     "memo": "메모리 마진과 HBM 출하 확인"
   }'
 
-curl 'http://localhost:8080/api/research/earnings-events?from=2026-07-01&to=2026-08-10'
-curl 'http://localhost:8080/api/research/earnings-events?stockCode=005930'
+curl 'http://localhost:18080/api/research/earnings-events?from=2026-07-01&to=2026-08-10'
+curl 'http://localhost:18080/api/research/earnings-events?stockCode=005930'
 
-curl -X PATCH 'http://localhost:8080/api/research/earnings-events/1' \
+curl -X PATCH 'http://localhost:18080/api/research/earnings-events/1' \
   -H 'Content-Type: application/json' \
   -d '{"status":"ANNOUNCED","actualAnnouncementDate":"2026-07-31"}'
 
-curl -X POST 'http://localhost:8080/api/research/earnings-previews/generate?stockCode=005930&earningsEventId=1&previewDate=2026-07-25'
+curl -X POST 'http://localhost:18080/api/research/earnings-previews/generate?stockCode=005930&earningsEventId=1&previewDate=2026-07-25'
 
-curl -X POST 'http://localhost:8080/api/research/earnings-previews' \
+curl -X POST 'http://localhost:18080/api/research/earnings-previews' \
   -H 'Content-Type: application/json' \
   -d '{
     "earningsEventId": 1,
@@ -376,10 +423,10 @@ curl -X POST 'http://localhost:8080/api/research/earnings-previews' \
     "status": "READY"
   }'
 
-curl 'http://localhost:8080/api/research/earnings-previews?stockCode=005930'
-curl 'http://localhost:8080/api/research/earnings-previews/upcoming?from=2026-07-20&to=2026-07-31'
+curl 'http://localhost:18080/api/research/earnings-previews?stockCode=005930'
+curl 'http://localhost:18080/api/research/earnings-previews/upcoming?from=2026-07-20&to=2026-07-31'
 
-curl -X POST 'http://localhost:8080/api/research/post-earnings-reviews' \
+curl -X POST 'http://localhost:18080/api/research/post-earnings-reviews' \
   -H 'Content-Type: application/json' \
   -d '{
     "earningsEventId": 1,
@@ -395,7 +442,7 @@ curl -X POST 'http://localhost:8080/api/research/post-earnings-reviews' \
     "rerunEarningsAnalysis": false
   }'
 
-curl 'http://localhost:8080/api/research/post-earnings-reviews?stockCode=005930'
+curl 'http://localhost:18080/api/research/post-earnings-reviews?stockCode=005930'
 ```
 
 Surprise는 `(actual - expected) / abs(expected)`로 계산합니다. 기대값이 없거나
@@ -416,7 +463,7 @@ Catalyst Evidence v1은 catalyst와 thesis 판단에 붙일 공식 공시 기반
 중복 없이 자동 생성합니다. 자동 주문은 실행하지 않습니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/evidences' \
+curl -X POST 'http://localhost:18080/api/research/evidences' \
   -H 'Content-Type: application/json' \
   -d '{
     "catalystId": 1,
@@ -430,14 +477,14 @@ curl -X POST 'http://localhost:8080/api/research/evidences' \
     "confidence": "HIGH"
   }'
 
-curl 'http://localhost:8080/api/research/catalysts/1/evidences'
-curl 'http://localhost:8080/api/research/evidences?stockCode=005930'
+curl 'http://localhost:18080/api/research/catalysts/1/evidences'
+curl 'http://localhost:18080/api/research/evidences?stockCode=005930'
 
-curl -X PATCH 'http://localhost:8080/api/research/evidences/1' \
+curl -X PATCH 'http://localhost:18080/api/research/evidences/1' \
   -H 'Content-Type: application/json' \
   -d '{"summary":"요약 보강","confidence":"MEDIUM"}'
 
-curl -X DELETE 'http://localhost:8080/api/research/evidences/1'
+curl -X DELETE 'http://localhost:18080/api/research/evidences/1'
 ```
 
 동일 `stockCode`, `title`, `sourcePublishedAt`, `sourceName` 조합은 중복
@@ -459,21 +506,19 @@ DISCLOSURE_PROVIDER_TIMEOUT_SECONDS=10
 
 ```sh
 curl -X POST \
-  'http://localhost:8080/api/research/disclosures/evidences/import?stockCode=005930&from=2026-06-01&to=2026-06-30'
+  'http://localhost:18080/api/research/disclosures/evidences/import?stockCode=005930&from=2026-06-01&to=2026-06-30'
 
-curl 'http://localhost:8080/api/research/disclosures/evidences/import-histories'
+curl 'http://localhost:18080/api/research/disclosures/evidences/import-histories'
 ```
 
 DART Financial Import v1은 운영자가 `quarterly_financials`를 매번 수동
 입력하지 않아도 되도록 공식 OpenDART 재무제표 API에서 분기 재무를 가져오는
 구조입니다. 뉴스 크롤링, 공시 원문 저장, 컨센서스 무단 수집은 하지 않습니다.
-기본값은 `DART_PROVIDER_ENABLED=false`라 외부 호출이 비활성입니다.
-`DART_API_KEY`는 로그, API 응답, health, metric tag에 포함하지 않습니다.
+기본값은 비활성이며 `/operations/accounts`에서 DART API Base URL/Key와 활성
+상태를 DB에 등록합니다. API Key는 로그, API 응답, health, metric tag에
+포함하지 않습니다.
 
 ```text
-DART_PROVIDER_ENABLED=false
-DART_API_BASE_URL=
-DART_API_KEY=
 DART_REQUEST_TIMEOUT_SECONDS=10
 DART_IMPORT_AUTO_ANALYZE=true
 DART_IMPORT_LOOKBACK_QUARTERS=8
@@ -486,7 +531,7 @@ DART_CORP_CODE_IMPORT_AUTO_MATCH_LISTED_ONLY=true
 Corp mapping 등록과 조회:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/dart/corp-mappings' \
+curl -X POST 'http://localhost:18080/api/research/dart/corp-mappings' \
   -H 'Content-Type: application/json' \
   -d '{
     "stockCode": "005930",
@@ -495,8 +540,8 @@ curl -X POST 'http://localhost:8080/api/research/dart/corp-mappings' \
     "market": "KOSPI"
   }'
 
-curl 'http://localhost:8080/api/research/dart/corp-mappings?stockCode=005930'
-curl 'http://localhost:8080/api/research/dart/corp-mappings'
+curl 'http://localhost:18080/api/research/dart/corp-mappings?stockCode=005930'
+curl 'http://localhost:18080/api/research/dart/corp-mappings'
 ```
 
 DART corp code import는 공식 OpenDART corpCode zip 또는 합법 provider가
@@ -506,8 +551,8 @@ DART corp code import는 공식 OpenDART corpCode zip 또는 합법 provider가
 또는 API key가 로그, 응답, metric tag에 노출되지 않도록 실패 사유를 정리합니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/dart/corp-codes/import'
-curl 'http://localhost:8080/api/research/dart/corp-codes/import-histories'
+curl -X POST 'http://localhost:18080/api/research/dart/corp-codes/import'
+curl 'http://localhost:18080/api/research/dart/corp-codes/import-histories'
 ```
 
 corpCode XML의 `corp_code`, `corp_name`, `stock_code`, `modify_date`를
@@ -520,16 +565,16 @@ DART 재무제표 import:
 
 ```sh
 curl -X POST \
-  'http://localhost:8080/api/research/dart/financials/import?stockCode=005930&fiscalYear=2026&reportCode=11013'
+  'http://localhost:18080/api/research/dart/financials/import?stockCode=005930&fiscalYear=2026&reportCode=11013'
 
 curl -X POST \
-  'http://localhost:8080/api/research/dart/financials/import-recent?stockCode=005930&baseDate=2026-06-15'
+  'http://localhost:18080/api/research/dart/financials/import-recent?stockCode=005930&baseDate=2026-06-15'
 
 curl -X POST \
-  'http://localhost:8080/api/research/dart/financials/import-watchlist?baseDate=2026-06-15'
+  'http://localhost:18080/api/research/dart/financials/import-watchlist?baseDate=2026-06-15'
 
 curl \
-  'http://localhost:8080/api/research/dart/financials/import-histories?stockCode=005930'
+  'http://localhost:18080/api/research/dart/financials/import-histories?stockCode=005930'
 ```
 
 보고서 코드는 `11013 -> Q1`, `11012 -> Q2`, `11014 -> Q3`,
@@ -563,11 +608,11 @@ SHARES_OUTSTANDING_IMPORT_AUTO_GENERATE_VALUATION=false
 CSV columns는 `stockCode,baseDate,sharesOutstanding,source`입니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/valuations/shares-outstanding/import-csv' \
+curl -X POST 'http://localhost:18080/api/research/valuations/shares-outstanding/import-csv' \
   -H 'Content-Type: text/csv' \
   --data-binary $'stockCode,baseDate,sharesOutstanding,source\n005930,2026-06-15,5969782550,MANUAL\n'
 
-curl 'http://localhost:8080/api/research/valuations/shares-outstanding/import-histories'
+curl 'http://localhost:18080/api/research/valuations/shares-outstanding/import-histories'
 ```
 
 `SHARES_OUTSTANDING_IMPORT_AUTO_GENERATE_VALUATION=true`이면 CSV로 저장된 각
@@ -585,7 +630,7 @@ Evidence 관련해서는 Morning Note에 `NEW_DISCLOSURE_EVIDENCE`,
 Market Index Provider & Import v1:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/market-indices' \
+curl -X POST 'http://localhost:18080/api/research/market-indices' \
   -H 'Content-Type: application/json' \
   -d '{
     "indexCode": "KOSPI",
@@ -596,21 +641,21 @@ curl -X POST 'http://localhost:8080/api/research/market-indices' \
     "tradingValue": 9000000000000
   }'
 
-curl 'http://localhost:8080/api/research/market-indices?tradeDate=2026-06-12'
+curl 'http://localhost:18080/api/research/market-indices?tradeDate=2026-06-12'
 ```
 
 Market index CSV import columns는
 `indexCode,indexName,tradeDate,closePrice,changeRate,tradingValue`입니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/market-indices/import-csv' \
+curl -X POST 'http://localhost:18080/api/research/market-indices/import-csv' \
   -H 'Content-Type: text/csv' \
   --data-binary $'indexCode,indexName,tradeDate,closePrice,changeRate,tradingValue\nKOSPI,KOSPI,2026-06-12,2800,1.25,9000000000000\nKOSDAQ,KOSDAQ,2026-06-12,900,-0.5,3000000000000\n'
 
 curl -X POST \
-  'http://localhost:8080/api/research/market-indices/import?tradeDate=2026-06-12'
+  'http://localhost:18080/api/research/market-indices/import?tradeDate=2026-06-12'
 
-curl 'http://localhost:8080/api/research/market-indices/import-histories'
+curl 'http://localhost:18080/api/research/market-indices/import-histories'
 ```
 
 `MARKET_INDEX_PROVIDER_ENABLED=false`가 기본값이므로 provider import는 외부
@@ -623,7 +668,7 @@ KIS 호출 없이 `SKIPPED` 이력을 남깁니다. `MARKET_INDEX_IMPORT_AUTO_RU
 Sector master와 snapshot:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/sectors' \
+curl -X POST 'http://localhost:18080/api/research/sectors' \
   -H 'Content-Type: application/json' \
   -d '{
     "sectorCode": "SEMICONDUCTOR",
@@ -631,15 +676,15 @@ curl -X POST 'http://localhost:8080/api/research/sectors' \
     "sectorType": "THEME"
   }'
 
-curl -X POST 'http://localhost:8080/api/research/sectors/SEMICONDUCTOR/stocks' \
+curl -X POST 'http://localhost:18080/api/research/sectors/SEMICONDUCTOR/stocks' \
   -H 'Content-Type: application/json' \
   -d '{"stockCode":"005930","source":"MANUAL"}'
 
-curl 'http://localhost:8080/api/research/sectors'
+curl 'http://localhost:18080/api/research/sectors'
 curl -X POST \
-  'http://localhost:8080/api/research/sectors/snapshots?tradeDate=2026-06-12'
+  'http://localhost:18080/api/research/sectors/snapshots?tradeDate=2026-06-12'
 curl \
-  'http://localhost:8080/api/research/sectors/SEMICONDUCTOR/snapshot?tradeDate=2026-06-12'
+  'http://localhost:18080/api/research/sectors/SEMICONDUCTOR/snapshot?tradeDate=2026-06-12'
 ```
 
 Sector seed CSV import columns는
@@ -649,11 +694,11 @@ Sector seed CSV import columns는
 있으면 `CSV`를 사용합니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/sectors/import-csv' \
+curl -X POST 'http://localhost:18080/api/research/sectors/import-csv' \
   -H 'Content-Type: text/csv' \
   --data-binary $'sectorCode,sectorName,sectorType,stockCode,source\nSEMICONDUCTOR,반도체,THEME,005930,CSV\nSEMICONDUCTOR,반도체,THEME,000660,CSV\nBIO,바이오,CUSTOM,,CSV\n'
 
-curl 'http://localhost:8080/api/research/sectors/import-histories'
+curl 'http://localhost:18080/api/research/sectors/import-histories'
 ```
 
 `SECTOR_IMPORT_AUTO_GENERATE_SNAPSHOT=true`이면 sector CSV import 성공 후
@@ -713,10 +758,10 @@ header, token, app key/secret, 계좌번호는 반환하거나 로그에 남기�
 
 ```sh
 curl -X POST \
-  'http://localhost:8080/api/research/investor-flows/verify/stock?stockCode=005930&tradeDate=2026-06-15'
+  'http://localhost:18080/api/research/investor-flows/verify/stock?stockCode=005930&tradeDate=2026-06-15'
 
 curl -X POST \
-  'http://localhost:8080/api/research/investor-flows/verify/market?market=KOSPI&tradeDate=2026-06-15'
+  'http://localhost:18080/api/research/investor-flows/verify/market?market=KOSPI&tradeDate=2026-06-15'
 ```
 
 운영 검증 절차:
@@ -748,7 +793,7 @@ Investor Flow Operational Readiness v1은 외부 KIS 호출 없이 현재 설정
 종목/시장 import history, `SUPPLY_DEMAND_ANALYSIS` scheduler 이력을 점검합니다.
 
 ```sh
-curl 'http://localhost:8080/api/research/investor-flows/readiness'
+curl 'http://localhost:18080/api/research/investor-flows/readiness'
 ```
 
 ```json
@@ -787,13 +832,13 @@ secret, token, header, 계좌정보를 details에 포함하지 않습니다.
 
 ```sh
 curl -X POST \
-  'http://localhost:8080/api/research/investor-flows/stocks/import?stockCode=005930&tradeDate=2026-06-15'
+  'http://localhost:18080/api/research/investor-flows/stocks/import?stockCode=005930&tradeDate=2026-06-15'
 curl -X POST \
-  'http://localhost:8080/api/research/investor-flows/markets/import?market=KOSPI&tradeDate=2026-06-15'
+  'http://localhost:18080/api/research/investor-flows/markets/import?market=KOSPI&tradeDate=2026-06-15'
 curl -X POST \
-  'http://localhost:8080/api/research/investor-flows/watchlist/import?tradeDate=2026-06-15'
-curl 'http://localhost:8080/api/research/investor-flows/import-histories?stockCode=005930'
-curl 'http://localhost:8080/api/research/investor-flows/stocks/recent?stockCode=005930&endDate=2026-06-15&days=20'
+  'http://localhost:18080/api/research/investor-flows/watchlist/import?tradeDate=2026-06-15'
+curl 'http://localhost:18080/api/research/investor-flows/import-histories?stockCode=005930'
+curl 'http://localhost:18080/api/research/investor-flows/stocks/recent?stockCode=005930&endDate=2026-06-15&days=20'
 ```
 
 CSV는 provider 장애나 초기 적재를 위한 fallback입니다. 종목 CSV columns는
@@ -802,15 +847,15 @@ CSV는 provider 장애나 초기 적재를 위한 fallback입니다. 종목 CSV 
 `market,tradeDate,investorType,netBuyAmount,netBuyQuantity,buyAmount,sellAmount,source`입니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/investor-flows/stocks/import-csv' \
+curl -X POST 'http://localhost:18080/api/research/investor-flows/stocks/import-csv' \
   -H 'Content-Type: text/csv' \
   --data-binary $'stockCode,tradeDate,investorType,netBuyAmount,netBuyQuantity,buyAmount,sellAmount,buyQuantity,sellQuantity,source\n005930,2026-06-15,FOREIGN,1000000000,10000,3000000000,2000000000,30000,20000,CSV\n'
 
 curl -X POST \
-  'http://localhost:8080/api/research/supply-demand/analyze?stockCode=005930&tradeDate=2026-06-15'
+  'http://localhost:18080/api/research/supply-demand/analyze?stockCode=005930&tradeDate=2026-06-15'
 curl -X POST \
-  'http://localhost:8080/api/research/supply-demand/analyze-watchlist?tradeDate=2026-06-15'
-curl 'http://localhost:8080/api/research/supply-demand?stockCode=005930'
+  'http://localhost:18080/api/research/supply-demand/analyze-watchlist?tradeDate=2026-06-15'
+curl 'http://localhost:18080/api/research/supply-demand?stockCode=005930'
 ```
 
 smart money는 외국인과 기관 합계입니다. 최근 데이터가 3일 미만이면
@@ -900,7 +945,7 @@ Live trading은 기본 비활성입니다. 신규 주문은 아래 조건을 모
 운영 종합 점검:
 
 ```sh
-curl 'http://localhost:8080/api/live-trading/readiness'
+curl 'http://localhost:18080/api/live-trading/readiness'
 ```
 
 응답은 feature flag, REAL/DEMO 환경, 계좌 설정 여부, token 만료 상태,
@@ -914,11 +959,11 @@ kill switch, DB calendar, 현재 장 운영시간, 지정가/주문한도,
 [`docs/live-trading-operations.md`](docs/live-trading-operations.md)를
 따릅니다.
 
-실전은 `KIS_TRADING_ENVIRONMENT=REAL`, 모의는 `DEMO`로 선택합니다. 환경에 따라 실전 `https://openapi.koreainvestment.com:9443` 또는 모의 `https://openapivts.koreainvestment.com:29443`가 자동 선택되며 운영 설정에서 별도 주문 base URL을 받지 않습니다. KIS 공식 현금주문 endpoint `/uapi/domestic-stock/v1/trading/order-cash`를 사용하며 실전 매수/매도 TR_ID는 `TTTC0012U`/`TTTC0011U`, 모의는 `VTTC0012U`/`VTTC0011U`입니다. KRX 직접 주문 API는 사용하지 않습니다.
+실전/모의 환경은 `/operations/accounts`에서 현재 기본 계좌를 선택해 결정합니다. 환경에 따라 DB에 저장한 REAL 또는 DEMO base URL과 자격정보를 사용합니다. 기본 URL은 실전 `https://openapi.koreainvestment.com:9443`, 모의 `https://openapivts.koreainvestment.com:29443`입니다. KIS 공식 현금주문 endpoint `/uapi/domestic-stock/v1/trading/order-cash`를 사용하며 실전 매수/매도 TR_ID는 `TTTC0012U`/`TTTC0011U`, 모의는 `VTTC0012U`/`VTTC0011U`입니다. KRX 직접 주문 API는 사용하지 않습니다.
 
 ### KIS OAuth tokenP
 
-read-only 시세 환경은 `KIS_READ_ONLY_ENVIRONMENT=DEMO`, live 주문 환경은 `KIS_TRADING_ENVIRONMENT=REAL|DEMO`로 독립 지정합니다. 두 환경의 access token은 절대 공유하지 않고 환경별 MEMORY cache에 저장합니다.
+read-only 시세와 수동 주문은 현재 기본 계좌 환경을 사용합니다. REAL/DEMO access token은 서로 공유하지 않고 환경별 MEMORY 또는 DB cache에 저장합니다.
 
 - token 없음: `/oauth2/tokenP` 1회 발급
 - 유효 token: cache hit
@@ -929,9 +974,9 @@ read-only 시세 환경은 `KIS_READ_ONLY_ENVIRONMENT=DEMO`, live 주문 환경�
 - `KIS_TOKEN_REFRESH`: 매일 `KIS_TOKEN_ISSUE_TIME_KST` 기본 07:30 KST에 사용 중인 환경만 갱신
 
 ```sh
-curl 'http://localhost:8080/api/kis/token/status'
+curl 'http://localhost:18080/api/kis/token/status'
 curl -X POST \
-  'http://localhost:8080/api/kis/token/refresh?environment=DEMO'
+  'http://localhost:18080/api/kis/token/refresh?environment=DEMO'
 ```
 
 응답에는 `environment`, `tokenPresent`, `expiresAt`, `secondsToExpire`, `dailyIssuedDate`만 포함되며 access token 원문은 반환하지 않습니다. `kisOAuthToken` health도 동일하게 만료 정보만 노출합니다.
@@ -957,9 +1002,9 @@ KIS_TOKEN_REFRESH_LOCK_WAIT_SECONDS=10
 Token은 AES-256-GCM으로 암호화되고 nonce와 authentication tag가 ciphertext에 포함됩니다. 평문 token은 DB, API, health, log, metric에 저장하거나 노출하지 않습니다. 동일 환경 refresh lock이 이미 점유 중이면 유효한 기존 token을 재사용합니다. 비정상 종료로 남은 오래된 lock은 timeout 이후 회수할 수 있습니다.
 
 ```sh
-curl 'http://localhost:8080/api/kis/token/status'
+curl 'http://localhost:18080/api/kis/token/status'
 curl -X DELETE \
-  'http://localhost:8080/api/kis/token?environment=REAL'
+  'http://localhost:18080/api/kis/token?environment=REAL'
 ```
 
 Status 응답에는 `cacheMode`와 `refreshInProgress`가 추가되며 token 원문은 포함되지 않습니다. `KIS_BASE_URL_OVERRIDE`는 테스트 전용이며 운영에서는 비워 둡니다.
@@ -967,7 +1012,7 @@ Status 응답에는 `cacheMode`와 `refreshInProgress`가 추가되며 token 원
 수동 지정가 매수:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/live-orders/buy' \
+curl -X POST 'http://localhost:18080/api/live-orders/buy' \
   -H 'Content-Type: application/json' \
   -d '{"signalId":21,"stockCode":"005930","quantity":1,
        "orderPrice":70000,"orderType":"LIMIT"}'
@@ -976,7 +1021,7 @@ curl -X POST 'http://localhost:8080/api/live-orders/buy' \
 수동 지정가 매도:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/live-orders/sell' \
+curl -X POST 'http://localhost:18080/api/live-orders/sell' \
   -H 'Content-Type: application/json' \
   -d '{"positionId":3,"quantity":1,"orderPrice":73500,
        "reason":"MANUAL_EXIT"}'
@@ -985,20 +1030,20 @@ curl -X POST 'http://localhost:8080/api/live-orders/sell' \
 조회와 예상 순손익:
 
 ```sh
-curl 'http://localhost:8080/api/live-orders?status=ACCEPTED'
-curl 'http://localhost:8080/api/live-orders/10'
-curl 'http://localhost:8080/api/live-orders/10/histories'
-curl 'http://localhost:8080/api/live-orders/open'
-curl 'http://localhost:8080/api/live-orders/10/fills'
-curl 'http://localhost:8080/api/live-orders/10/cancel-requests'
-curl 'http://localhost:8080/api/live-positions'
-curl 'http://localhost:8080/api/live-positions/3/exit-preview?currentPrice=73500'
+curl 'http://localhost:18080/api/live-orders?status=ACCEPTED'
+curl 'http://localhost:18080/api/live-orders/10'
+curl 'http://localhost:18080/api/live-orders/10/histories'
+curl 'http://localhost:18080/api/live-orders/open'
+curl 'http://localhost:18080/api/live-orders/10/fills'
+curl 'http://localhost:18080/api/live-orders/10/cancel-requests'
+curl 'http://localhost:18080/api/live-positions'
+curl 'http://localhost:18080/api/live-positions/3/exit-preview?currentPrice=73500'
 ```
 
 미체결 지정가 주문 취소:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/live-orders/10/cancel' \
+curl -X POST 'http://localhost:18080/api/live-orders/10/cancel' \
   -H 'Content-Type: application/json' \
   -d '{"reason":"OPERATOR_CANCEL","cancelQuantity":1}'
 ```
@@ -1023,7 +1068,7 @@ curl -X POST 'http://localhost:8080/api/live-orders/10/cancel' \
 Kill switch:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/live-trading/kill-switch' \
+curl -X POST 'http://localhost:18080/api/live-trading/kill-switch' \
   -H 'Content-Type: application/json' \
   -d '{"enabled":true,"reason":"OPERATOR_EMERGENCY_STOP"}'
 ```
@@ -1033,20 +1078,20 @@ Kill switch가 켜지면 수동 매수·매도와 자동매도 신규 주문을 
 관심종목 등록:
 
 ```sh
-curl -X POST http://localhost:8080/api/stocks   -H 'Content-Type: application/json'   -d '{"stockCode":"005930","stockName":"삼성전자","market":"KOSPI"}'
+curl -X POST http://localhost:18080/api/stocks   -H 'Content-Type: application/json'   -d '{"stockCode":"005930","stockName":"삼성전자","market":"KOSPI"}'
 ```
 
 관심종목 조회:
 
 ```sh
-curl http://localhost:8080/api/stocks
+curl http://localhost:18080/api/stocks
 ```
 
 관심종목 등록 시 종목 저장을 먼저 완료한 뒤 KIS 읽기 전용 일봉 warmup을
 실행합니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/stocks' \
+curl -X POST 'http://localhost:18080/api/stocks' \
   -H 'Content-Type: application/json' \
   -d '{"stockCode":"005930","stockName":"삼성전자","market":"KOSPI"}'
 ```
@@ -1061,13 +1106,13 @@ MACD, Bollinger Band를 계산해 `indicator_snapshots`에 저장합니다. KIS
 
 ```sh
 curl -X POST \
-  'http://localhost:8080/api/indicators/warm-up?stockCode=005930'
+  'http://localhost:18080/api/indicators/warm-up?stockCode=005930'
 curl -X POST \
-  'http://localhost:8080/api/indicators/warm-up/active-stocks'
+  'http://localhost:18080/api/indicators/warm-up/active-stocks'
 curl \
-  'http://localhost:8080/api/indicators/warm-up/histories?stockCode=005930'
+  'http://localhost:18080/api/indicators/warm-up/histories?stockCode=005930'
 curl \
-  'http://localhost:8080/api/indicators/snapshots?stockCode=005930&tradeDate=2026-06-12'
+  'http://localhost:18080/api/indicators/snapshots?stockCode=005930&tradeDate=2026-06-12'
 ```
 
 warmup 설정:
@@ -1087,13 +1132,13 @@ MA20 충분성은 일봉 20개, MA60 및 전체 indicator snapshot 충분성은 
 특정 종목 분석 실행:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/analyses/005930?asOfDate=2026-06-05'
+curl -X POST 'http://localhost:18080/api/analyses/005930?asOfDate=2026-06-05'
 ```
 
 활성 관심종목 전체 분석 실행:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/analyses/active?asOfDate=2026-06-05'
+curl -X POST 'http://localhost:18080/api/analyses/active?asOfDate=2026-06-05'
 ```
 
 전체 분석에서는 일봉이 60개 미만인 종목을 `SKIPPED`로 반환하고 나머지 활성 종목 분석을 계속합니다.
@@ -1101,7 +1146,7 @@ curl -X POST 'http://localhost:8080/api/analyses/active?asOfDate=2026-06-05'
 14:00 종가베팅 예비 후보 수동 스캔:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/scans/closing-bet?tradeDate=2026-06-05&limit=5'
+curl -X POST 'http://localhost:18080/api/scans/closing-bet?tradeDate=2026-06-05&limit=5'
 ```
 
 스캔은 관심종목 등록 여부와 무관한 시장 순위 후보군에서 `CLOSING_BET_PRE_SCAN` 신호를 저장합니다. 기본은 fake 순위 데이터이며 `MARKET_DATA_REALTIME_PROVIDER=kis` 설정 시 KIS 읽기 전용 순위 API를 사용합니다. 자동 주문은 생성하지 않으며, 거래일 14:00 Asia/Seoul 기준으로도 실행됩니다.
@@ -1124,7 +1169,7 @@ warmup합니다. 15:00 최종 리뷰는 저장된 예비 후보를 다시 확인
 15:00 종가베팅 최종 후보 수동 리뷰:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/reviews/closing-bet?tradeDate=2026-06-05&limit=5'
+curl -X POST 'http://localhost:18080/api/reviews/closing-bet?tradeDate=2026-06-05&limit=5'
 ```
 
 리뷰는 같은 거래일의 `CLOSING_BET_PRE_SCAN` 신호 중 리스크 사유가 없고 snapshot 기반 최종 점수 75점 이상인 후보를 `CLOSING_BET` 신호로 저장합니다. VWAP 상회, 당일 고가권 유지, 누적 거래대금 500억 이상을 가점하고 VWAP 하회나 고가 대비 큰 이탈을 감점합니다. 자동 주문은 생성하지 않으며, 평일 15:00 Asia/Seoul 기준으로도 실행됩니다.
@@ -1132,7 +1177,7 @@ curl -X POST 'http://localhost:8080/api/reviews/closing-bet?tradeDate=2026-06-05
 08:30 장초반 예비 후보 수동 스캔:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/scans/early-market/pre-open?tradeDate=2026-06-10&limit=10'
+curl -X POST 'http://localhost:18080/api/scans/early-market/pre-open?tradeDate=2026-06-10&limit=10'
 ```
 
 거래대금 상위 `+20`, 양호한 등락률 `+15`, 거래량 상위 `+15`를 적용합니다. 저장된 지표가 있고 현재가가 MA5와 MA20 위이면 `+15`이며, 과열 또는 지표 부족은 reason에 기록합니다. 전일 시간외 데이터가 있으면 상승률 3% 이상 `+15`, 거래대금 300억 원 이상 `+15`, 상승률 7% 이상 과열 `-10`, 하락률 -3% 이하 `-10`을 추가 적용합니다. 시간외 데이터가 없으면 감점하지 않고 `AFTER_HOURS_DATA_UNAVAILABLE` reason을 남깁니다. 결과는 `strategyName=EARLY_MARKET_BREAKOUT`, `signalType=EARLY_MARKET_PRE_SCAN`으로 저장합니다.
@@ -1153,7 +1198,7 @@ Fake adapter는 고정 데이터를 반환해 장초반 점수와 브리핑을 �
 09:05 장초반 압축 후보 수동 스캔:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/scans/early-market/opening?tradeDate=2026-06-10&limit=3'
+curl -X POST 'http://localhost:18080/api/scans/early-market/opening?tradeDate=2026-06-10&limit=3'
 ```
 
 같은 거래일의 예비 신호를 snapshot으로 재평가합니다. VWAP 위 `+25`, 당일 고가권 `+20`, 누적 거래대금 충분 `+20`, VWAP 이탈 `-30`, 고가 대비 큰 이탈 `-20`을 적용하며 70점 이상만 최대 3개 저장합니다. 결과는 `signalType=EARLY_MARKET_ENTRY_CANDIDATE`입니다.
@@ -1165,7 +1210,7 @@ curl -X POST 'http://localhost:8080/api/scans/early-market/opening?tradeDate=202
 09:20 장초반 후보 follow-up 수동 실행:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/scans/early-market/follow-up?tradeDate=2026-06-10'
+curl -X POST 'http://localhost:18080/api/scans/early-market/follow-up?tradeDate=2026-06-10'
 ```
 
 같은 거래일의 `EARLY_MARKET_ENTRY_CANDIDATE`를 별도 신호 저장 없이 재평가합니다. `IntradayBarPort`에서 09:05~09:20 1분봉을 조회하며 마지막 가격이 마지막 VWAP 아래이거나 구간 고점 대비 낙폭이 -2% 이하이면 `EXCLUDE`입니다. 구간 중 `close < vwap`이 있었지만 회복했거나 낙폭이 -1%~-2%이면 `CAUTION`, 그 외 VWAP과 고가권을 유지하면 `KEEP`입니다.
@@ -1181,8 +1226,8 @@ curl -X POST 'http://localhost:8080/api/scans/early-market/follow-up?tradeDate=2
 저장된 follow-up 결과 조회:
 
 ```sh
-curl 'http://localhost:8080/api/scans/early-market/follow-up-results?tradeDate=2026-06-10'
-curl 'http://localhost:8080/api/scans/early-market/follow-up-results/21'
+curl 'http://localhost:18080/api/scans/early-market/follow-up-results?tradeDate=2026-06-10'
+curl 'http://localhost:18080/api/scans/early-market/follow-up-results/21'
 ```
 
 응답에는 `signalId`, `decision`, 신호 점수, 마지막 가격, 09:05 이후 고가, 고점 대비 낙폭, VWAP 이탈 여부, reasons와 `capturedAt`이 포함됩니다. 결과 저장과 조회는 분석 용도이며 자동 주문을 생성하지 않습니다.
@@ -1190,14 +1235,14 @@ curl 'http://localhost:8080/api/scans/early-market/follow-up-results/21'
 09:30 이후 장초반 후보 성과 수동 캡처:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/scans/early-market/performances?tradeDate=2026-06-10'
+curl -X POST 'http://localhost:18080/api/scans/early-market/performances?tradeDate=2026-06-10'
 ```
 
 성과 조회:
 
 ```sh
-curl 'http://localhost:8080/api/scans/early-market/performances?tradeDate=2026-06-10'
-curl 'http://localhost:8080/api/scans/early-market/performances/21'
+curl 'http://localhost:18080/api/scans/early-market/performances?tradeDate=2026-06-10'
+curl 'http://localhost:18080/api/scans/early-market/performances/21'
 ```
 
 성과는 `EARLY_MARKET_PRE_SCAN`과 `EARLY_MARKET_ENTRY_CANDIDATE`를 signalId별로 구분해 저장하며 응답에 원 신호 점수인 `signalScore`를 포함합니다. `IntradayBarPort`에서 09:00~09:30 양 끝을 포함한 1분봉을 조회하고, 첫 bar의 open을 `entryReferencePrice`로 사용합니다. 구간 high/low의 최댓값과 최솟값을 저장하고, 마지막 bar close를 `priceAt0930`으로 사용합니다. 정확히 09:30 bar가 없으면 조회 구간 안에서 가장 늦은 bar close가 사용됩니다.
@@ -1222,11 +1267,11 @@ curl 'http://localhost:8080/api/scans/early-market/performances/21'
 - 09:31: 09:00~09:30 1분봉, 분봉 부재 시 performance snapshot
 
 ```sh
-curl 'http://localhost:8080/api/early-market/data-captures?tradeDate=2026-06-10'
-curl 'http://localhost:8080/api/early-market/ranking-snapshots?tradeDate=2026-06-10'
-curl 'http://localhost:8080/api/early-market/after-hours-snapshots?tradeDate=2026-06-10'
-curl 'http://localhost:8080/api/early-market/intraday-bars?tradeDate=2026-06-10&stockCode=005930'
-curl 'http://localhost:8080/api/early-market/market-snapshots?tradeDate=2026-06-10&stockCode=005930'
+curl 'http://localhost:18080/api/early-market/data-captures?tradeDate=2026-06-10'
+curl 'http://localhost:18080/api/early-market/ranking-snapshots?tradeDate=2026-06-10'
+curl 'http://localhost:18080/api/early-market/after-hours-snapshots?tradeDate=2026-06-10'
+curl 'http://localhost:18080/api/early-market/intraday-bars?tradeDate=2026-06-10&stockCode=005930'
+curl 'http://localhost:18080/api/early-market/market-snapshots?tradeDate=2026-06-10&stockCode=005930'
 ```
 
 동일한 `(tradeDate, stockCode, barTime, intervalType)` bar와 동일 시각·유형의 market snapshot은 upsert합니다. 캡처 이력은 거래일·capture type별로 `SUCCEEDED`, `PARTIAL`, `FAILED`, `SKIPPED` 상태와 item count, 제한된 실패 사유를 저장합니다.
@@ -1236,7 +1281,7 @@ curl 'http://localhost:8080/api/early-market/market-snapshots?tradeDate=2026-06-
 장초반 전략 일별 성과 리포트:
 
 ```sh
-curl 'http://localhost:8080/api/reports/early-market/daily?tradeDate=2026-06-10'
+curl 'http://localhost:18080/api/reports/early-market/daily?tradeDate=2026-06-10'
 ```
 
 리포트는 해당 거래일의 `EARLY_MARKET_PRE_SCAN`, `EARLY_MARKET_ENTRY_CANDIDATE` 신호와 저장된 `EarlyMarketCandidatePerformance`를 signalId로 결합합니다. 후보 수, 성과 캡처 수, 평균 최대수익률, 평균 최대낙폭, 최고/최저 후보와 전체 후보 상세를 반환합니다. `bestCandidate`는 `maxReturnRateUntil0930`이 가장 큰 후보, `worstCandidate`는 가장 작은 후보입니다.
@@ -1248,7 +1293,7 @@ curl 'http://localhost:8080/api/reports/early-market/daily?tradeDate=2026-06-10'
 장초반 전략 기간 성과 리포트:
 
 ```sh
-curl 'http://localhost:8080/api/reports/early-market/period?from=2026-06-01&to=2026-06-10'
+curl 'http://localhost:18080/api/reports/early-market/period?from=2026-06-01&to=2026-06-10'
 ```
 
 `from`, `to`는 필수이며 양 끝 날짜를 포함합니다. `from`이 `to`보다 늦거나 포함 기간이 90일을 초과하면 `400 INVALID_REQUEST`를 반환합니다. `tradingDayCount`와 `byTradeDate`에는 장초반 후보 신호가 존재한 날짜만 포함하고, 응답 크기를 제한하기 위해 날짜별 후보 상세는 반환하지 않습니다.
@@ -1307,7 +1352,7 @@ tradeguard.early-market.strategy.follow-up.caution-when-previous-high-not-broken
 현재 장초반 전략 설정과 기간 리포트 요약을 함께 저장:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/reports/early-market/experiments' \
+curl -X POST 'http://localhost:18080/api/reports/early-market/experiments' \
   -H 'Content-Type: application/json' \
   -d '{
     "experimentName": "entry threshold 80",
@@ -1319,8 +1364,8 @@ curl -X POST 'http://localhost:8080/api/reports/early-market/experiments' \
 저장된 실험 최신순 조회와 단건 조회:
 
 ```sh
-curl 'http://localhost:8080/api/reports/early-market/experiments?limit=20'
-curl 'http://localhost:8080/api/reports/early-market/experiments/1'
+curl 'http://localhost:18080/api/reports/early-market/experiments?limit=20'
+curl 'http://localhost:18080/api/reports/early-market/experiments/1'
 ```
 
 POST는 기존 기간 리포트와 동일한 최대 90일 검증을 적용합니다. 후보가 한 건 이상인 기간 리포트가 성공한 경우에만 저장하며 후보가 없으면 `404 EARLY_MARKET_STRATEGY_EXPERIMENT_NO_DATA`를 반환합니다. `experimentName`은 필수이고 최대 100자입니다. 최신순 조회 `limit`은 기본 20, 허용 범위는 1~100입니다.
@@ -1332,7 +1377,7 @@ POST는 기존 기간 리포트와 동일한 최대 90일 검증을 적용합니
 저장된 장초반 전략 실험 비교:
 
 ```sh
-curl 'http://localhost:8080/api/reports/early-market/experiments/compare?ids=1,2,3'
+curl 'http://localhost:18080/api/reports/early-market/experiments/compare?ids=1,2,3'
 ```
 
 `ids`는 필수이며 중복 없는 실험 ID를 2개 이상 10개 이하로 전달해야 합니다. 존재하지 않는 ID가 하나라도 있으면 `404 EARLY_MARKET_STRATEGY_EXPERIMENT_NOT_FOUND`를 반환합니다. 응답은 요청 ID 순서의 실험별 저장 결과와 현재 비교 시각, 다음 세 우수 실험을 제공합니다.
@@ -1350,7 +1395,7 @@ curl 'http://localhost:8080/api/reports/early-market/experiments/compare?ids=1,2
 현재 설정을 복사한 임시 설정에 일부 파라미터를 override하고, 저장된 신호·성과 기준 기간 리포트와 실험 저장을 한 번에 수행합니다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/reports/early-market/backtests' \
+curl -X POST 'http://localhost:18080/api/reports/early-market/backtests' \
   -H 'Content-Type: application/json' \
   -d '{
     "experimentName": "entry 80 and drawdown -2.5",
@@ -1383,7 +1428,7 @@ curl -X POST 'http://localhost:8080/api/reports/early-market/backtests' \
 거래 신호 조회:
 
 ```sh
-curl 'http://localhost:8080/api/signals?stockCode=005930&signalDate=2026-06-05&strategyName=CLOSING_BET&signalType=BUY_CANDIDATE&status=CREATED&minScore=70'
+curl 'http://localhost:18080/api/signals?stockCode=005930&signalDate=2026-06-05&strategyName=CLOSING_BET&signalType=BUY_CANDIDATE&status=CREATED&minScore=70'
 ```
 
 응답에는 `signalId`, 전략명, 종목코드, 신호일, 신호 유형, 점수, 점수 근거, 리스크 거절 사유, 상태가 포함됩니다.
@@ -1391,7 +1436,7 @@ curl 'http://localhost:8080/api/signals?stockCode=005930&signalDate=2026-06-05&s
 저장된 분석 신호로 모의 주문 요청:
 
 ```sh
-curl -X POST http://localhost:8080/api/mock-orders \
+curl -X POST http://localhost:18080/api/mock-orders \
   -H 'Content-Type: application/json' \
   -d '{
     "strategyName":"CLOSING_BET",
@@ -1406,7 +1451,7 @@ curl -X POST http://localhost:8080/api/mock-orders \
 `signalId`로 모의 주문 요청:
 
 ```sh
-curl -X POST http://localhost:8080/api/signals/1/mock-orders \
+curl -X POST http://localhost:18080/api/signals/1/mock-orders \
   -H 'Content-Type: application/json' \
   -d '{
     "quantity":1,
@@ -1417,37 +1462,37 @@ curl -X POST http://localhost:8080/api/signals/1/mock-orders \
 모의 주문 이력 조회:
 
 ```sh
-curl 'http://localhost:8080/api/mock-orders?stockCode=005930&tradeDate=2026-06-05&status=ACCEPTED&side=BUY'
+curl 'http://localhost:18080/api/mock-orders?stockCode=005930&tradeDate=2026-06-05&status=ACCEPTED&side=BUY'
 ```
 
 특정 TradingSignal의 주문 이력 조회:
 
 ```sh
-curl 'http://localhost:8080/api/mock-orders?signalId=1'
+curl 'http://localhost:18080/api/mock-orders?signalId=1'
 ```
 
 Broker 실패 주문 조회:
 
 ```sh
-curl 'http://localhost:8080/api/mock-orders?status=BROKER_FAILED'
+curl 'http://localhost:18080/api/mock-orders?status=BROKER_FAILED'
 ```
 
 Broker 실패 주문 수동 재시도:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/mock-orders/10/retry'
+curl -X POST 'http://localhost:18080/api/mock-orders/10/retry'
 ```
 
 5분 이상 정체된 재시도 조회:
 
 ```sh
-curl 'http://localhost:8080/api/mock-orders/retries/stuck?thresholdMinutes=5'
+curl 'http://localhost:18080/api/mock-orders/retries/stuck?thresholdMinutes=5'
 ```
 
 정체된 재시도를 수동으로 `BROKER_FAILED`로 복구:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/mock-orders/10/retry/recover' \
+curl -X POST 'http://localhost:18080/api/mock-orders/10/retry/recover' \
   -H 'Content-Type: application/json' \
   -d '{
     "reason":"application restarted during retry"
@@ -1457,13 +1502,13 @@ curl -X POST 'http://localhost:8080/api/mock-orders/10/retry/recover' \
 TradingSignal 상태 변경 이력 조회:
 
 ```sh
-curl 'http://localhost:8080/api/signals/21/histories'
+curl 'http://localhost:18080/api/signals/21/histories'
 ```
 
 OrderRequest 상태 변경 이력 조회:
 
 ```sh
-curl 'http://localhost:8080/api/mock-orders/10/histories'
+curl 'http://localhost:18080/api/mock-orders/10/histories'
 ```
 
 모의 주문 API는 DB에 저장된 신호만 사용하며 지정가 주문만 생성합니다. 주문 이력 응답에는 `orderId`, `signalId`, `failureReason`, `failedAt`, `retryable`, `retryRequestedAt`이 포함됩니다. signalId 기반 및 논리 키 기반 주문 모두 조회된 TradingSignal ID를 `order_requests.signal_id`에 저장합니다. Broker 호출 중 예외가 발생하면 주문은 `BROKER_FAILED`로 저장되고 `brokerOrderNo`는 null로 유지됩니다. 필터를 생략하면 전체 주문 이력을 최신 거래일 순으로 반환합니다.
@@ -1481,7 +1526,7 @@ Broker 실패 시 POST 응답의 `approved`는 `false`, `brokerFailed`는 `true`
 종가베팅 브리핑 알림:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/briefings/closing-bet?signalDate=2026-06-05'
+curl -X POST 'http://localhost:18080/api/briefings/closing-bet?signalDate=2026-06-05'
 ```
 
 `DISCORD_WEBHOOK_URL`이 설정되어 있으면 Discord Webhook으로 종가베팅 후보 브리핑을 전송합니다. 비어 있으면 실제 전송 없이 no-op 결과를 반환합니다. 알림은 정보 전달만 수행하며 주문을 실행하지 않습니다.
@@ -1502,12 +1547,12 @@ curl -X POST 'http://localhost:8080/api/briefings/closing-bet?signalDate=2026-06
 Actuator는 `health`, `info`, `metrics`, `prometheus` endpoint를 외부에 노출하며 health 상세정보는 기본적으로 반환하지 않습니다. Prometheus metric에는 고정 공통 tag `application=tradeguard`가 붙습니다.
 
 ```sh
-curl 'http://localhost:8080/actuator/health'
-curl 'http://localhost:8080/actuator/health/liveness'
-curl 'http://localhost:8080/actuator/health/readiness'
-curl 'http://localhost:8080/actuator/info'
-curl 'http://localhost:8080/actuator/metrics'
-curl 'http://localhost:8080/actuator/prometheus'
+curl 'http://localhost:18080/actuator/health'
+curl 'http://localhost:18080/actuator/health/liveness'
+curl 'http://localhost:18080/actuator/health/readiness'
+curl 'http://localhost:18080/actuator/info'
+curl 'http://localhost:18080/actuator/metrics'
+curl 'http://localhost:18080/actuator/prometheus'
 ```
 
 - `liveness`: Spring 애플리케이션 생존 상태만 확인한다.
@@ -1525,19 +1570,19 @@ curl 'http://localhost:8080/actuator/prometheus'
 14:00 예비 스캔, 15:00 최종 리뷰, 장초반 08:30/09:05 스캔, 09:20 follow-up, 09:31 성과 캡처와 calendar 동기화의 자동 scheduler 실행 이력을 조회할 수 있습니다.
 
 ```sh
-curl 'http://localhost:8080/api/scheduler-executions'
+curl 'http://localhost:18080/api/scheduler-executions'
 ```
 
 거래일과 scheduler를 지정한 조회:
 
 ```sh
-curl 'http://localhost:8080/api/scheduler-executions?tradeDate=2026-06-05&schedulerName=CLOSING_BET_PRE_SCAN_14'
+curl 'http://localhost:18080/api/scheduler-executions?tradeDate=2026-06-05&schedulerName=CLOSING_BET_PRE_SCAN_14'
 ```
 
 실패 실행 조회:
 
 ```sh
-curl 'http://localhost:8080/api/scheduler-executions?status=FAILED'
+curl 'http://localhost:18080/api/scheduler-executions?status=FAILED'
 ```
 
 실행 상태는 `STARTED`, `SUCCEEDED`, `SKIPPED`, `FAILED`이며 최신 `startedAt` 순으로 반환됩니다. 비거래일에는 `SKIPPED`와 `NON_TRADING_DAY` 사유를 기록합니다. 실행 예외가 발생하면 `FAILED`를 저장한 뒤 예외를 다시 전파합니다.
@@ -1617,8 +1662,8 @@ Micrometer Prometheus registry로 아래 counter를 기록합니다. 기존 Prom
 개별 metric 조회 예시:
 
 ```sh
-curl 'http://localhost:8080/actuator/metrics/tradeguard.scheduler.execution.count'
-curl 'http://localhost:8080/actuator/metrics/tradeguard.order.broker_failure.count'
+curl 'http://localhost:18080/actuator/metrics/tradeguard.scheduler.execution.count'
+curl 'http://localhost:18080/actuator/metrics/tradeguard.order.broker_failure.count'
 ```
 
 HTTP 요청에 `X-Request-Id`가 있으면 정제 후 MDC와 응답 헤더에 사용하고, 없으면 UUID를 생성합니다. API에서 발생한 신호/주문 상태 변경 감사 이력에는 동일 값을 `requestCorrelationId`로 저장하고 `actor=API`를 기록합니다. stuck retry 복구 이력은 `actor=SYSTEM`입니다.
@@ -1626,14 +1671,14 @@ HTTP 요청에 `X-Request-Id`가 있으면 정제 후 MDC와 응답 헤더에 �
 Scheduler 실행은 매 실행마다 별도 correlation ID를 생성합니다. 같은 ID가 MDC, 구조화 로그, `scheduler_execution_histories.correlation_id`에 사용되며 조회 API의 `correlationId`로 반환됩니다.
 
 ```sh
-curl -i -X POST 'http://localhost:8080/api/signals/21/mock-orders' \
+curl -i -X POST 'http://localhost:18080/api/signals/21/mock-orders' \
   -H 'X-Request-Id: operation-20260609-001' \
   -H 'Content-Type: application/json' \
   -d '{"quantity":1,"limitPrice":50000}'
 
-curl 'http://localhost:8080/api/signals/21/histories'
-curl 'http://localhost:8080/api/mock-orders/10/histories'
-curl 'http://localhost:8080/api/scheduler-executions?tradeDate=2026-06-09'
+curl 'http://localhost:18080/api/signals/21/histories'
+curl 'http://localhost:18080/api/mock-orders/10/histories'
+curl 'http://localhost:18080/api/scheduler-executions?tradeDate=2026-06-09'
 ```
 
 운영자는 응답의 `X-Request-Id`, 감사 이력의 `requestCorrelationId`, scheduler 이력의 `correlationId`로 구조화 로그를 검색해 하나의 실행 흐름을 추적할 수 있습니다.
@@ -1643,9 +1688,9 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 
 ## 안전 원칙
 
-- 실계좌 주문은 두 feature flag, 계좌 설정, 장중 검사와 kill switch를 통과한 수동 요청 또는 보유 포지션 자동매도에서만 가능합니다.
+- 실계좌 주문은 두 feature flag, REAL 계좌 선택, 운영자 확인, 장중 검사와 kill switch를 통과한 수동 지정가 요청에서만 가능합니다.
 - 시장가 주문은 지원하지 않습니다.
-- 자동매수, 공매도, 신용, 미수 주문은 지원하지 않습니다.
+- 자동매수, 공매도, 신용, 미수 주문은 지원하지 않습니다. 자동매도는 `LIVE_POSITION_EXIT_MONITOR`의 저장 포지션 손익 규칙 경로로만 제한됩니다.
 - 08:30/09:05 장초반 후보 생성, 전일 고가/시초가 지지 feature, 09:20 follow-up과 09:31 성과 캡처는 자동 주문을 실행하지 않습니다.
 - Earnings Analysis는 재무 품질 평가와 후보 reason/점수 보강만 수행하며 자동 주문을 실행하지 않습니다.
 - Investor Flow import와 Supply-Demand 분석은 저장 데이터와 후보 점수만 보강하며 자동 주문을 실행하지 않습니다.
@@ -1654,7 +1699,7 @@ Correlation ID는 metric tag로 사용하지 않습니다.
 - 장초반 성과 캡처는 분석 데이터만 저장하며 주문을 생성하지 않습니다.
 - 장초반 원천 데이터 아카이브는 replay 입력만 저장하며 주문을 생성하지 않습니다.
 - 시간외 데이터 연동은 fake/disabled 또는 설정 기반 KIS read-only 일별 시간외 시세 adapter만 사용합니다.
-- KIS 현금 지정가 주문과 현금 체결조회만 사용하며 정정/취소는 아직 구현하지 않습니다.
+- KIS 현금 지정가 주문, 현금 체결조회와 주문 취소를 지원하며 주문 정정은 지원하지 않습니다. 설정된 경우 미체결 주문의 장 마감 전 자동 취소만 허용합니다.
 - API Key, App Secret, 계좌번호는 코드에 하드코딩하지 않습니다.
 - Discord Webhook URL은 환경변수로만 주입하며 코드에 하드코딩하지 않습니다.
 - 기존 mock order와 `FakeBrokerAdapter` 경로는 그대로 유지됩니다.
@@ -1671,12 +1716,12 @@ v1의 후보 재현 소스는 저장된 `trading_signals`다. 이 레코드에 �
 요청한 기준 가격이 없으면 실행을 중단하지 않고 해당 후보를 `DATA_INSUFFICIENT`로 저장한다. 유효한 성과만 평균, 중앙값, 승률, 최대·최소 수익률에 포함한다. reason 및 warning별 후보 수, 평가 수, 승률, 평균 수익률도 run 조회 응답에 포함된다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/backtests/replay/closing-bet?from=2026-06-01&to=2026-06-15&holdingDays=1'
+curl -X POST 'http://localhost:18080/api/research/backtests/replay/closing-bet?from=2026-06-01&to=2026-06-15&holdingDays=1'
 
-curl -X POST 'http://localhost:8080/api/research/backtests/replay/early-market?from=2026-06-01&to=2026-06-15&entryTime=09:05&exitTime=09:31'
+curl -X POST 'http://localhost:18080/api/research/backtests/replay/early-market?from=2026-06-01&to=2026-06-15&entryTime=09:05&exitTime=09:31'
 
-curl 'http://localhost:8080/api/research/backtests/replay/runs/1'
-curl 'http://localhost:8080/api/research/backtests/replay/runs/1/results'
+curl 'http://localhost:18080/api/research/backtests/replay/runs/1'
+curl 'http://localhost:18080/api/research/backtests/replay/runs/1/results'
 ```
 
 운영 metric은 `tradeguard.research.replay_backtest.count`이며 `strategy`와 `result=success|failure|insufficient`만 tag로 사용한다. `stockCode`는 metric tag에 포함하지 않는다.
@@ -1692,10 +1737,10 @@ Paper Trading Report는 실제 주문이나 모의 체결을 생성하지 않고
 16:10 당일 자동 실행에서는 다음 거래일 가격이 아직 없으므로 종가베팅 결과가 `DATA_INSUFFICIENT`일 수 있다. 이후 과거 날짜를 다시 생성하면 저장된 다음 거래일 데이터로 평가된다. 유효한 결과만 승률과 평균 수익률에 포함하며 전략/reason/warning별 집계와 top winners/losers를 제공한다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/paper-trading/reports/daily?tradeDate=2026-06-15'
-curl 'http://localhost:8080/api/research/paper-trading/reports/latest?tradeDate=2026-06-15'
-curl 'http://localhost:8080/api/research/paper-trading/reports/runs/1'
-curl 'http://localhost:8080/api/research/paper-trading/reports/runs/1/results'
+curl -X POST 'http://localhost:18080/api/research/paper-trading/reports/daily?tradeDate=2026-06-15'
+curl 'http://localhost:18080/api/research/paper-trading/reports/latest?tradeDate=2026-06-15'
+curl 'http://localhost:18080/api/research/paper-trading/reports/runs/1'
+curl 'http://localhost:18080/api/research/paper-trading/reports/runs/1/results'
 ```
 
 `PAPER_TRADING_REPORT_AUTO_RUN=true`이면 거래일 16:10 Asia/Seoul에 실행한다. 다음날 Morning Note에는 전 거래일 후보 수, 승률, 평균 수익률, 최고 reason, 최저 warning과 `DATA_INSUFFICIENT` 건수가 포함되며 Discord 전송은 기존 Morning Note opt-in 설정을 그대로 따른다.
@@ -1719,14 +1764,14 @@ DISCLOSURE_ACTUAL_PROVIDER_MAX_ITEMS_PER_STOCK=20
 DISCLOSURE_ACTUAL_PROVIDER_RATE_LIMIT_PER_MINUTE=30
 ```
 
-`DART_PROVIDER_ENABLED=true`, `DART_API_BASE_URL`, `DART_API_KEY`와 종목별 DART
-corp code mapping도 필요하다. 자동 실행은 별도 opt-in이며 거래일 07:35에 수행된다.
+`/operations/accounts`에서 활성 DART 설정을 등록하고 종목별 DART corp code
+mapping도 준비해야 한다. 자동 실행은 별도 opt-in이며 거래일 07:35에 수행된다.
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/disclosures/import?stockCode=005930&from=2026-06-01&to=2026-06-15'
-curl -X POST 'http://localhost:8080/api/research/disclosures/import-watchlist?baseDate=2026-06-15'
-curl 'http://localhost:8080/api/research/disclosures/import-histories?stockCode=005930'
-curl 'http://localhost:8080/api/research/disclosures/evidences?stockCode=005930&from=2026-06-01&to=2026-06-15'
+curl -X POST 'http://localhost:18080/api/research/disclosures/import?stockCode=005930&from=2026-06-01&to=2026-06-15'
+curl -X POST 'http://localhost:18080/api/research/disclosures/import-watchlist?baseDate=2026-06-15'
+curl 'http://localhost:18080/api/research/disclosures/import-histories?stockCode=005930'
+curl 'http://localhost:18080/api/research/disclosures/evidences?stockCode=005930&from=2026-06-01&to=2026-06-15'
 ```
 
 Morning Note에는 `NEW_DISCLOSURE_EVIDENCE`, `HIGH_IMPORTANCE_DISCLOSURE`,
@@ -1767,7 +1812,7 @@ CONSENSUS_PROVIDER_MAX_ITEMS_PER_STOCK=20
 실적 컨센서스 CSV import 예시:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/consensus/earnings/import-csv' \
+curl -X POST 'http://localhost:18080/api/research/consensus/earnings/import-csv' \
   -H 'Content-Type: multipart/form-data' \
   -F 'file=@earnings-consensus.csv'
 ```
@@ -1780,7 +1825,7 @@ stockCode,fiscalYear,fiscalQuarter,consensusDate,expectedRevenue,expectedOperati
 목표주가 컨센서스 CSV import 예시:
 
 ```sh
-curl -X POST 'http://localhost:8080/api/research/consensus/target-price/import-csv' \
+curl -X POST 'http://localhost:18080/api/research/consensus/target-price/import-csv' \
   -H 'Content-Type: multipart/form-data' \
   -F 'file=@target-price-consensus.csv'
 ```

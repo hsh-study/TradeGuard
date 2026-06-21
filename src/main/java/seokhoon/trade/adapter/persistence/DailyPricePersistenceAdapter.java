@@ -31,4 +31,10 @@ public class DailyPricePersistenceAdapter implements DailyPricePort {
                 .map(DailyPriceEntity::toDomain)
                 .toList();
     }
+
+    @Override
+    public java.util.Optional<DailyPrice> findLatestByStockCode(String stockCode) {
+        return repository.findFirstByStockCodeOrderByTradeDateDesc(stockCode)
+                .map(DailyPriceEntity::toDomain);
+    }
 }

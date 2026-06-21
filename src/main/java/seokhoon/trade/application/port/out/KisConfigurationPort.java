@@ -9,4 +9,5 @@ public interface KisConfigurationPort {
     int tokenRefreshBeforeSeconds();
     KisTokenCacheMode tokenCacheMode();
     boolean tokenEncryptionConfigured();
+    default boolean tokenDailyRefreshEnabled() { return false; }
 }

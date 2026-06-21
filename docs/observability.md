@@ -4,10 +4,12 @@ TradeGuard exports Micrometer metrics for the Prometheus and Grafana containers 
 
 ## Endpoints and local ports
 
-- Spring operational state UI: `http://localhost:8080/operations/dashboard`
-- Operational state API: `http://localhost:8080/api/operations/dashboard`
-- TradeGuard metrics: `http://localhost:8080/actuator/prometheus`
-- TradeGuard health: `http://localhost:8080/actuator/health`
+- Spring operational state UI: `http://localhost:18080/operations/dashboard`
+- Watchlist and stored market chart UI: `http://localhost:18080/operations/watchlist`
+- Operational state API: `http://localhost:18080/api/operations/dashboard`
+- Boot readiness API: `http://localhost:18080/api/operations/boot-readiness`
+- TradeGuard metrics: `http://localhost:18080/actuator/prometheus`
+- TradeGuard health: `http://localhost:18080/actuator/health`
 - Existing Prometheus: `http://localhost:19090`
 - Existing Grafana: `http://localhost:13000`
 
@@ -15,20 +17,22 @@ The application exposes `health`, `info`, `metrics`, and `prometheus`. Exported 
 
 ## Grafana and Spring dashboard roles
 
-Grafana is the metric-trend view: it answers how counters and failure signals changed over a selected time window. The Spring Operational Dashboard UI is the current-state view: it summarizes the selected date's blocking issues, warnings, recommended actions, readiness, scheduler, research, and paper/backtest status from the existing dashboard use case.
+Boot Readiness is the startup-configuration view: once after `ApplicationReadyEvent`, it checks local configuration and minimal DB/Flyway state without calling external providers. The Spring Operational Dashboard UI is the selected-date current-state view: it summarizes blocking issues, warnings, recommended actions, readiness, scheduler, research, and paper/backtest status. Grafana and Prometheus are the metric-trend view: they show how counters and failure signals changed over time. Alerting turns those recent metric events into prompts for manual investigation.
 
-Use Grafana to investigate timing and trends, then use `/operations/dashboard` (or its JSON API) to confirm the current operational state. The Spring UI is read-only, defaults to today, accepts `baseDate=yyyy-MM-dd`, and has an optional 60-second refresh that is off by default. It does not call external providers, create orders, or change automatic-trading state. Its renderer only includes approved summary fields and omits credentials, account identifiers, webhook/source URLs, receipt numbers, provider details, raw scheduler failure reasons, and bulk stock-code lists.
+Start with `/api/operations/boot-readiness` to confirm configuration safety, use `/operations/dashboard` for current operational state, and use Grafana for timing and trends. These surfaces are read-only. They do not call external providers, refresh tokens, create orders, change flags, or clear the kill switch. They only include approved summary fields and omit credentials, account identifiers, webhook/source URLs, receipt numbers, provider details, raw scheduler failure reasons, and bulk stock-code lists.
+
+`/operations/watchlist` has a different role: it manages the watchlist, can explicitly start KIS daily-price/material collection, reads stored OHLCV and indicators, and opens a read-only SSE current-price stream during regular market hours. It also contains operator-triggered, account-selected LIMIT buy/sell forms. Those forms are state-changing and remain behind confirmation, readiness, kill-switch, market-hours, and amount checks; they are not part of the read-only dashboard or Grafana surfaces.
 
 ## Connect the existing Prometheus container
 
 1. Start TradeGuard with `./gradlew bootRun`.
-2. Confirm `http://localhost:8080/actuator/prometheus` returns Prometheus text format.
+2. Confirm `http://localhost:18080/actuator/prometheus` returns Prometheus text format.
 3. Find the active configuration used by the existing `prometheus` container, for example with `docker inspect prometheus`. Do not assume that editing a host file changes the mounted file.
 4. Merge the job from [`tradeguard-scrape-example.yml`](../observability/prometheus/tradeguard-scrape-example.yml) into the existing `prometheus.yml` `scrape_configs` list. Do not add a second top-level `scrape_configs` key.
 5. Validate the effective Prometheus configuration, then reload Prometheus if lifecycle reload is enabled or restart only the existing container: `docker restart prometheus`.
 6. Open `http://localhost:19090/targets` and confirm the `tradeguard` target is `UP`.
 
-On Docker Desktop the application host is normally `host.docker.internal:8080`. A common Linux Docker bridge gateway is `172.17.0.1:8080`; use the address reachable from inside the existing container. A host firewall or a server bound only to an unreachable interface can also keep the target down.
+On the current local Docker network, prefer `tradeguard:8080` when Prometheus shares `study_default`. If Prometheus reaches the published host port, Docker Desktop commonly uses `host.docker.internal:18080`; a Linux host gateway may use port `18080`. Verify the address from inside the Prometheus container.
 
 ## Import the dashboard into existing Grafana
 
@@ -65,6 +69,7 @@ The dashboard uses these current counters:
 - `tradeguard.research.paper_trading_report.count` — `result=success|failure|insufficient`
 - `tradeguard.research.replay_backtest.count` — `strategy`, `result=success|failure|insufficient`
 - `tradeguard.live_trading.readiness.count` — `result=ready|blocked`
+- `tradeguard.operations.boot_readiness.count` — `result=ready|warning|blocked`
 - `tradeguard.order.request.count` — `status`
 
 Counters exist only after their event first occurs. A blank panel can therefore mean no event has yet registered since application startup, not a zero result. Dashboard panels show increases over the selected time range and filter on `application="tradeguard"`.
@@ -97,6 +102,7 @@ All rules use counter `increase(...)` over a recent window. A firing alert prove
 ## Operations checklist
 
 - TradeGuard `/actuator/health` is healthy and `/actuator/prometheus` is reachable.
+- Boot readiness is available and any `BLOCKED` result has been reviewed before operation.
 - Prometheus `tradeguard` target is `UP`; scrape errors and last scrape age are normal.
 - Grafana datasource test succeeds and dashboard panels query the expected datasource.
 - Scheduler and provider failures have not increased in the operating window.

@@ -45,12 +45,12 @@ public class KisLivePriceAdapter implements LivePricePort {
         String query = "FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD="
                 + URLEncoder.encode(stockCode, StandardCharsets.UTF_8);
         KisHttpResponse response = client.get(
-                URI.create(kis.baseUrl(live.environment()) + PATH + "?" + query),
+                URI.create(kis.baseUrl(kis.getEnvironment()) + PATH + "?" + query),
                 Map.of(
                         "authorization", "Bearer "
-                                + tokens.getAccessToken(live.environment()),
-                        "appkey", kis.getAppKey(),
-                        "appsecret", kis.getAppSecret(),
+                                + tokens.getAccessToken(kis.getEnvironment()),
+                        "appkey", kis.appKey(kis.getEnvironment()),
+                        "appsecret", kis.appSecret(kis.getEnvironment()),
                         "tr_id", TR_ID,
                         "custtype", "P"
                 )

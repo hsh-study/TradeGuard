@@ -5,6 +5,7 @@ import seokhoon.trade.application.port.out.StockPort;
 import seokhoon.trade.domain.stock.Stock;
 
 import java.util.List;
+import java.util.Optional;
 
 @Component
 public class StockPersistenceAdapter implements StockPort {
@@ -24,5 +25,10 @@ public class StockPersistenceAdapter implements StockPort {
         return repository.findAll().stream()
                 .map(StockEntity::toDomain)
                 .toList();
+    }
+
+    @Override
+    public Optional<Stock> findByStockCode(String stockCode) {
+        return repository.findById(stockCode).map(StockEntity::toDomain);
     }
 }

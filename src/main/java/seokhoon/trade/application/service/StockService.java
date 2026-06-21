@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import seokhoon.trade.application.port.in.FindStocksUseCase;
 import seokhoon.trade.application.port.in.RegisterStockUseCase;
+import seokhoon.trade.application.port.in.ManageStockUseCase;
 import seokhoon.trade.application.port.in.WarmUpDailyPricesAndIndicatorsUseCase;
 import seokhoon.trade.application.port.out.StockPort;
 import seokhoon.trade.domain.indicator.*;
@@ -14,7 +15,7 @@ import java.time.*;
 import java.util.List;
 
 @Service
-public class StockService implements RegisterStockUseCase, FindStocksUseCase {
+public class StockService implements RegisterStockUseCase, FindStocksUseCase, ManageStockUseCase {
     private final StockPort stockPort;
     private final WarmUpDailyPricesAndIndicatorsUseCase warmUpUseCase;
     private final Clock clock;
@@ -77,5 +78,17 @@ public class StockService implements RegisterStockUseCase, FindStocksUseCase {
     @Override
     public List<Stock> findAll() {
         return stockPort.findAll();
+    }
+
+    @Override
+    public Stock changeActive(String stockCode, boolean active) {
+        Stock current = stockPort.findByStockCode(stockCode)
+                .orElseThrow(() -> new IllegalArgumentException("stock not found: " + stockCode));
+        return stockPort.save(new Stock(current.stockCode(), current.stockName(), current.market(), active));
+    }
+
+    @Override
+    public Stock removeFromWatchlist(String stockCode) {
+        return changeActive(stockCode, false);
     }
 }
